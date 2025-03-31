@@ -1,0 +1,487 @@
+#pragma once
+
+#include <cstdint>
+#include <string_view>
+#include <CcpMath.h>
+
+namespace cmf
+{
+namespace v1
+{
+
+struct SpanRepr
+{
+	union
+	{
+		int64_t offset = 0;
+		void* ptr;
+	};
+	uint64_t byteSize = 0;
+};
+
+template <typename T>
+struct Span : public SpanRepr
+{
+	using value_type = T;
+
+	T* begin()
+	{
+		return reinterpret_cast<T*>( this->ptr );
+	}
+	const T* begin() const
+	{
+		return reinterpret_cast<const T*>( this->ptr );
+	}
+	T* end()
+	{
+		return reinterpret_cast<T*>( this->ptr ) + this->size();
+	}
+	const T* end() const
+	{
+		return reinterpret_cast<const T*>( this->ptr ) + this->size();
+	}
+	T* data()
+	{
+		return begin();
+	}
+	const T* data() const
+	{
+		return begin();
+	}
+	size_t size() const
+	{
+		return this->byteSize / sizeof( T );
+	}
+	bool empty() const
+	{
+		return this->byteSize == 0;
+	}
+	T& operator[]( size_t index )
+	{
+		return data()[index];
+	}
+	const T& operator[]( size_t index ) const
+	{
+		return data()[index];
+	}
+};
+
+using String = Span<char>;
+
+
+struct BufferView
+{
+	uint32_t offset = 0;
+	uint32_t size = 0;
+	uint32_t stride = 0;
+
+	static constexpr std::string_view TypeName = "BufferView";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, offset, "offset" );
+		visitor( *this, size, "size" );
+		visitor( *this, stride, "stride" );
+	}
+};
+
+
+enum class Usage : uint8_t
+{
+	Position,
+	Normal,
+	Tangent,
+	Binormal,
+	TexCoord,
+	Color,
+	BlendIndices,
+	BlendWeights,
+};
+
+enum class ElementType : uint8_t
+{
+	Float32,
+	Float16,
+	UInt8Norm,
+	UInt8,
+	Int8Norm,
+	Int8,
+};
+
+struct VertexElement
+{
+	Usage usage = Usage::Position;
+	uint8_t usageIndex = 0;
+	ElementType type = ElementType::Float32;
+	uint8_t elementCount = 0;
+	uint32_t offset = 0;
+
+	static constexpr std::string_view TypeName = "VertexElement";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, usage, "usage" );
+		visitor( *this, usageIndex, "usageIndex" );
+		visitor( *this, type, "type" );
+		visitor( *this, elementCount, "elementCount" );
+		visitor( *this, offset, "offset" );
+	}
+};
+
+struct MeshArea
+{
+	String name;
+	uint32_t firstElement = 0;
+	uint32_t elementCount = 0;
+	CcpMath::AxisAlignedBox bounds = {};
+	Span<uint8_t> bones; // ??? used in RT, but kind of hacky
+
+	static constexpr std::string_view TypeName = "MeshArea";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, firstElement, "firstElement" );
+		visitor( *this, elementCount, "elementCount" );
+		visitor( *this, bounds, "bounds" );
+		visitor( *this, bones, "bones" );
+	}
+};
+
+struct LodMeshArea
+{
+	uint32_t firstElement = 0;
+	uint32_t elementCount = 0;
+
+	static constexpr std::string_view TypeName = "LodMeshArea";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, firstElement, "firstElement" );
+		visitor( *this, elementCount, "elementCount" );
+	}
+};
+
+struct BoneBinding
+{
+	String name;
+	CcpMath::AxisAlignedBox bounds = {};
+
+	static constexpr std::string_view TypeName = "BoneBinding";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, bounds, "bounds" );
+	}
+};
+
+struct MorphTarget
+{
+	String name;
+	Span<VertexElement> decl;
+	BufferView vb;
+
+	static constexpr std::string_view TypeName = "MorphTarget";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, decl, "decl" );
+		visitor( *this, vb, "vb" );
+	}
+};
+
+struct LodMorphTarget
+{
+	BufferView vb;
+
+	static constexpr std::string_view TypeName = "LodMorphTarget";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, vb, "vb" );
+	}
+};
+
+struct MeshLod
+{
+	BufferView vb;
+	BufferView ib;
+	Span<LodMeshArea> areas;
+	Span<LodMorphTarget> morphTargets;
+	uint32_t threshold = 0;
+
+	static constexpr std::string_view TypeName = "MeshLod";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, vb, "vb" );
+		visitor( *this, ib, "ib" );
+		visitor( *this, areas, "areas" );
+		visitor( *this, morphTargets, "morphTargets" );
+		visitor( *this, threshold, "threshold" );
+	}
+};
+
+enum class IndexType : uint8_t
+{
+	UInt32,
+	UInt16,
+};
+
+enum class MeshTopology : uint8_t
+{
+	TriangleList,
+	PointList,
+};
+
+struct Mesh
+{
+	String name;
+	Span<VertexElement> decl;
+	BufferView vb;
+	BufferView ib;
+
+	Span<MeshLod> lods;
+	Span<MeshArea> areas;
+	Span<BoneBinding> boneBindings;
+	Span<MorphTarget> morphTargets;
+	Span<float> uvDensities;
+	CcpMath::AxisAlignedBox bounds = {};
+	MeshTopology topology = MeshTopology::TriangleList;
+	uint8_t skeleton = 0xff;
+
+	static constexpr std::string_view TypeName = "Mesh";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, decl, "decl" );
+		visitor( *this, vb, "vb" );
+		visitor( *this, ib, "ib" );
+		visitor( *this, lods, "lods" );
+		visitor( *this, areas, "areas" );
+		visitor( *this, boneBindings, "boneBindings" );
+		visitor( *this, morphTargets, "morphTargets" );
+		visitor( *this, uvDensities, "uvDensities" );
+		visitor( *this, bounds, "bounds" );
+		visitor( *this, topology, "topology" );
+		visitor( *this, skeleton, "skeleton" );
+	}
+};
+
+struct Transform
+{
+	Vector3 position = { 0, 0, 0 };
+	Quaternion rotation = { 0, 0, 0, 1 };
+	Vector3 scale = { 1, 1, 1 };
+
+	static constexpr std::string_view TypeName = "Transform";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, position, "position" );
+		visitor( *this, rotation, "rotation" );
+		visitor( *this, scale, "scale" );
+	}
+};
+
+struct Skeleton
+{
+	String name;
+	Span<String> bones;
+	Span<uint32_t> parents;
+	Span<Transform> restTransforms;
+	Span<Matrix> invBindTransforms;
+
+	static constexpr std::string_view TypeName = "Skeleton";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, bones, "bones" );
+		visitor( *this, parents, "parents" );
+		visitor( *this, restTransforms, "restTransforms" );
+		visitor( *this, invBindTransforms, "invBindTransforms" );
+	}
+};
+
+enum class AnimationChannelTargetType : uint8_t
+{
+	BonePosition,
+	BoneRotation,
+	BoneScale,
+	MorphTarget,
+};
+
+enum class Interpolation : uint8_t
+{
+	Step,
+	Linear,
+	CubicSpline,
+};
+
+struct AnimationChannel
+{
+	String target;
+	AnimationChannelTargetType targetType = AnimationChannelTargetType::BonePosition;
+	uint32_t curveIndex = 0;
+
+	static constexpr std::string_view TypeName = "BoneAnimationChannel";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, target, "target" );
+		visitor( *this, targetType, "targetType" );
+		visitor( *this, curveIndex, "curveIndex" );
+	}
+};
+
+struct Animation
+{
+	String name;
+	Span<AnimationChannel> channels;
+	float duration = 0;
+
+	static constexpr std::string_view TypeName = "Animation";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, duration, "duration" );
+		visitor( *this, channels, "channels" );
+	}
+};
+
+struct AnimationCurve
+{
+	uint8_t valueDimension = 0;
+	Interpolation interpolation = Interpolation::Step;
+	ElementType knotType = ElementType::Float32;
+	ElementType valueType = ElementType::Float32;
+	uint32_t knotCount = 0;
+	Span<uint8_t> knots;
+	Span<uint8_t> values;
+
+	static constexpr std::string_view TypeName = "Skeleton";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, valueDimension, "valueDimension" );
+		visitor( *this, interpolation, "interpolation" );
+		visitor( *this, knotType, "knotType" );
+		visitor( *this, valueType, "valueType" );
+		visitor( *this, knotCount, "knotCount" );
+		visitor( *this, knots, "knots" );
+		visitor( *this, values, "values" );
+	}
+};
+
+struct MetadataKeyValue
+{
+	String key;
+	String value;
+
+	static constexpr std::string_view TypeName = "MetadataKeyValue";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, key, "key" );
+		visitor( *this, value, "value" );
+	}
+};
+
+struct Metadata
+{
+	Span<MetadataKeyValue> values;
+
+	static constexpr std::string_view TypeName = "Metadata";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, values, "values" );
+	}
+};
+
+struct BufferDesc
+{
+	uint32_t size = 0;
+	uint16_t gpuAlignment = 0;
+	uint8_t cpuAccess = 0;
+	uint8_t gpuAccess = 0;
+
+	static constexpr std::string_view TypeName = "BufferDesc";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, size, "size" );
+		visitor( *this, gpuAlignment, "gpuAlignment" );
+		visitor( *this, cpuAccess, "cpuAccess" );
+		visitor( *this, gpuAccess, "gpuAccess" );
+	}
+};
+
+struct Header
+{
+	uint32_t signature = 0;
+	uint32_t version = 0;
+	uint32_t crc32 = 0;
+	uint32_t bufferOffset = 0;
+	uint32_t metadataOffset = 0;
+
+	static constexpr std::string_view TypeName = "Header";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, signature, "signature" );
+		visitor( *this, version, "version" );
+		visitor( *this, crc32, "crc32" );
+		visitor( *this, bufferOffset, "bufferOffset" );
+		visitor( *this, metadataOffset, "metadataOffset" );
+	}
+};
+
+struct Data
+{
+	Header header;
+	Span<Mesh> meshes;
+	Span<Skeleton> skeletons;
+	Span<Animation> animations;
+	Span<AnimationCurve> curves;
+	BufferDesc bufferDesc;
+
+	static constexpr std::string_view TypeName = "Data";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, header, "header" );
+		visitor( *this, meshes, "meshes" );
+		visitor( *this, skeletons, "skeletons" );
+		visitor( *this, animations, "animations" );
+		visitor( *this, curves, "curves" );
+		visitor( *this, bufferDesc, "bufferDesc" );
+	}
+};
+
+}
+}
