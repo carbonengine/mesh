@@ -1,3 +1,25 @@
 {
-  "dependencies": []
+  "dependencies": [ 
+    {
+      "name": "glfw3",
+      "version>=": "3.4#1"
+    },
+    {
+      "name": "carbon-math",
+      "version>=": "1.1.4"
+    },
+    {
+      "name": "carbon-core",
+      "version>=": "2.3.2"
+    },
+    {
+      "name": "vulkan",
+      "version>=": "2023-12-17"
+    },
+    {
+      "name": "imgui",
+      "version>=": "1.91.9",
+      "features": ["vulkan-binding"]
+    }
+  ]
 }

@@ -1,7 +1,7 @@
 include(CMakeFindDependencyMacro)
 
-# ${CMAKE_CURRENT_LIST_DIR}/project_name.cmake is generated automatically by cmake as part of the install step
-include(${CMAKE_CURRENT_LIST_DIR}/project_name.cmake)
+# ${CMAKE_CURRENT_LIST_DIR}/CarbonMeshConfig.cmake is generated automatically by cmake as part of the install step
+include(${CMAKE_CURRENT_LIST_DIR}/CarbonMeshConfig.cmake)
 
 # Please specify all of this projects transitive dependencies here
 # In order for a consuming cmake project system to locate any transitive dependencies of this project, they must be
@@ -32,3 +32,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/project_name.cmake)
 # find_dependency(b CONFIG NO_CMAKE_PATH REQUIRED)
 # find_dependency(c CONFIG NO_CMAKE_PATH REQUIRED)
 #
+
+find_dependency(carbon-math CONFIG NO_CMAKE_PATH REQUIRED)
+find_dependency(glfw3 CONFIG NO_CMAKE_PATH REQUIRED)
+find_dependency(Vulkan CONFIG NO_CMAKE_PATH REQUIRED)
+find_dependency(imgui CONFIG NO_CMAKE_PATH REQUIRED)
+find_dependency(carbon-core CONFIG NO_CMAKE_PATH REQUIRED)

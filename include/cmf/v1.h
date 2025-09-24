@@ -256,7 +256,7 @@ struct Mesh
 	Span<BoneBinding> boneBindings;
 	Span<MorphTarget> morphTargets;
 	Span<float> uvDensities;
-	CcpMath::AxisAlignedBox bounds = {};
+	CcpMath::AxisAlignedBox bounds;
 	MeshTopology topology = MeshTopology::TriangleList;
 	uint8_t skeleton = 0xff;
 

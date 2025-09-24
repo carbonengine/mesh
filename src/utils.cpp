@@ -20,7 +20,7 @@ CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb )
 
 CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb, const void* ib, uint32_t firstElement, uint32_t elementCount )
 {
-
+	return CalculateBounds( mesh, vb );
 }
 
 //CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, uint32_t firstElement, uint32_t elementCount );
