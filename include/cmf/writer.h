@@ -124,10 +124,11 @@ FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
 	result.size = sizeof( T );
 
 	EnumerateMembers( *reinterpret_cast<T*>( result.data.get() ), FlattenVisitor{ result, chunkAlignment } );
+	PointersToOffsets( *reinterpret_cast<Data*>( result.data.get() ), result.data.get() );
 	return result;
 }
 
-std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& allocator );
+std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& allocator, const Metadata* metadata = nullptr );
 
 
 

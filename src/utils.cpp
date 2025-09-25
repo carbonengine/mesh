@@ -11,10 +11,14 @@ CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb )
 	{
 		return bounds;
 	}
-    for( auto pos : BufferElementStream<Vector3>( *element, vb, mesh.vb.size / mesh.vb.stride, mesh.vb.stride ) )
-    {
-		bounds.Include( pos );
-    }
+	for( auto& lod : mesh.lods )
+	{
+		for( auto pos : BufferElementStream<Vector3>( *element, vb, lod.vb.size / lod.vb.stride, lod.vb.stride ) )
+		{
+			bounds.Include( pos );
+		}
+		break;
+	}
 	return bounds;
 }
 
@@ -22,7 +26,5 @@ CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb, const
 {
 	return CalculateBounds( mesh, vb );
 }
-
-//CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, uint32_t firstElement, uint32_t elementCount );
 
 }

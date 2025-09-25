@@ -828,24 +828,28 @@ void GrannyToCgf( const char* gr2Path, const char* cgfPath )
 		}
 		auto stride = GrannyGetTotalObjectSize( srcMesh->PrimaryVertexData->VertexType );
 		outMesh.topology = MeshTopology::TriangleList;
-		outMesh.vb = bufferAllocator.AddBuffer( srcMesh->PrimaryVertexData->Vertices, srcMesh->PrimaryVertexData->VertexCount * stride, stride );
+
+        auto& lod0 = Modify( outMesh.lods, writer ).emplace_back();
+		lod0.threshold = 0xffffffff;
+		lod0.vb = bufferAllocator.AddBuffer( srcMesh->PrimaryVertexData->Vertices, srcMesh->PrimaryVertexData->VertexCount * stride, stride );
 		if( srcMesh->PrimaryTopology )
 		{
 			if( srcMesh->PrimaryTopology->Indices16 )
 			{
-				outMesh.ib = bufferAllocator.AddBuffer( srcMesh->PrimaryTopology->Indices16, srcMesh->PrimaryTopology->Index16Count * 2, 2 );
+				lod0.ib = bufferAllocator.AddBuffer( srcMesh->PrimaryTopology->Indices16, srcMesh->PrimaryTopology->Index16Count * 2, 2 );
 			}
 			else if( srcMesh->PrimaryTopology->Indices )
 			{
-				outMesh.ib = bufferAllocator.AddBuffer( srcMesh->PrimaryTopology->Indices, srcMesh->PrimaryTopology->IndexCount * 4, 4 );
+				lod0.ib = bufferAllocator.AddBuffer( srcMesh->PrimaryTopology->Indices, srcMesh->PrimaryTopology->IndexCount * 4, 4 );
 			}
 			outMesh.topology = MeshTopology::TriangleList;
 
 			for( auto& group : GrannyArray( srcMesh->PrimaryTopology->Groups, srcMesh->PrimaryTopology->GroupCount ) )
 			{
 				auto& area = Modify( outMesh.areas, writer ).emplace_back();
-				area.firstElement = group.TriFirst;
-				area.elementCount = group.TriCount;
+				auto& areaLod0 = Modify( lod0.areas, writer ).emplace_back();
+				areaLod0.firstElement = group.TriFirst;
+				areaLod0.elementCount = group.TriCount;
 				auto indx = &group - srcMesh->PrimaryTopology->Groups;
 				if( indx < srcMesh->MaterialBindingCount )
 				{
@@ -887,7 +891,9 @@ void GrannyToCgf( const char* gr2Path, const char* cgfPath )
 				}
 			}
 			auto morphStride = GrannyGetTotalObjectSize( srcMesh->PrimaryVertexData->VertexType );
-			dstMorph.vb = bufferAllocator.AddBuffer( srcMorph.VertexData->Vertices, srcMorph.VertexData->VertexCount * morphStride, morphStride );
+
+            auto morphLod0 = Modify( outMesh.lods[0].morphTargets, writer ).emplace_back();
+			morphLod0.vb = bufferAllocator.AddBuffer( srcMorph.VertexData->Vertices, srcMorph.VertexData->VertexCount * morphStride, morphStride );
 			if( !srcMorph.DataIsDeltas )
 			{
 				throw std::runtime_error( "Only delta morphs are supported" );
@@ -1028,8 +1034,14 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 		return const_cast<const char*>( dest );
 	};
 
+    auto header = reinterpret_cast<Header*>( fileContents.data() );
+	OffsetsToPointers( *header, header );
 
-	auto data = reinterpret_cast<Data*>( fileContents.data() );
+    auto BufferPointer = [&header, &fileContents]( const BufferView& buffer ) {
+		return fileContents.data() + header->sections[buffer.index].offset + buffer.offset;
+	};
+
+	auto data = reinterpret_cast<Data*>( fileContents.data() + header->sections[0].offset );
 	OffsetsToPointers( *data, data );
 
 	auto grannyInfo = static_cast<granny_file_info*>( GrannyMemoryArenaPush( memArena, sizeof( granny_file_info ) ) );
@@ -1048,9 +1060,9 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 		grannyMesh->Name = PushString( mesh.name );
 		grannyMesh->PrimaryVertexData = static_cast<granny_vertex_data*>( GrannyMemoryArenaPush( memArena, sizeof( granny_vertex_data ) ) );
 		*grannyMesh->PrimaryVertexData = {};
-		grannyMesh->PrimaryVertexData->VertexCount = mesh.vb.size / mesh.vb.stride;
-		grannyMesh->PrimaryVertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, mesh.vb.size ) );
-		memcpy( grannyMesh->PrimaryVertexData->Vertices, fileContents.data() + data->header.bufferOffset + mesh.vb.offset, mesh.vb.size );
+		grannyMesh->PrimaryVertexData->VertexCount = mesh.lods[0].vb.size / mesh.lods[0].vb.stride;
+		grannyMesh->PrimaryVertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, mesh.lods[0].vb.size ) );
+		memcpy( grannyMesh->PrimaryVertexData->Vertices, BufferPointer( mesh.lods[0].vb ), mesh.lods[0].vb.size );
 
 		grannyMesh->PrimaryVertexData->VertexType = static_cast<granny_data_type_definition*>( GrannyMemoryArenaPush( memArena, ( mesh.decl.size() + 1 ) * sizeof( granny_data_type_definition ) ) );
 		for( size_t i = 0; i < mesh.decl.size(); ++i )
@@ -1061,25 +1073,25 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 
 		grannyMesh->PrimaryTopology = static_cast<granny_tri_topology*>( GrannyMemoryArenaPush( memArena, sizeof( granny_tri_topology ) ) );
 		*grannyMesh->PrimaryTopology = {};
-		if( mesh.ib.stride == 2 )
+		if( mesh.lods[0].ib.stride == 2 )
 		{
-			grannyMesh->PrimaryTopology->Index16Count = mesh.ib.size / 2;
-			grannyMesh->PrimaryTopology->Indices16 = static_cast<granny_uint16*>( GrannyMemoryArenaPush( memArena, mesh.ib.size ) );
-			memcpy( grannyMesh->PrimaryTopology->Indices16, fileContents.data() + data->header.bufferOffset + mesh.ib.offset, mesh.ib.size );
+			grannyMesh->PrimaryTopology->Index16Count = mesh.lods[0].ib.size / 2;
+			grannyMesh->PrimaryTopology->Indices16 = static_cast<granny_uint16*>( GrannyMemoryArenaPush( memArena, mesh.lods[0].ib.size ) );
+			memcpy( grannyMesh->PrimaryTopology->Indices16, BufferPointer( mesh.lods[0].ib ), mesh.lods[0].ib.size );
 		}
 		else
 		{
-			grannyMesh->PrimaryTopology->IndexCount = mesh.ib.size / 4;
-			grannyMesh->PrimaryTopology->Indices = static_cast<granny_int32*>( GrannyMemoryArenaPush( memArena, mesh.ib.size ) );
-			memcpy( grannyMesh->PrimaryTopology->Indices, fileContents.data() + data->header.bufferOffset + mesh.ib.offset, mesh.ib.size );
+			grannyMesh->PrimaryTopology->IndexCount = mesh.lods[0].ib.size / 4;
+			grannyMesh->PrimaryTopology->Indices = static_cast<granny_int32*>( GrannyMemoryArenaPush( memArena, mesh.lods[0].ib.size ) );
+			memcpy( grannyMesh->PrimaryTopology->Indices, BufferPointer( mesh.lods[0].ib ), mesh.lods[0].ib.size );
 		}
 		grannyMesh->PrimaryTopology->GroupCount = granny_int32( mesh.areas.size() );
 		grannyMesh->PrimaryTopology->Groups = static_cast<granny_tri_material_group*>( GrannyMemoryArenaPush( memArena, mesh.areas.size() * sizeof( granny_tri_material_group ) ) );
 		for( size_t i = 0; i < mesh.areas.size(); ++i )
 		{
 			grannyMesh->PrimaryTopology->Groups[i] = {};
-			grannyMesh->PrimaryTopology->Groups[i].TriFirst = mesh.areas[i].firstElement;
-			grannyMesh->PrimaryTopology->Groups[i].TriCount = mesh.areas[i].elementCount;
+			grannyMesh->PrimaryTopology->Groups[i].TriFirst = mesh.lods[0].areas[i].firstElement;
+			grannyMesh->PrimaryTopology->Groups[i].TriCount = mesh.lods[0].areas[i].elementCount;
 		}
 		grannyMesh->BoneBindingCount = granny_int32( mesh.boneBindings.size() );
 		grannyMesh->BoneBindings = static_cast<granny_bone_binding*>( GrannyMemoryArenaPush( memArena, mesh.boneBindings.size() * sizeof( granny_bone_binding ) ) );
@@ -1102,9 +1114,9 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 			grannyMesh->MorphTargets[i].ScalarName = PushString( mesh.morphTargets[i].name );
 			grannyMesh->MorphTargets[i].VertexData = static_cast<granny_vertex_data*>( GrannyMemoryArenaPush( memArena, sizeof( granny_vertex_data ) ) );
 			*grannyMesh->MorphTargets[i].VertexData = {};
-			grannyMesh->MorphTargets[i].VertexData->VertexCount = mesh.morphTargets[i].vb.size / mesh.morphTargets[i].vb.stride;
-			grannyMesh->MorphTargets[i].VertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, mesh.morphTargets[i].vb.size ) );
-			memcpy( grannyMesh->MorphTargets[i].VertexData->Vertices, fileContents.data() + data->header.bufferOffset + mesh.morphTargets[i].vb.offset, mesh.morphTargets[i].vb.size );
+			grannyMesh->MorphTargets[i].VertexData->VertexCount = mesh.lods[0].morphTargets[i].vb.size / mesh.lods[0].morphTargets[i].vb.stride;
+			grannyMesh->MorphTargets[i].VertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, mesh.lods[0].morphTargets[i].vb.size ) );
+			memcpy( grannyMesh->MorphTargets[i].VertexData->Vertices, BufferPointer( mesh.lods[0].morphTargets[i].vb ), mesh.lods[0].morphTargets[i].vb.size );
 
 			grannyMesh->MorphTargets[i].VertexData->VertexType = static_cast<granny_data_type_definition*>( GrannyMemoryArenaPush( memArena, ( mesh.morphTargets[i].decl.size() + 1 ) * sizeof( granny_data_type_definition ) ) );
 			for( size_t j = 0; j < mesh.morphTargets[i].decl.size(); ++j )
@@ -1125,11 +1137,11 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 			memcpy( &mbi->areaInfos[i].bounds, &mesh.areas[i].bounds, sizeof( mesh.areas[i].bounds ) );
 
 			std::unordered_set<int> vertexIndicesSeen;
-			for( uint32_t j = mesh.areas[i].firstElement; j < mesh.areas[i].firstElement + mesh.areas[i].elementCount; ++j )
+			for( uint32_t j = mesh.lods[0].areas[i].firstElement; j < mesh.lods[0].areas[i].firstElement + mesh.lods[0].areas[i].elementCount; ++j )
 			{
 				for( int k = 0; k < 3; ++k )
 				{
-					vertexIndicesSeen.insert( mesh.ib.stride == 2 ? grannyMesh->PrimaryTopology->Indices16[j * 3 + k] : grannyMesh->PrimaryTopology->Indices[j * 3 + k] );
+					vertexIndicesSeen.insert( mesh.lods[0].ib.stride == 2 ? grannyMesh->PrimaryTopology->Indices16[j * 3 + k] : grannyMesh->PrimaryTopology->Indices[j * 3 + k] );
 				}
 			}
 			mbi->areaInfos[i].vertexCount = granny_int32( vertexIndicesSeen.size() );
@@ -1164,7 +1176,7 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 			*lodMesh->PrimaryVertexData = {};
 			lodMesh->PrimaryVertexData->VertexCount = lod.vb.size / lod.vb.stride;
 			lodMesh->PrimaryVertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, lod.vb.size ) );
-			memcpy( lodMesh->PrimaryVertexData->Vertices, fileContents.data() + data->header.bufferOffset + lod.vb.offset, lod.vb.size );
+			memcpy( lodMesh->PrimaryVertexData->Vertices, BufferPointer( lod.vb ), lod.vb.size );
 			lodMesh->PrimaryVertexData->VertexType = lod0Mesh->PrimaryVertexData->VertexType;
 
 			lodMesh->PrimaryTopology = static_cast<granny_tri_topology*>( GrannyMemoryArenaPush( memArena, sizeof( granny_tri_topology ) ) );
@@ -1173,13 +1185,13 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 			{
 				lodMesh->PrimaryTopology->Index16Count = lod.ib.size / 2;
 				lodMesh->PrimaryTopology->Indices16 = static_cast<granny_uint16*>( GrannyMemoryArenaPush( memArena, lod.ib.size ) );
-				memcpy( lodMesh->PrimaryTopology->Indices16, fileContents.data() + data->header.bufferOffset + lod.ib.offset, lod.ib.size );
+				memcpy( lodMesh->PrimaryTopology->Indices16, BufferPointer( lod.ib ), lod.ib.size );
 			}
 			else
 			{
 				lodMesh->PrimaryTopology->IndexCount = lod.ib.size / 4;
 				lodMesh->PrimaryTopology->Indices = static_cast<granny_int32*>( GrannyMemoryArenaPush( memArena, lod.ib.size ) );
-				memcpy( lodMesh->PrimaryTopology->Indices, fileContents.data() + data->header.bufferOffset + lod.ib.offset, lod.ib.size );
+				memcpy( lodMesh->PrimaryTopology->Indices, BufferPointer( lod.ib ), lod.ib.size );
 			}
 			lodMesh->PrimaryTopology->GroupCount = granny_int32( lod.areas.size() );
 			lodMesh->PrimaryTopology->Groups = static_cast<granny_tri_material_group*>( GrannyMemoryArenaPush( memArena, lod.areas.size() * sizeof( granny_tri_material_group ) ) );
@@ -1201,7 +1213,7 @@ void CgfToGranny( const char* cgfPath, const char* gr2Path )
 				*lodMesh->MorphTargets[i].VertexData = {};
 				lodMesh->MorphTargets[i].VertexData->VertexCount = lod.morphTargets[i].vb.size / lod.morphTargets[i].vb.stride;
 				lodMesh->MorphTargets[i].VertexData->Vertices = static_cast<uint8_t*>( GrannyMemoryArenaPush( memArena, lod.morphTargets[i].vb.size ) );
-				memcpy( lodMesh->MorphTargets[i].VertexData->Vertices, fileContents.data() + data->header.bufferOffset + lod.morphTargets[i].vb.offset, lod.morphTargets[i].vb.size );
+				memcpy( lodMesh->MorphTargets[i].VertexData->Vertices, BufferPointer( lod.morphTargets[i].vb ), lod.morphTargets[i].vb.size );
 				lodMesh->MorphTargets[i].VertexData->VertexType = lod0Mesh->MorphTargets[i].VertexData->VertexType;
 				lodMesh->MorphTargets[i].DataIsDeltas = 1;
 			}

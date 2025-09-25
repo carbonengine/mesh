@@ -71,6 +71,7 @@ using String = Span<char>;
 
 struct BufferView
 {
+	uint32_t index = 0;
 	uint32_t offset = 0;
 	uint32_t size = 0;
 	uint32_t stride = 0;
@@ -80,6 +81,7 @@ struct BufferView
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
 	{
+		visitor( *this, index, "index" );
 		visitor( *this, offset, "offset" );
 		visitor( *this, size, "size" );
 		visitor( *this, stride, "stride" );
@@ -133,8 +135,6 @@ struct VertexElement
 struct MeshArea
 {
 	String name;
-	uint32_t firstElement = 0;
-	uint32_t elementCount = 0;
 	CcpMath::AxisAlignedBox bounds = {};
 	Span<uint8_t> bones; // ??? used in RT, but kind of hacky
 
@@ -144,8 +144,6 @@ struct MeshArea
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, name, "name" );
-		visitor( *this, firstElement, "firstElement" );
-		visitor( *this, elementCount, "elementCount" );
 		visitor( *this, bounds, "bounds" );
 		visitor( *this, bones, "bones" );
 	}
@@ -185,7 +183,6 @@ struct MorphTarget
 {
 	String name;
 	Span<VertexElement> decl;
-	BufferView vb;
 
 	static constexpr std::string_view TypeName = "MorphTarget";
 
@@ -194,7 +191,6 @@ struct MorphTarget
 	{
 		visitor( *this, name, "name" );
 		visitor( *this, decl, "decl" );
-		visitor( *this, vb, "vb" );
 	}
 };
 
@@ -248,8 +244,6 @@ struct Mesh
 {
 	String name;
 	Span<VertexElement> decl;
-	BufferView vb;
-	BufferView ib;
 
 	Span<MeshLod> lods;
 	Span<MeshArea> areas;
@@ -267,8 +261,6 @@ struct Mesh
 	{
 		visitor( *this, name, "name" );
 		visitor( *this, decl, "decl" );
-		visitor( *this, vb, "vb" );
-		visitor( *this, ib, "ib" );
 		visitor( *this, lods, "lods" );
 		visitor( *this, areas, "areas" );
 		visitor( *this, boneBindings, "boneBindings" );
@@ -324,6 +316,7 @@ enum class AnimationChannelTargetType : uint8_t
 	BoneRotation,
 	BoneScale,
 	MorphTarget,
+    Other,
 };
 
 enum class Interpolation : uint8_t
@@ -420,32 +413,49 @@ struct Metadata
 	}
 };
 
-struct BufferDesc
+enum class SectionCompression : uint8_t
 {
-	uint32_t size = 0;
-	uint16_t gpuAlignment = 0;
-	uint8_t cpuAccess = 0;
-	uint8_t gpuAccess = 0;
+    None,
+	MeshOptimizerVertex,
+	MeshOptimizerIndex,
+};
 
-	static constexpr std::string_view TypeName = "BufferDesc";
+enum class SectionType : uint8_t
+{
+    Data,
+    GpuBuffer,
+	Metadata,
+};
+
+struct Section
+{
+	uint32_t offset = 0;
+	uint32_t size = 0;
+	uint32_t uncompressedSize = 0;
+	uint16_t gpuAlignment = 0;
+	SectionType type = SectionType::Data;
+	SectionCompression compression = SectionCompression::None;
+
+	static constexpr std::string_view TypeName = "Section";
 
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
 	{
+		visitor( *this, offset, "offset" );
 		visitor( *this, size, "size" );
+		visitor( *this, uncompressedSize, "uncompressedSize" );
 		visitor( *this, gpuAlignment, "gpuAlignment" );
-		visitor( *this, cpuAccess, "cpuAccess" );
-		visitor( *this, gpuAccess, "gpuAccess" );
+		visitor( *this, type, "type" );
+		visitor( *this, compression, "compression" );
 	}
 };
 
 struct Header
 {
-	uint32_t signature = 0;
-	uint32_t version = 0;
+	uint32_t signature = FILE_SIGNATURE;
+	uint32_t version = 1;
 	uint32_t crc32 = 0;
-	uint32_t bufferOffset = 0;
-	uint32_t metadataOffset = 0;
+	Span<Section> sections;
 
 	static constexpr std::string_view TypeName = "Header";
 
@@ -455,31 +465,26 @@ struct Header
 		visitor( *this, signature, "signature" );
 		visitor( *this, version, "version" );
 		visitor( *this, crc32, "crc32" );
-		visitor( *this, bufferOffset, "bufferOffset" );
-		visitor( *this, metadataOffset, "metadataOffset" );
+		visitor( *this, sections, "sections" );
 	}
 };
 
 struct Data
 {
-	Header header;
 	Span<Mesh> meshes;
 	Span<Skeleton> skeletons;
 	Span<Animation> animations;
 	Span<AnimationCurve> curves;
-	BufferDesc bufferDesc;
 
 	static constexpr std::string_view TypeName = "Data";
 
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
 	{
-		visitor( *this, header, "header" );
 		visitor( *this, meshes, "meshes" );
 		visitor( *this, skeletons, "skeletons" );
 		visitor( *this, animations, "animations" );
 		visitor( *this, curves, "curves" );
-		visitor( *this, bufferDesc, "bufferDesc" );
 	}
 };
 

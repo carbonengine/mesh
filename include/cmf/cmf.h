@@ -1,10 +1,19 @@
 #pragma once
 
-#include "v1.h"
+#include <cstdint>
 #include <type_traits>
 
 namespace cmf
 {
+
+constexpr uint32_t FILE_SIGNATURE = 0x636D6666;
+}
+
+#include "v1.h"
+
+namespace cmf
+{
+
 using namespace v1;
 
 
