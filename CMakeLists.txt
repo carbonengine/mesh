@@ -18,9 +18,9 @@ ccp_add_library(CarbonMesh
     include/cmf/utils.h
     include/cmf/writer.h
     src/cmfgranny.cpp
-    src/memallocator.cpp
-    src/utils.cpp
-    src/writer.cpp
+    src/cmf/memallocator.cpp
+    src/cmf/utils.cpp
+    src/cmf/writer.cpp
 )
 
 get_target_property(_SOURCES CarbonMesh SOURCES)

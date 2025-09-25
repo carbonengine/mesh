@@ -36,3 +36,4 @@ cmake-build*
 ### IDE ###
 # User generated local IDE configuration
 .idea
+.vs
