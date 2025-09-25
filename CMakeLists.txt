@@ -156,7 +156,11 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
     )
 
     # Install rule for available public headers
-    install(FILES ${PUBLIC_HEADER_FILES} DESTINATION include)
+    foreach(header_file ${PUBLIC_HEADER_FILES})
+        get_filename_component(relative_path ${header_file} DIRECTORY)
+        string(REPLACE "include/" "" relative_path ${relative_path})
+        install(FILES ${header_file} DESTINATION include/${relative_path})
+    endforeach()
 
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
     
