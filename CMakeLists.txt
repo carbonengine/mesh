@@ -21,7 +21,6 @@ set(PUBLIC_HEADER_FILES
 
 ccp_add_library(CarbonMesh 
     ${PUBLIC_HEADER_FILES}
-    src/cmfgranny.cpp
     src/cmf/memallocator.cpp
     src/cmf/utils.cpp
     src/cmf/writer.cpp
@@ -34,9 +33,8 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
-target_link_libraries(CarbonMesh PUBLIC CcpMath "d:/perforce/eve-frontier/branches/sandbox/VISUAL-TARGET-SANDBOX/vendor/granny/2.12.0.14/lib/Windows/x64/v141/granny2_static_x64.lib")
+target_link_libraries(CarbonMesh PUBLIC CcpMath)
 target_include_directories(CarbonMesh PUBLIC         
-    "d:/perforce/eve-frontier/branches/sandbox/VISUAL-TARGET-SANDBOX/vendor/granny/2.12.0.14/include"
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
