@@ -1,40 +1,57 @@
 include(CMakeFindDependencyMacro)
 
-# ${CMAKE_CURRENT_LIST_DIR}/CarbonMeshConfig.cmake is generated automatically by cmake as part of the install step
-include(${CMAKE_CURRENT_LIST_DIR}/CarbonMeshConfig.cmake)
 
-# Please specify all of this projects transitive dependencies here
-# In order for a consuming cmake project system to locate any transitive dependencies of this project, they must be
-# specified here in a call to find_dependency(...)
-#
-# Example:
-#
-# My project CMakeLists.txt file looks like this:
-# ------------------------
-# MyProject/CMakeLists.txt
-# ------------------------
-#
-# find_package(a CONFIG NO_CMAKE_PATH REQUIRED)
-# find_package(b CONFIG NO_CMAKE_PATH REQUIRED)
-# find_package(c CONFIG NO_CMAKE_PATH REQUIRED)
-# target_link_libraries(MyProjectTarget PRIVATE package_a PUBLIC package_b INTERFACE package_c)
-# . . .
-#
 
-# Then the myprojectConfig file (this file) looks like this:
-#--------------------------------
-# MyProject/myprojectConfig.cmake
-# -------------------------------
-#
-# include(CMakeFindDependencyMacro)
-# include(${CMAKE_CURRENT_LIST_DIR}/myproject.cmake)
-#
-# find_dependency(b CONFIG NO_CMAKE_PATH REQUIRED)
-# find_dependency(c CONFIG NO_CMAKE_PATH REQUIRED)
-#
+if(APPLE)
+    set(_IMPORT_LIBRARY_SUFFIX ".a")
+    set(_SHARED_LIBRARY_SUFFIX ".so")
+else()
+    set(_IMPORT_LIBRARY_SUFFIX ${CMAKE_IMPORT_LIBRARY_SUFFIX})
+    set(_SHARED_LIBRARY_SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+endif()
 
-find_dependency(carbon-math CONFIG NO_CMAKE_PATH REQUIRED)
-find_dependency(glfw3 CONFIG NO_CMAKE_PATH REQUIRED)
-find_dependency(Vulkan CONFIG NO_CMAKE_PATH REQUIRED)
-find_dependency(imgui CONFIG NO_CMAKE_PATH REQUIRED)
-find_dependency(carbon-core CONFIG NO_CMAKE_PATH REQUIRED)
+if(NOT TARGET CarbonMesh)
+    set(_IMPORT_PREFIX ${CMAKE_CURRENT_LIST_DIR})
+    add_library(CarbonMesh STATIC IMPORTED)
+    set_target_properties(CarbonMesh PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>"
+        INTERFACE_LINK_LIBRARIES ""
+        INTERFACE_COMPILE_DEFINITIONS ""
+        IMPORTED_CONFIGURATIONS "Debug;TrinityDev;Internal;Release"
+    )
+    set_property(TARGET CarbonMesh APPEND PROPERTY IMPORTED_CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})
+    foreach(CCT ${CMAKE_CONFIGURATION_TYPES})
+        string(TOLOWER ${CCT} _LCCT)
+        string(TOUPPER ${CCT} _UCCT)
+        set(_IMP_LOC_PROP IMPORTED_LOCATION_${_UCCT})
+        set(_IMP_IMP_PROP IMPORTED_IMPLIB_${_UCCT})
+        get_target_property(_TARGET_TYPE CarbonMesh TYPE)
+        if(${_TARGET_TYPE} STREQUAL SHARED_LIBRARY)
+            if(WIN32)
+                set(_VENDOR_PATH ${CCP_VENDOR_BIN_PATH})
+            else()
+                set(_VENDOR_PATH ${CCP_VENDOR_LIB_PATH})
+            endif()
+            if(${_LCCT} STREQUAL "release")
+                set(_IMP_IMP_VAL ${_IMPORT_PREFIX}/${CCP_VENDOR_LIB_PATH}/CarbonMesh${_IMPORT_LIBRARY_SUFFIX})
+            else()
+                set(_IMP_IMP_VAL ${_IMPORT_PREFIX}/${CCP_VENDOR_LIB_PATH}/CarbonMesh_${_LCCT}${_IMPORT_LIBRARY_SUFFIX})
+            endif()
+            set_target_properties(CcpParser PROPERTIES ${_IMP_IMP_PROP} ${_IMP_IMP_VAL})
+            set(_IMP_LOC_SUFFIX ${_SHARED_LIBRARY_SUFFIX})
+        else()
+            set(_VENDOR_PATH ${CCP_VENDOR_LIB_PATH})
+            set(_IMP_LOC_SUFFIX ${_IMPORT_LIBRARY_SUFFIX})
+        endif()
+        if(${_LCCT} STREQUAL "release")
+            set(_IMP_LOC_VAL ${_IMPORT_PREFIX}/${_VENDOR_PATH}/CarbonMesh${_IMP_LOC_SUFFIX})
+        else()
+            set(_IMP_LOC_VAL ${_IMPORT_PREFIX}/${_VENDOR_PATH}/CarbonMesh_${_LCCT}${_IMP_LOC_SUFFIX})
+        endif()
+        if(NOT EXISTS ${_IMP_LOC_VAL})
+            message(FATAL_ERROR "Missing CarbonMesh library ${_IMP_LOC_VAL}, is a build and perforce publish for the '${CCT}' configuration missing?")
+        endif()
+        message(DEBUG "Setting CarbonMesh property ${_IMP_LOC_PROP} to ${_IMP_LOC_VAL}")
+        set_target_properties(CarbonMesh PROPERTIES ${_IMP_LOC_PROP} ${_IMP_LOC_VAL})
+    endforeach()
+endif()

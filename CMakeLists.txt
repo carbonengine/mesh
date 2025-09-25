@@ -11,12 +11,16 @@ find_package(carbon-core CONFIG REQUIRED)
 include(cmake/CcpGlobalSettings.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
-ccp_add_library(CarbonMesh 
-	include/cmf/cmf.h
+set(PUBLIC_HEADER_FILES
+    include/cmf/cmf.h
     include/cmf/memallocator.h
-	include/cmf/v1.h
+    include/cmf/v1.h
     include/cmf/utils.h
     include/cmf/writer.h
+)
+
+ccp_add_library(CarbonMesh 
+    ${PUBLIC_HEADER_FILES}
     src/cmfgranny.cpp
     src/cmf/memallocator.cpp
     src/cmf/utils.cpp
@@ -29,7 +33,7 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
         FILES ${_SOURCES}
 )
 
-set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "_CarbonMesh")
+set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
 target_link_libraries(CarbonMesh PUBLIC CcpMath "d:/perforce/eve-frontier/branches/sandbox/VISUAL-TARGET-SANDBOX/vendor/granny/2.12.0.14/lib/Windows/x64/v141/granny2_static_x64.lib")
 target_include_directories(CarbonMesh PUBLIC         
     "d:/perforce/eve-frontier/branches/sandbox/VISUAL-TARGET-SANDBOX/vendor/granny/2.12.0.14/include"
