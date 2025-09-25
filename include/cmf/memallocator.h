@@ -33,7 +33,6 @@ public:
 	void* GetBufferData( const BufferView& view );
 	const void* GetBufferData( const BufferView& view ) const;
 
-//private:
 	std::vector<std::vector<uint8_t>> m_buffers;
 };
 

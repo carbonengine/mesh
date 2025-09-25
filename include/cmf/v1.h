@@ -9,6 +9,8 @@ namespace cmf
 namespace v1
 {
 
+constexpr uint32_t FILE_VERSION = 1;
+
 struct SpanRepr
 {
 	union
@@ -453,7 +455,7 @@ struct Section
 struct Header
 {
 	uint32_t signature = FILE_SIGNATURE;
-	uint32_t version = 1;
+	uint32_t version = FILE_VERSION;
 	uint32_t crc32 = 0;
 	Span<Section> sections;
 

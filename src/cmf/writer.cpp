@@ -1,5 +1,5 @@
 #include "cmf/writer.h"
-
+#include "cmf/utils.h"
 
 namespace cmf
 {
@@ -50,6 +50,13 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
 	{
 		result.insert( end( result ), buf.begin(), buf.end() );
 	}
+
+    {
+		auto crcOffset = offsetof( Header, crc32 );
+		auto crc = ComputeCrc32( result.data() + crcOffset + sizeof( Header::crc32 ), result.size() - ( crcOffset + sizeof( Header::crc32 ) ) );
+		std::memcpy( result.data() + crcOffset, &crc, sizeof( Header::crc32 ) );
+	}
+
 	return result;
 }
 

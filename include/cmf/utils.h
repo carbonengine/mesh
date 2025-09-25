@@ -6,19 +6,18 @@ namespace cmf
 {
 
 
-
 template <typename T>
 using ConversionFunction = T ( * )( const void* );
 
 
 template <typename T>
-ConversionFunction<T> GetConversionFunction( ElementType type, uint8_t count )
+inline ConversionFunction<T> GetConversionFunction( ElementType type, uint8_t count )
 {
 	return []( const void* data ) { return *reinterpret_cast<const T*>( data ); };
 }
 
 template <>
-ConversionFunction<float> GetConversionFunction( ElementType type, uint8_t count )
+inline ConversionFunction<float> GetConversionFunction( ElementType type, uint8_t count )
 {
 	switch( type )
 	{
@@ -50,7 +49,7 @@ ConversionFunction<float> GetConversionFunction( ElementType type, uint8_t count
 }
 
 template <>
-ConversionFunction<Vector2> GetConversionFunction( ElementType type, uint8_t count )
+inline ConversionFunction<Vector2> GetConversionFunction( ElementType type, uint8_t count )
 {
 	if( count < 2 )
 	{
@@ -95,7 +94,7 @@ ConversionFunction<Vector2> GetConversionFunction( ElementType type, uint8_t cou
 }
 
 template <>
-ConversionFunction<Vector3> GetConversionFunction( ElementType type, uint8_t count )
+inline ConversionFunction<Vector3> GetConversionFunction( ElementType type, uint8_t count )
 {
 	if( count < 3 )
 	{
@@ -144,7 +143,7 @@ ConversionFunction<Vector3> GetConversionFunction( ElementType type, uint8_t cou
 }
 
 template <>
-ConversionFunction<Vector4> GetConversionFunction( ElementType type, uint8_t count )
+inline ConversionFunction<Vector4> GetConversionFunction( ElementType type, uint8_t count )
 {
 	if( count != 4 )
 	{
@@ -285,8 +284,11 @@ private:
 
 
 bool IsHeaderValid( const void* data, size_t size );
+uint32_t ComputeCrc32( const void* data, size_t size );
+
 
 CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb );
 CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb, const void* ib, uint32_t firstElement, uint32_t elementCount );
+
 
 }
