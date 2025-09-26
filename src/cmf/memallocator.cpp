@@ -23,7 +23,8 @@ void MemoryAllocator::Allocate( SpanRepr& a, size_t size )
 BufferView BufferAllocator::AddBuffer( const void* data, uint32_t size, uint32_t stride )
 {
 	m_buffers.push_back( std::vector<uint8_t>{ reinterpret_cast<const uint8_t*>( data ), reinterpret_cast<const uint8_t*>( data ) + size } );
-	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
+    // +1 for buffer index because 0 is the "data" segment
+	return { uint32_t( m_buffers.size() ), 0, size, stride };
 }
 
 void* BufferAllocator::GetBufferData( const BufferView& view )

@@ -27,24 +27,31 @@ constexpr bool ContainsSpans()
 }
 
 template <typename T>
-size_t GetDataSize( const T& data, size_t chunkAlignment )
+size_t _GetSpanSizes( const T& value, size_t chunkAlignment )
 {
 	size_t size = 0;
 	if constexpr( std::is_base_of_v<SpanRepr, T> )
 	{
-		size = data.byteSize;
-		for( auto& element : data )
+		size = value.byteSize;
+		for( auto& element : value )
 		{
-			size += GetDataSize( element, chunkAlignment );
+			size += _GetSpanSizes( element, chunkAlignment );
 		}
 	}
 	else
 	{
-		EnumerateMembers( const_cast<T&>( data ), [&size, chunkAlignment]( auto&&, auto& value, const char* ) {
-			size += GetDataSize( value, chunkAlignment );
+		EnumerateMembers( const_cast<T&>( value ), [&size, chunkAlignment]( auto&&, auto& value, const char* ) {
+			size += _GetSpanSizes( value, chunkAlignment );
 		} );
 	}
 	return size;
+}
+
+
+template <typename T>
+size_t GetFlattenedDataSizeEstimate( const T& value, size_t chunkAlignment )
+{
+	return sizeof( value ) + _GetSpanSizes( value, chunkAlignment );
 }
 
 
@@ -117,14 +124,13 @@ struct FlattenVisitor
 template <typename T>
 FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
 {
-	size_t size = GetDataSize( root, chunkAlignment );
+	size_t size = GetFlattenedDataSizeEstimate( root, chunkAlignment );
 	FlattenedBuffer result{ std::make_unique<uint8_t[]>( size ), 0 };
 
 	memcpy( result.data.get(), &root, sizeof( T ) );
 	result.size = sizeof( T );
 
 	EnumerateMembers( *reinterpret_cast<T*>( result.data.get() ), FlattenVisitor{ result, chunkAlignment } );
-	PointersToOffsets( *reinterpret_cast<Data*>( result.data.get() ), result.data.get() );
 	return result;
 }
 

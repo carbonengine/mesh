@@ -6,7 +6,7 @@
 namespace cmf
 {
 
-constexpr uint32_t FILE_SIGNATURE = 0x636D6666;
+constexpr uint32_t FILE_SIGNATURE = 0x66666D63;
 }
 
 #include "v1.h"

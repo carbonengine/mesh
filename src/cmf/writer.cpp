@@ -11,7 +11,9 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
    	Header header;
 	
 	auto flattenedData = Flatten( data );
-    auto& dataSection = Modify( header.sections, allocator ).emplace_back();
+	PointersToOffsets( *reinterpret_cast<Data*>( flattenedData.data.get() ), flattenedData.data.get() );
+
+	auto& dataSection = Modify( header.sections, allocator ).emplace_back();
 	dataSection.type = SectionType::Data;
 	dataSection.offset = sizeof( Header );
 	dataSection.size = uint32_t( flattenedData.size );
@@ -29,7 +31,9 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
     if( metadata )
     {
         flattenedMetadata = Flatten( *metadata );
-        auto& metadataSection = Modify( header.sections, allocator ).emplace_back();
+		PointersToOffsets( *reinterpret_cast<Metadata*>( flattenedMetadata.data.get() ), flattenedMetadata.data.get() );
+
+		auto& metadataSection = Modify( header.sections, allocator ).emplace_back();
         metadataSection.type = SectionType::Metadata;
         metadataSection.size = uint32_t( flattenedMetadata.size );
         metadataSection.uncompressedSize = uint32_t( flattenedMetadata.size );
@@ -42,6 +46,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
 		section.offset = offset;
 		offset += uint32_t( section.size );
     }
+	PointersToOffsets( *reinterpret_cast<Header*>( flattenedHeader.data.get() ), flattenedHeader.data.get() );
 
 	std::vector<uint8_t> result;
     result.insert( end( result ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ) + flattenedHeader.size );

@@ -101,6 +101,7 @@ enum class Usage : uint8_t
 	Color,
 	BlendIndices,
 	BlendWeights,
+    PackedTangent,
 };
 
 enum class ElementType : uint8_t
@@ -138,7 +139,7 @@ struct MeshArea
 {
 	String name;
 	CcpMath::AxisAlignedBox bounds = {};
-	Span<uint8_t> bones; // ??? used in RT, but kind of hacky
+	Span<uint8_t> bones;
 
 	static constexpr std::string_view TypeName = "MeshArea";
 
@@ -185,6 +186,8 @@ struct MorphTarget
 {
 	String name;
 	Span<VertexElement> decl;
+	CcpMath::AxisAlignedBox bounds = {}; // bounds of non-zero morphed vertices
+	Span<Vector4> maxDisplacements; // max displacements for each element in decl
 
 	static constexpr std::string_view TypeName = "MorphTarget";
 
@@ -193,6 +196,8 @@ struct MorphTarget
 	{
 		visitor( *this, name, "name" );
 		visitor( *this, decl, "decl" );
+		visitor( *this, bounds, "bounds" );
+		visitor( *this, maxDisplacements, "maxDisplacements" );
 	}
 };
 
@@ -357,8 +362,8 @@ struct Animation
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, name, "name" );
-		visitor( *this, duration, "duration" );
 		visitor( *this, channels, "channels" );
+		visitor( *this, duration, "duration" );
 	}
 };
 
@@ -418,8 +423,8 @@ struct Metadata
 enum class SectionCompression : uint8_t
 {
     None,
-	MeshOptimizerVertex,
-	MeshOptimizerIndex,
+	MeshOptimizerVertexBuffer,
+	MeshOptimizerIndexBuffer,
 };
 
 enum class SectionType : uint8_t
