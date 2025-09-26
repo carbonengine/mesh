@@ -10,199 +10,167 @@ template <typename T>
 using ConversionFunction = T ( * )( const void* );
 
 
+template <typename From, typename To>
+inline ConversionFunction<To> MakeConversionFunction()
+{
+    return []( const void* data ) { return To( *reinterpret_cast<const From*>( data ) ); };
+}
+
+template <typename From, typename To>
+inline ConversionFunction<To> MakeNormalizedConversionFunction()
+{
+	return []( const void* data ) { return To( double( *reinterpret_cast<const From*>( data ) ) / double( std::numeric_limits<From>::max() ) ); };
+}
+
 template <typename T>
-inline ConversionFunction<T> GetConversionFunction( ElementType type, uint8_t count )
-{
-	return []( const void* data ) { return *reinterpret_cast<const T*>( data ); };
-}
-
-template <>
-inline ConversionFunction<float> GetConversionFunction( ElementType type, uint8_t count )
+inline std::pair<ConversionFunction<T>, size_t> GetScalarConversionFunction( ElementType type )
 {
 	switch( type )
 	{
 	case ElementType::Float32:
-		return []( const void* data ) { return *reinterpret_cast<const float*>( data ); };
+		return { MakeConversionFunction<float, T>(), sizeof( float ) };
 	case ElementType::Float16:
-		return []( const void* data ) {
-			return float( *reinterpret_cast<const Float_16*>( data ) );
-		};
+		return { MakeConversionFunction<Float_16, T>(), sizeof( Float_16 ) };
+	case ElementType::UInt16Norm:
+		return { MakeNormalizedConversionFunction<uint16_t, T>(), sizeof( uint16_t ) };
+	case ElementType::UInt16:
+		return { MakeConversionFunction<uint16_t, T>(), sizeof( uint16_t ) };
+	case ElementType::Int16Norm:
+		return { MakeNormalizedConversionFunction<int16_t, T>(), sizeof( int16_t ) };
+	case ElementType::Int16:
+		return { MakeConversionFunction<int16_t, T>(), sizeof( int16_t ) };
 	case ElementType::UInt8Norm:
-		return []( const void* data ) {
-			return float( *reinterpret_cast<const uint8_t*>( data ) ) / 255.0f;
-		};
+		return { MakeNormalizedConversionFunction<uint8_t, T>(), sizeof( uint8_t ) };
 	case ElementType::UInt8:
-		return []( const void* data ) {
-			return float( *reinterpret_cast<const uint8_t*>( data ) );
-		};
+		return { MakeConversionFunction<uint8_t, T>(), sizeof( uint8_t ) };
 	case ElementType::Int8Norm:
-		return []( const void* data ) {
-			return float( *reinterpret_cast<const int8_t*>( data ) ) / 127.0f;
-		};
+		return { MakeNormalizedConversionFunction<int8_t, T>(), sizeof( int8_t ) };
 	case ElementType::Int8:
-		return []( const void* data ) {
-			return float( *reinterpret_cast<const int8_t*>( data ) );
-		};
+		return { MakeConversionFunction<int8_t, T>(), sizeof( int8_t ) };
 	default:
-		return nullptr;
+		return { nullptr, 0 };
 	}
 }
+
+template <typename T>
+struct DeclTypeConverter
+{
+    DeclTypeConverter( ElementType type, uint8_t count ) :
+		m_func( GetScalarConversionFunction<T>( type ).first )
+    {
+    }
+
+	T operator()( const void* data ) const
+	{
+		return m_func( data );
+	}
+
+    operator bool() const
+    {
+        return m_func != nullptr;
+	}
+
+    ConversionFunction<T> m_func = {};
+};
 
 template <>
-inline ConversionFunction<Vector2> GetConversionFunction( ElementType type, uint8_t count )
+struct DeclTypeConverter<Vector2>
 {
-	if( count < 2 )
+	DeclTypeConverter( ElementType type, uint8_t count ) :
+		m_func( GetScalarConversionFunction<float>( type ) ),
+		m_count( std::min( count, uint8_t( 2 ) ) )
 	{
-		return nullptr;
 	}
 
-	switch( type )
+	Vector2 operator()( const void* data ) const
 	{
-	case ElementType::Float32:
-		return []( const void* data ) { return *reinterpret_cast<const Vector2*>( data ); };
-	case ElementType::Float16:
-		return []( const void* data ) {
-			return Vector2( *reinterpret_cast<const Vector2_16*>( data ) );
-		};
-	case ElementType::UInt8Norm:
-		return []( const void* data ) {
-			return Vector2(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[1] ) / 255.0f );
-		};
-	case ElementType::UInt8:
-		return []( const void* data ) {
-			return Vector2(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ),
-				float( reinterpret_cast<const uint8_t*>( data )[1] ) );
-		};
-	case ElementType::Int8Norm:
-		return []( const void* data ) {
-			return Vector2(
-				float( reinterpret_cast<const int8_t*>( data )[0] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[1] ) / 127.0f );
-		};
-	case ElementType::Int8:
-		return []( const void* data ) {
-			return Vector2(
-				float( reinterpret_cast<const int8_t*>( data )[0] ),
-				float( reinterpret_cast<const int8_t*>( data )[1] ) );
-		};
-	default:
-		return nullptr;
+		Vector2 result = { 0, 0 };
+		const uint8_t* src = static_cast<const uint8_t*>( data );
+        for ( uint8_t i = 0; i < m_count; ++i )
+        {
+			result[i] = m_func.first( src );
+			src += m_func.second;
+		}
+		return result;
 	}
-}
+
+	operator bool() const
+	{
+		return m_func.first != nullptr;
+	}
+
+	std::pair<ConversionFunction<float>, size_t> m_func = {};
+	uint8_t m_count = 0;
+};
 
 template <>
-inline ConversionFunction<Vector3> GetConversionFunction( ElementType type, uint8_t count )
+struct DeclTypeConverter<Vector3>
 {
-	if( count < 3 )
+	DeclTypeConverter( ElementType type, uint8_t count ) :
+		m_func( GetScalarConversionFunction<float>( type ) ),
+		m_count( std::min( count, uint8_t( 3 ) ) )
 	{
-		return nullptr;
 	}
 
-	switch( type )
+	Vector3 operator()( const void* data ) const
 	{
-	case ElementType::Float32:
-		return []( const void* data ) { return *reinterpret_cast<const Vector3*>( data ); };
-	case ElementType::Float16:
-		return []( const void* data ) {
-			return Vector3( *reinterpret_cast<const Vector3_16*>( data ) );
-		};
-	case ElementType::UInt8Norm:
-		return []( const void* data ) {
-			return Vector3(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[1] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[2] ) / 255.0f );
-		};
-	case ElementType::UInt8:
-		return []( const void* data ) {
-			return Vector3(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ),
-				float( reinterpret_cast<const uint8_t*>( data )[1] ),
-				float( reinterpret_cast<const uint8_t*>( data )[2] ) );
-		};
-	case ElementType::Int8Norm:
-		return []( const void* data ) {
-			return Vector3(
-				float( reinterpret_cast<const int8_t*>( data )[0] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[1] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[2] ) / 127.0f );
-		};
-	case ElementType::Int8:
-		return []( const void* data ) {
-			return Vector3(
-				float( reinterpret_cast<const int8_t*>( data )[0] ),
-				float( reinterpret_cast<const int8_t*>( data )[1] ),
-                float( reinterpret_cast<const int8_t*>( data )[2] ) );
-		};
-	default:
-		return nullptr;
+		Vector3 result = { 0, 0, 0 };
+		const uint8_t* src = static_cast<const uint8_t*>( data );
+		for( uint8_t i = 0; i < m_count; ++i )
+		{
+			result[i] = m_func.first( src );
+			src += m_func.second;
+		}
+		return result;
 	}
-}
+
+	operator bool() const
+	{
+		return m_func.first != nullptr;
+	}
+
+	std::pair<ConversionFunction<float>, size_t> m_func = {};
+	uint8_t m_count = 0;
+};
 
 template <>
-inline ConversionFunction<Vector4> GetConversionFunction( ElementType type, uint8_t count )
+struct DeclTypeConverter<Vector4>
 {
-	if( count != 4 )
+	DeclTypeConverter( ElementType type, uint8_t count ) :
+		m_func( GetScalarConversionFunction<float>( type ) ),
+		m_count( std::min( count, uint8_t( 4 ) ) )
 	{
-		return nullptr;
 	}
 
-	switch( type )
+	Vector4 operator()( const void* data ) const
 	{
-	case ElementType::Float32:
-		return []( const void* data ) { return *reinterpret_cast<const Vector4*>( data ); };
-	case ElementType::Float16:
-		return []( const void* data ) {
-			return Vector4( *reinterpret_cast<const Vector4_16*>( data ) );
-		};
-	case ElementType::UInt8Norm:
-		return []( const void* data ) {
-			return Vector4(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[1] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[2] ) / 255.0f,
-				float( reinterpret_cast<const uint8_t*>( data )[3] ) / 255.0f );
-		};
-	case ElementType::UInt8:
-		return []( const void* data ) {
-			return Vector4(
-				float( reinterpret_cast<const uint8_t*>( data )[0] ),
-				float( reinterpret_cast<const uint8_t*>( data )[1] ),
-				float( reinterpret_cast<const uint8_t*>( data )[2] ),
-				float( reinterpret_cast<const uint8_t*>( data )[3] ) );
-		};
-	case ElementType::Int8Norm:
-		return []( const void* data ) {
-			return Vector4(
-				float( reinterpret_cast<const int8_t*>( data )[0] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[1] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[2] ) / 127.0f,
-				float( reinterpret_cast<const int8_t*>( data )[3] ) / 127.0f );
-		};
-	case ElementType::Int8:
-		return []( const void* data ) {
-			return Vector4(
-				float( reinterpret_cast<const int8_t*>( data )[0] ),
-				float( reinterpret_cast<const int8_t*>( data )[1] ),
-				float( reinterpret_cast<const int8_t*>( data )[2] ),
-				float( reinterpret_cast<const int8_t*>( data )[3] ) );
-		};
-	default:
-		return nullptr;
+		Vector4 result = { 0, 0, 0, 0 };
+		const uint8_t* src = static_cast<const uint8_t*>( data );
+		for( uint8_t i = 0; i < m_count; ++i )
+		{
+			result[i] = m_func.first( src );
+			src += m_func.second;
+		}
+		return result;
 	}
-}
+
+	operator bool() const
+	{
+		return m_func.first != nullptr;
+	}
+
+	std::pair<ConversionFunction<float>, size_t> m_func = {};
+	uint8_t m_count = 0;
+};
 
 
 template <typename T>
 class BufferElementStream
 {
 public:
-	BufferElementStream( const VertexElement& element, const void* data, uint32_t vertexCount, uint32_t stride )
+	BufferElementStream( const VertexElement& element, const void* data, uint32_t vertexCount, uint32_t stride ) :
+		m_conversion( element.type, element.elementCount )
 	{
-		m_conversion = GetConversionFunction<T>( element.type, element.elementCount );
 		m_element = element;
         if ( m_conversion )
         {
@@ -215,7 +183,7 @@ public:
 	class Iterator
 	{
 	public:
-		Iterator( const uint8_t* data, uint32_t stride, ConversionFunction<T> conversion ) :
+		Iterator( const uint8_t* data, uint32_t stride, DeclTypeConverter<T> conversion ) :
 			m_data( data ),
 			m_stride( stride ),
 			m_conversion( conversion )
@@ -241,7 +209,7 @@ public:
 	private:
 		const uint8_t* m_data;
 		uint32_t m_stride;
-		ConversionFunction<T> m_conversion;
+		DeclTypeConverter<T> m_conversion;
 	};
 
 	Iterator begin() const
@@ -278,7 +246,7 @@ private:
 	const uint8_t* m_data = nullptr;
 	uint32_t m_stride = 0;
 	uint32_t m_count = 0;
-	ConversionFunction<T> m_conversion = {};
+	DeclTypeConverter<T> m_conversion;
 	VertexElement m_element = {};
 };
 

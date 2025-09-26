@@ -108,6 +108,10 @@ enum class ElementType : uint8_t
 {
 	Float32,
 	Float16,
+    UInt16Norm,
+	UInt16,
+	Int16Norm,
+	Int16,
 	UInt8Norm,
 	UInt8,
 	Int8Norm,
