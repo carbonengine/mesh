@@ -2,11 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
-find_package(glfw3 CONFIG REQUIRED)
-find_package(Vulkan REQUIRED)
-find_package(imgui REQUIRED)
-find_package(carbon-core CONFIG REQUIRED)
-
 
 include(cmake/CcpGlobalSettings.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
@@ -38,23 +33,6 @@ target_include_directories(CarbonMesh PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-
-ccp_add_executable(CarbonMeshViewer 
-    src/viewer/app.h
-    src/viewer/app.cpp
-    src/viewer/rendercontext.h
-    src/viewer/rendercontext.cpp
-    src/viewer/inputhandler.h
-    src/viewer/inputhandler.cpp
-    src/viewer/main.cpp
-)
-
-target_compile_options(CarbonMeshViewer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)
-target_compile_features(CarbonMeshViewer PRIVATE cxx_std_17)
-
-
-target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath CcpCore glfw Vulkan::Vulkan imgui::imgui)
-
 
 # Provide an install target if this is the top level project only
 if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
@@ -131,26 +109,6 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
             LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
             ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
             RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-    )
-
-    
-    install(
-            TARGETS CarbonMeshViewer
-            EXPORT CarbonMeshViewerTarget
-            CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
-            LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-            ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-            RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-    )
-
-    install(
-        FILES $<TARGET_RUNTIME_DLLS:CarbonMeshViewer>
-        DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-    )
-   
-    add_custom_command(TARGET CarbonMeshViewer POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:CarbonMeshViewer> $<TARGET_RUNTIME_DLLS:CarbonMeshViewer>
-      COMMAND_EXPAND_LISTS
     )
 
     # Install rule for available public headers
