@@ -56,6 +56,23 @@ A mesh contains data to render a 3D mesh or a point cloud. CMF supports mesh LOD
 The file may contain zero or more meshes. Each mesh must contain at least one mesh LOD - the "main", authored geometry. The screen size for the main LOD is always 0xffffffff. If the mesh contains more than
 one LOD, the additional LODs must be sorted in descending order of screen size. 
 
+If the mesh represents a point cloud (i.e. its `primitiveType` is `PointList`), mesh LODs may not contain index buffers. If the mesh represents a triangle mesh, each mesh LOD must contain an index buffer. An index buffer
+may contain either 16-bit or 32-bit indices, identified by `stride` attribute of their `BufferView`.
+
+The vertex declaration in the `decl` member of the `Mesh` structure defines the layout of each vertex in the vertex buffer. The declaration is a list of `VertexAttribute` structures, each defining an attribute such as position, normal, UV coordinates, etc.
+The actual vertex data is stored in the raw data section, referenced by a `BufferView` in the `vb` member of the `MeshLod` structure. The vertex buffer contains an array of vertices, each laid out according to the vertex declaration.
+There are certain restrictions on the vertex declaration:
+- A vertex declaration must contain at least one attribute.
+- A vertex declaration must contain a Position attribute with `usageIndex` 0.
+- A vertex declaration may not contain duplicates of (`usage` and `usageIndex`) pairs.
+- A vertex declaration element type element count must be between 1 and 4.
+- If the vertex declaration contains a `PackedTangent` element, it may not contain a `Normal`, `Tangent` or `Binormal` element with the same `usageIndex`.
+
+The `areas` member of the `Mesh` structure defines the sub-materials of the mesh. Each area defines a range of indices in the index buffer that use a specific material. The number of areas in each mesh LOD must be the same as the number of areas in the mesh.
+
+The mesh `boneBindings` member defines the mapping between bones in the skeleton and the bone indices used in the vertex data. The number of bone bindings must be less than 256 (i.e. there is a limit of 255 bones per mesh).
+The skeleton definition may or may not exist in the same file as the mesh. If it does not exist, the application must provide the skeleton at runtime. If the skeleton exists in the file, the
+mesh references it as a skeleton through the `skeleton` member. 
 
 
 Raw Data Sections
