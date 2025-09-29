@@ -47,6 +47,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
 		offset += uint32_t( section.size );
     }
 	PointersToOffsets( *reinterpret_cast<Header*>( flattenedHeader.data.get() ), flattenedHeader.data.get() );
+	reinterpret_cast<Header*>( flattenedHeader.data.get() )->headerSize = uint32_t( flattenedHeader.size );
 
 	std::vector<uint8_t> result;
     result.insert( end( result ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ) + flattenedHeader.size );

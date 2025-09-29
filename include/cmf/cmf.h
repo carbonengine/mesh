@@ -38,6 +38,24 @@ constexpr inline typename std::enable_if<!IsCmfDataType<U>::value>::type Enumera
 {
 }
 
+template <typename U, typename T>
+constexpr inline void EnumerateChildren( U& data, T&& visitor )
+{
+	if constexpr ( std::is_base_of_v<SpanRepr, U> )
+    {
+        for( auto& element : data )
+        {
+			visitor( data, element, "" );
+        }
+    }
+    else
+    {
+        EnumerateMembers( data, [&visitor]( auto&&, auto& value, const char* ) {
+            EnumerateChildren( value, visitor );
+        } );
+	}
+}
+
 template <typename T>
 void OffsetsToPointers( T& data, const void* base )
 {

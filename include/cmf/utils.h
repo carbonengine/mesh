@@ -251,8 +251,20 @@ private:
 };
 
 
-bool IsHeaderValid( const void* data, size_t size );
 uint32_t ComputeCrc32( const void* data, size_t size );
+
+
+struct ValidationOptions
+{
+	bool validateCrc = false;
+	bool validateHeader = false;
+
+    bool validateMainData = false;
+};
+
+using ValidationResult = std::pair<bool, ValidationOptions>;
+
+ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options );
 
 
 CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb );

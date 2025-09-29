@@ -224,7 +224,7 @@ struct MeshLod
 	BufferView ib;
 	Span<LodMeshArea> areas;
 	Span<LodMorphTarget> morphTargets;
-	uint32_t threshold = 0;
+	uint32_t threshold = 0; // max visible diameter in pixels for this LOD
 
 	static constexpr std::string_view TypeName = "MeshLod";
 
@@ -465,7 +465,8 @@ struct Header
 {
 	uint32_t signature = FILE_SIGNATURE;
 	uint32_t version = FILE_VERSION;
-	uint32_t crc32 = 0;
+	uint32_t headerSize = 0; // size of the header including sections
+	uint32_t crc32 = 0; // CRC32 of the file excluding signature, version, headerSize and crc32
 	Span<Section> sections;
 
 	static constexpr std::string_view TypeName = "Header";
@@ -475,6 +476,7 @@ struct Header
 	{
 		visitor( *this, signature, "signature" );
 		visitor( *this, version, "version" );
+		visitor( *this, headerSize, "headerSize" );
 		visitor( *this, crc32, "crc32" );
 		visitor( *this, sections, "sections" );
 	}
