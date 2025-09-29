@@ -28,19 +28,27 @@ struct Span : public SpanRepr
 
 	T* begin()
 	{
+		if( offset & 1 )
+        {
+            return reinterpret_cast<T*>( reinterpret_cast<uint8_t*>( &this->ptr ) + ( this->offset & ~1ll ) );
+		}
 		return reinterpret_cast<T*>( this->ptr );
 	}
 	const T* begin() const
 	{
+		if( offset & 1 )
+		{
+			return reinterpret_cast<const T*>( reinterpret_cast<const uint8_t*>( &this->ptr ) + ( this->offset & ~1ll ) );
+		}
 		return reinterpret_cast<const T*>( this->ptr );
 	}
 	T* end()
 	{
-		return reinterpret_cast<T*>( this->ptr ) + this->size();
+		return this->begin() + this->size();
 	}
 	const T* end() const
 	{
-		return reinterpret_cast<const T*>( this->ptr ) + this->size();
+		return this->begin() + this->size();
 	}
 	T* data()
 	{

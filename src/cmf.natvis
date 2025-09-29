@@ -6,11 +6,11 @@
       <Item Name="[size]" ExcludeView="simple">byteSize / sizeof(value_type)</Item>
       <ArrayItems>
         <Size>byteSize / sizeof(value_type)</Size>
-        <ValuePointer>(value_type*)ptr</ValuePointer>
+        <ValuePointer>offset &amp; 1 ? (value_type*)(((uint8_t*)&amp;ptr) + (offset &amp; ~1ll)) : (value_type*)ptr</ValuePointer>
       </ArrayItems>
     </Expand>
   </Type>
   <Type Name="cmf::v1::Span&lt;char&gt;">
-    <DisplayString>{(char*)ptr}</DisplayString>
+    <DisplayString>{offset &amp; 1 ? (char*)(((uint8_t*)&amp;ptr) + (offset &amp; ~1ll)) : (char*)ptr}</DisplayString>
   </Type>
 </AutoVisualizer>

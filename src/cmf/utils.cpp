@@ -13,7 +13,7 @@ bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 			return false;
 		}
 		// Pointer must be within the base + totalSize range
-		if( value.ptr < base || value.ptr > reinterpret_cast<const uint8_t*>( base ) + totalSize )
+		if( value.data() < base || reinterpret_cast<const uint8_t*>( value.end() ) > reinterpret_cast<const uint8_t*>( base ) + totalSize )
 		{
 			return false;
 		}
@@ -353,20 +353,20 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 {
 	ValidationOptions result = {};
 
-	auto packedHeader = static_cast<const Header*>( data );
+	auto& header = *static_cast<const Header*>( data );
 	if( size < sizeof( Header ) )
     {
 		return { false, {} };
 	}
-	if( packedHeader->signature != FILE_SIGNATURE )
+	if( header.signature != FILE_SIGNATURE )
     {
 		return { false, {} };
 	}
-	if( packedHeader->version != FILE_VERSION )
+	if( header.version != FILE_VERSION )
     {
 		return { false, {} };
     }
-	if( packedHeader->headerSize < sizeof( Header ) || packedHeader->headerSize > size )
+	if( header.headerSize < sizeof( Header ) || header.headerSize > size )
 	{
 		return { false, {} };
 	}
@@ -374,7 +374,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	{
 		auto crcOffset = offsetof( Header, crc32 );
 		auto crc = ComputeCrc32( static_cast<const uint8_t*>( data ) + crcOffset + sizeof( Header::crc32 ), size - ( crcOffset + sizeof( Header::crc32 ) ) );
-		if( crc != packedHeader->crc32 )
+		if( crc != header.crc32 )
 		{
 			return { false, result };
 		}
@@ -386,12 +386,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
         return { true, result };
 	}
 
-	std::unique_ptr<uint8_t[]> headerCopy = std::make_unique<uint8_t[]>( packedHeader->headerSize );
-	memcpy( headerCopy.get(), data, packedHeader->headerSize );
-	auto& header = *reinterpret_cast<Header*>( headerCopy.get() );
-	OffsetsToPointers( header, headerCopy.get() );
-
-	if( !AreSpanPointersValid( header, headerCopy.get(), header.headerSize ) )
+	if( !AreSpanPointersValid( header, &header, header.headerSize ) )
     {
         return { false, result };
 	}
@@ -408,11 +403,8 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 
 	if( options.validateMainData )
 	{
-	    std::unique_ptr<uint8_t[]> dataCopy = std::make_unique<uint8_t[]>( header.sections[0].size );
-	    memcpy( dataCopy.get(), data, header.sections[0].size );
-	    auto& mainData = *reinterpret_cast<Data*>( dataCopy.get() );
-	    OffsetsToPointers( mainData, dataCopy.get() );
-		if( !AreSpanPointersValid( mainData, dataCopy.get(), header.sections[0].size ) )
+		auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
+		if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].size ) )
 	    {
 		    return { false, result };
 	    }
@@ -441,7 +433,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
             {
 				return { false, result };
             }
-			for( auto parent : skeleton.parents )
+			for( auto& parent : skeleton.parents )
             {
                 // Parent index must be either -1 (0xffffffff) or a valid bone index
                 if( parent != 0xffffffff && parent >= skeleton.bones.size() )

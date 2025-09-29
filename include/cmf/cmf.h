@@ -57,40 +57,46 @@ constexpr inline void EnumerateChildren( U& data, T&& visitor )
 }
 
 template <typename T>
-void OffsetsToPointers( T& data, const void* base )
+void OffsetsToPointers( T& data )
 {
 	if constexpr( std::is_base_of_v<SpanRepr, typename std::remove_reference<T>::type> )
 	{
-		data.ptr = reinterpret_cast<void*>( reinterpret_cast<uintptr_t>( base ) + data.offset );
+		if( ( data.offset & 1 ) != 0 )
+		{
+			data.ptr = reinterpret_cast<uint8_t*>( &data.ptr ) + ( data.offset & ~1ll );
+		}
 		for( auto& element : data )
 		{
-			OffsetsToPointers( element, base );
+			OffsetsToPointers( element );
 		}
 	}
 	else
 	{
-		EnumerateMembers( data, [base]( auto&&, auto& value, const char* ) {
-			OffsetsToPointers( value, base );
+		EnumerateMembers( data, []( auto&&, auto& value, const char* ) {
+			OffsetsToPointers( value );
 		} );
 	}
 }
 
 
 template <typename T>
-void PointersToOffsets( T& data, const void* base )
+void PointersToOffsets( T& data )
 {
 	if constexpr( std::is_base_of_v<SpanRepr, T> )
 	{
 		for( auto& element : data )
 		{
-			PointersToOffsets( element, base );
+			PointersToOffsets( element );
 		}
-		data.offset = static_cast<uint8_t*>( data.ptr ) - static_cast<const uint8_t*>( base );
+		if( ( data.offset & 1 ) == 0 )
+		{
+			data.offset = ( static_cast<uint8_t*>( data.ptr ) - reinterpret_cast<uint8_t*>( &data.ptr ) ) | 1;
+		}
 	}
 	else
 	{
-		EnumerateMembers( data, [base]( auto&&, auto& value, const char* ) {
-			PointersToOffsets( value, base );
+		EnumerateMembers( data, []( auto&&, auto& value, const char* ) {
+			PointersToOffsets( value );
 		} );
 	}
 }
