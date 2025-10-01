@@ -64,7 +64,7 @@ bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& section
 			return false;
 		}
 		// If stride is non-zero, size must be multiple of stride
-		if( sections[value.index].gpuAlignment % value.stride != 0 )
+		if( value.stride != 0 && sections[value.index].gpuAlignment % value.stride != 0 )
 		{
 			return false;
 		}
@@ -83,7 +83,7 @@ bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& section
 	}
 }
 
-bool AreHeeaderSectionsValid( const cmf::Header& header, size_t fileSize )
+bool AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 {
 	if( header.sections.empty() )
 	{
@@ -390,7 +390,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
     {
         return { false, result };
 	}
-	if( !AreHeeaderSectionsValid( header, size ) )
+	if( !AreHeaderSectionsValid( header, size ) )
     {
         return { false, result };
 	}

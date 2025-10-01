@@ -9,8 +9,9 @@ include(cmake/CcpTargetConfigurations.cmake)
 set(PUBLIC_HEADER_FILES
     include/cmf/cmf.h
     include/cmf/memallocator.h
-    include/cmf/v1.h
+    include/cmf/span.h
     include/cmf/utils.h
+    include/cmf/v1.h
     include/cmf/writer.h
 )
 

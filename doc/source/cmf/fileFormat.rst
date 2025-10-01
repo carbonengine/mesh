@@ -11,7 +11,7 @@ The file contains a header and several sections. Each section is designed to be 
 
 The main sections are:
 1. **Header**: Single section conaining data that identifies the file and any data needed to parse the rest of the file.
-2. **Main Data**: Mandatory section containing  the main data structures such as meshes, skeletons, and animations.
+2. **Main Data**: Mandatory section containing the main data structures such as meshes, skeletons, and animations.
 3. **Raw Data**: Zero or more sections containing raw binary data such as vertex buffers and index buffers.
 4. **Metadata**: An optional section at the end containing additional information, not needed for rendering purposes, but rather for other tools.
 
