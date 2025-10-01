@@ -1,36 +1,42 @@
 cmake_minimum_required(VERSION 3.16)
-project(project_name VERSION 1.0.0)
+project(CarbonMesh VERSION 1.0.0)
 
-if(NOT DEFINED ENV{CCP_EVE_PERFORCE_BRANCH_PATH})
-    message(FATAL_ERROR "Missing required environment variable CCP_EVE_PERFORCE_BRANCH_PATH")
-elseif(NOT IS_ABSOLUTE $ENV{CCP_EVE_PERFORCE_BRANCH_PATH})
-    message(FATAL_ERROR "CCP_EVE_PERFORCE_BRANCH_PATH needs to be an absolute path")
-elseif(NOT EXISTS $ENV{CCP_EVE_PERFORCE_BRANCH_PATH})
-    message(FATAL_ERROR "CCP_EVE_PERFORCE_BRANCH_PATH is pointing at a non-existing location $ENV{CCP_EVE_PERFORCE_BRANCH_PATH}")
-elseif(NOT IS_DIRECTORY $ENV{CCP_EVE_PERFORCE_BRANCH_PATH})
-    message(FATAL_ERROR "CCP_EVE_PERFORCE_BRANCH_PATH needs to be a directory")
-else()
-    message(STATUS "Using CCP_EVE_PERFORCE_BRANCH_PATH located at $ENV{CCP_EVE_PERFORCE_BRANCH_PATH}")
-endif()
-
-file(TO_CMAKE_PATH "$ENV{CCP_EVE_PERFORCE_BRANCH_PATH}" BRANCH_ROOT_DIR)
-list(INSERT CMAKE_MODULE_PATH 0 ${BRANCH_ROOT_DIR}/cmake)
+find_package(carbon-math CONFIG REQUIRED)
 
 include(cmake/CcpGlobalSettings.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
-ccp_add_library(project_name SHARED)
+set(PUBLIC_HEADER_FILES
+    include/cmf/cmf.h
+    include/cmf/memallocator.h
+    include/cmf/span.h
+    include/cmf/utils.h
+    include/cmf/v1.h
+    include/cmf/writer.h
+)
 
-get_target_property(_SOURCES project_name SOURCES)
+ccp_add_library(CarbonMesh 
+    ${PUBLIC_HEADER_FILES}
+    src/cmf/memallocator.cpp
+    src/cmf/utils.cpp
+    src/cmf/writer.cpp
+)
+
+get_target_property(_SOURCES CarbonMesh SOURCES)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
         PREFIX "Sources"
         FILES ${_SOURCES}
 )
 
-set_target_properties(project_name PROPERTIES OUTPUT_NAME "_project_name")
+set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
+target_link_libraries(CarbonMesh PUBLIC CcpMath)
+target_include_directories(CarbonMesh PUBLIC         
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 
 # Provide an install target if this is the top level project only
-if(CMAKE_PROJECT_NAME STREQUAL project_name)
+if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
     # Determine if/when to generate/build documentation. The rules are as follows:
     # - If running locally - Build documentation is OFF by default
     # - If running on a build agent (TeamCity) - Build documentation is ON by default
@@ -81,7 +87,7 @@ if(CMAKE_PROJECT_NAME STREQUAL project_name)
         add_custom_target(Sphinx ALL
                 COMMAND ${CMAKE_COMMAND}
                 -E env
-                PYTHONPATH="$<TARGET_FILE_DIR:project_name>\;${CMAKE_SOURCE_DIR}/python"
+                PYTHONPATH="$<TARGET_FILE_DIR:CarbonMesh>/;${CMAKE_SOURCE_DIR}/python"
                 BUILDFLAVOR=$<LOWER_CASE:$<CONFIG>>
                 ${CCP_PYTHON_INTERPRETER}
                 -m sphinx build -E -b html
@@ -96,34 +102,32 @@ if(CMAKE_PROJECT_NAME STREQUAL project_name)
         install(DIRECTORY ${SPHINX_BUILD} DESTINATION documentation)
     endif()
 
-    set(INSTALL_BIN_ONLY OFF CACHE BOOL "Do not Install configuration files meant to be read by projects using this project as a dependency (Cmake Config/ header files etc . . .). Set this to ON when installing this component to the perforce vendor folder")
-    if(INSTALL_BIN_ONLY)
-        # Install rule to ensure that our runtime files are in the expected, platform-specific folder
-        install(
-                TARGETS project_name
-                EXPORT project_nameTarget
-                CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
-                RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-        )
-    else()
-        # Install rule to ensure that our runtime and linker files are in the expected, platform-specific folders
-        install(
-                TARGETS project_name
-                EXPORT project_nameTarget
-                CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
-                LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-                ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-                RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-        )
-        # Install rule for available public headers
-        install(DIRECTORY include DESTINATION . FILES_MATCHING PATTERN "*.h")
+    # Install rule to ensure that our runtime and linker files are in the expected, platform-specific folders
+    install(
+            TARGETS CarbonMesh
+            EXPORT CarbonMeshTarget
+            CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+            LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+            ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+            RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+    )
 
-        install(
-                EXPORT project_nameTarget
-                DESTINATION ${CMAKE_INSTALL_PREFIX}/share/project_name
-                FILE project_name.cmake)
-        install(
-                FILES project_nameConfig.cmake
-                DESTINATION ${CMAKE_INSTALL_PREFIX}/share/project_name)
-    endif()
+    # Install rule for available public headers
+    foreach(header_file ${PUBLIC_HEADER_FILES})
+        get_filename_component(relative_path ${header_file} DIRECTORY)
+        string(REPLACE "include/" "" relative_path ${relative_path})
+        install(FILES ${header_file} DESTINATION include/${relative_path})
+    endforeach()
+
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
+    
+
+    # Install python package
+    install(DIRECTORY python/ DESTINATION python
+            FILES_MATCHING
+            PATTERN "*.py"
+            PATTERN "package.yaml"
+    )
+
+
 endif()
