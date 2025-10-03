@@ -6,6 +6,8 @@ find_package(carbon-math CONFIG REQUIRED)
 include(cmake/CcpGlobalSettings.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
+add_subdirectory( carbon-mesh-viewer )
+
 set(PUBLIC_HEADER_FILES
     include/cmf/cmf.h
     include/cmf/memallocator.h
