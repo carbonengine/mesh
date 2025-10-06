@@ -1,8 +1,8 @@
 #include "renderer.h"
 #include "device.h"
-#include "ui/imgui_impl.h"
 #include <fstream>
 #include <stdexcept>
+#include "shadercache.h"
 
 namespace RenderUtils {
     VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData )
@@ -44,7 +44,9 @@ Renderer::Renderer() :
 	m_depthTarget( nullptr ),
 	m_commandPool( VK_NULL_HANDLE ),
 	m_model( nullptr ),
-	m_rot( 0.0f )
+	m_rot( 0.0f ),
+	m_pipeline( VK_NULL_HANDLE )
+
 {
 }
 
@@ -53,30 +55,58 @@ Renderer::~Renderer()
     if( m_instance != VK_NULL_HANDLE )
     {
 		VkDevice logicalDevice = m_device->GetLogicalDevice();
-		//vkDestroyPipeline( logicalDevice, pipeline, nullptr );
-		//vkDestroyPipelineLayout( logicalDevice, pipelineLayout, nullptr );
-		//vkDestroyDescriptorSetLayout( logicalDevice, descriptorSetLayout, nullptr );
-		if( m_model )
-		{
-			m_model->Release( m_device );
+        if( m_pipeline != VK_NULL_HANDLE )
+        {
+			vkDestroyPipeline( logicalDevice, m_pipeline, m_allocator );
+        }
+        if( m_renderPass != VK_NULL_HANDLE )
+        {
+			vkDestroyRenderPass( logicalDevice, m_renderPass, m_allocator );
+        }
+        if( m_descriptorSetLayout != VK_NULL_HANDLE )
+        {
+			vkDestroyDescriptorSetLayout( logicalDevice, m_descriptorSetLayout, m_allocator );
+        }
+        if( m_descriptorPool != VK_NULL_HANDLE )
+        {
+			vkDestroyDescriptorPool( logicalDevice, m_descriptorPool, m_allocator );
         }
 
-		vkDestroyCommandPool( logicalDevice, m_commandPool, nullptr );
+        m_shaderCache.Release( logicalDevice, m_allocator );
+
+        if( m_depthTarget )
+        {
+            m_depthTarget->Release( m_device );
+            delete m_depthTarget;
+            m_depthTarget = nullptr;
+        }
+        if( m_swapchain )
+        {
+            m_swapchain->Release( m_device, m_allocator );
+            delete m_swapchain;
+            m_swapchain = nullptr;
+		}
+		if( m_model )
+		{
+			m_model->Release( m_device, m_allocator );
+        }
+
+		vkDestroyCommandPool( logicalDevice, m_commandPool, m_allocator );
 		for( auto& semaphore : m_renderFinishedSemaphores )
 		{
-			vkDestroySemaphore( logicalDevice, semaphore, nullptr );
+			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
 		}
 		for( auto& semaphore : m_imageAvailableSemaphores )
 		{
-			vkDestroySemaphore( logicalDevice, semaphore, nullptr );
+			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
         }
 		for( uint32_t i = 0; i < RenderUtils::MAX_FRAMES_IN_FLIGHT; ++i )
 		{
-			vkDestroyFence( logicalDevice, m_inFlightFences[i], nullptr );
-			vkDestroyBuffer( logicalDevice, m_perFrameBuffers[i].buffer, nullptr );
-			vkFreeMemory( logicalDevice, m_perFrameBuffers[i].memory, nullptr );
+			vkDestroyFence( logicalDevice, m_inFlightFences[i], m_allocator );
+			vkDestroyBuffer( logicalDevice, m_perFrameBuffers[i].buffer, m_allocator );
+			vkFreeMemory( logicalDevice, m_perFrameBuffers[i].memory, m_allocator );
 		}
-        vkDestroyInstance( m_instance, nullptr );
+		vkDestroyInstance( m_instance, m_allocator );
 	}
 }
 
@@ -133,9 +163,10 @@ VkResult Renderer::init( uint32_t width, uint32_t height, VkSurfaceKHR surface )
 	// Initialize device
 	m_device = new Device();
 	RETURN_ERROR( m_device->init( m_instance, m_allocator, m_surface ) );
-
+	m_shaderCache = ShaderCache();
+	RETURN_ERROR( m_shaderCache.Initialize( m_device->GetLogicalDevice() ) );
 	m_swapchain = new Swapchain();
-	RETURN_ERROR( m_swapchain->init( m_device, m_surface, m_allocator, m_width, m_height ) );
+	RETURN_ERROR( m_swapchain->Initialize( m_device, m_surface, m_allocator, m_width, m_height ) );
     m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT );
 
 	RETURN_ERROR( CreateRenderPass() );
@@ -162,7 +193,23 @@ VkInstance Renderer::GetVulkanInstance() const
 void Renderer::SetModel( Model* model )
 {
 	m_model = model;
-	m_model->Initialize( m_device, m_commandPool, m_renderPass, m_descriptorSetLayout );
+	m_model->Initialize( m_device, m_commandPool );
+
+    if( m_pipeline != VK_NULL_HANDLE )
+    {
+        vkDestroyPipeline( m_device->GetLogicalDevice(), m_pipeline, m_allocator );
+        m_pipeline = VK_NULL_HANDLE;
+	}
+
+    auto result = m_shaderCache.CreatePipeline( m_device->GetLogicalDevice(), "test", VK_POLYGON_MODE_FILL, m_renderPass, m_model->GetStride(), m_model->GetVertexDescriptions(), &m_pipeline );
+
+    if( result != VK_SUCCESS )
+    {
+        CCP_LOGERR( "Failed to create pipeline for model" );
+		m_model = nullptr;
+		return;
+	}
+
 	m_camera.translation = IdentityMatrix();
 	m_camera.at *= 0.0f;
 	m_camera.pos *= 0.0f;
@@ -319,8 +366,10 @@ VkResult Renderer::RecordCommandBuffer( VkCommandBuffer commandBuffer, uint32_t 
 	vkCmdSetScissor( commandBuffer, 0, 1, &scissor );
 
     if( m_model )
-    {
-		m_model->Render( commandBuffer, m_perFrameBuffers[m_currentFrame].descriptorSet, 0, 0 );
+	{
+		vkCmdBindDescriptorSets( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shaderCache.GetPipelineLayout(), 0, 1, &m_perFrameBuffers[m_currentFrame].descriptorSet, 0, nullptr );
+		vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline );
+		m_model->Render( commandBuffer, 0, 0 );
     }
 
 	vkCmdEndRenderPass( commandBuffer );
@@ -484,6 +533,7 @@ VkResult Renderer::CreateDescriptorSetLayout()
 	descriptorLayoutCI.bindingCount = 1;
 	descriptorLayoutCI.pBindings = &layoutBinding;
 	CR_RETURN( vkCreateDescriptorSetLayout( m_device->GetLogicalDevice(), &descriptorLayoutCI, nullptr, &m_descriptorSetLayout ) );
+	m_shaderCache.CreatePipelineLayout( m_device->GetLogicalDevice(), m_descriptorSetLayout );
 	return VK_SUCCESS;
 }
 

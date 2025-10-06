@@ -58,18 +58,18 @@ VkResult Buffer::Initialize( Device* device, BufferType type, const uint8_t* dat
 	return VK_SUCCESS;
 }
 
-void Buffer::Release( Device* device )
+void Buffer::Release( Device* device, VkAllocationCallbacks* allocator )
 {
 	ReleaseStaging( device );
 
 	auto logicalDevice = device->GetLogicalDevice();
 	if( m_buffer != VK_NULL_HANDLE )
 	{
-		vkDestroyBuffer( logicalDevice, m_buffer, nullptr );
+		vkDestroyBuffer( logicalDevice, m_buffer, allocator );
 	}
 	if( m_memory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( logicalDevice, m_memory, nullptr );
+		vkFreeMemory( logicalDevice, m_memory, allocator );
 	}
 }
 

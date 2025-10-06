@@ -19,5 +19,8 @@ private:
 	GLFWwindow* m_window;
 	InputHandler* m_inputHandler;
 	Renderer* m_renderer;
+
+    Model* m_model;
+
 	bool callUpdate = false;
 };

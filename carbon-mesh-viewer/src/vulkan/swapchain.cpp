@@ -11,12 +11,33 @@ Swapchain::~Swapchain()
 {
 }
 
-VkResult Swapchain::init( Device* device, VkSurfaceKHR surface, const VkAllocationCallbacks* allocator, uint32_t width, uint32_t height )
+VkResult Swapchain::Initialize( Device* device, VkSurfaceKHR surface, const VkAllocationCallbacks* allocator, uint32_t width, uint32_t height )
 {
 	m_swapchainExtent = { width, height };
 
 	RETURN_ERROR( CreateVulkanSwapchain( device, surface, allocator ) );
 	return VK_SUCCESS;
+}
+
+VkResult Swapchain::Release( Device* device, const VkAllocationCallbacks* allocator )
+{
+    for( auto framebuffer : m_swapchainFramebuffers )
+    {
+        vkDestroyFramebuffer( device->GetLogicalDevice(), framebuffer, allocator );
+    }
+    m_swapchainFramebuffers.clear();
+    for( auto texture : m_swapchainFrames )
+    {
+        texture->Release( device );
+        delete texture;
+    }
+    m_swapchainFrames.clear();
+    if( m_swapchain != VK_NULL_HANDLE )
+    {
+        vkDestroySwapchainKHR( device->GetLogicalDevice(), m_swapchain, allocator );
+        m_swapchain = VK_NULL_HANDLE;
+    }
+    return VK_SUCCESS;
 }
 
 VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface, const VkAllocationCallbacks* allocator )

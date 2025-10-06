@@ -15,7 +15,7 @@ public:
 	Buffer();
 	~Buffer();
 
-	void Release( Device* device );
+	void Release( Device* device, VkAllocationCallbacks* allocator );
 	VkResult Initialize( Device* device, BufferType type, const uint8_t* data, uint32_t size, uint32_t offset, uint32_t stride, uint32_t index );
 
 	VkBuffer GetGpuBuffer() const

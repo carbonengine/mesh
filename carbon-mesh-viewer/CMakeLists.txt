@@ -11,22 +11,59 @@ find_package(imgui REQUIRED)
 find_package(carbon-core CONFIG REQUIRED)
 find_package(carbon-math CONFIG REQUIRED)
 
+
+set( SHADER_BINARY_TO_SHADER_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/bin/shaderCacheCreator.py)  
+set( GENERATED_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedShaders)  
+
+if( WIN32 )
+    set( SHADER_COMPILER ${CMAKE_CURRENT_SOURCE_DIR}/bin/glslc.exe)    
+else()
+    set( SHADER_COMPILER ${CMAKE_CURRENT_SOURCE_DIR}/bin/glslc)       
+endif()
+
+file( GLOB SHADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.*
+)
+
 include_directories(
     src
     src/vulkan
     src/mesh
-    src/ui
     src/input
 )
 
 file(GLOB_RECURSE SOURCES
     src/*.*
+    shaders/*.*
 )
 
 add_executable(CarbonMeshViewer ${SOURCES})
+foreach( SHADER_PATH ${SHADERS} )
+    message( STATUS "Compiling shader: ${SHADER_PATH}" )
+    file( RELATIVE_PATH SHADER_RELATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shaders ${SHADER_PATH} )
+
+    get_filename_component( SHADER_NAME ${SHADER_RELATIVE_PATH} NAME )
+
+    if( NOT EXISTS ${GENERATED_SHADER_DIR} )
+        file( MAKE_DIRECTORY ${GENERATED_SHADER_DIR} )
+    endif()
+
+    message( STATUS "Running: ${SHADER_COMPILER} \"${SHADER_PATH}\" -o \"${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h\" -mfmt=num" )
+
+    add_custom_command(
+        TARGET CarbonMeshViewer PRE_BUILD
+        COMMAND ${SHADER_COMPILER} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+    )
+endforeach()
+
+add_custom_command( 
+    TARGET CarbonMeshViewer PRE_BUILD
+    COMMAND python ${SHADER_BINARY_TO_SHADER_CACHE} "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+)
 
 target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath CcpCore glfw Vulkan::Vulkan imgui::imgui)
 target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)
+target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_SHADER_DIR})
 
 target_compile_options(CarbonMeshViewer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)
 target_compile_features(CarbonMeshViewer PRIVATE cxx_std_17)
@@ -62,8 +99,3 @@ add_custom_command(TARGET CarbonMeshViewer POST_BUILD
   COMMAND_EXPAND_LISTS
 )
 
-install(DIRECTORY shaders/ DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/shaders
-        FILES_MATCHING
-        PATTERN "*.spv"
-)
-#file( COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:CarbonMeshViewer> shaders )

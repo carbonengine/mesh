@@ -14,6 +14,6 @@ out gl_PerVertex
 };
 
 void main() 
-{
+{ 
     gl_Position = perframe.projectionMatrix * perframe.viewMatrix * vec4(inPos.xyz, 1.0);
 }

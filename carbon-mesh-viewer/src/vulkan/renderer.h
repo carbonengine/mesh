@@ -3,6 +3,7 @@
 #include "swapchain.h"
 #include "texture.h"
 #include "model/Model.h"
+#include "shadercache.h"
 
 namespace RenderUtils
 {
@@ -90,4 +91,6 @@ private:
 	uint32_t m_height;
 	float m_rot;
 	Model* m_model;
+	ShaderCache m_shaderCache;
+    VkPipeline m_pipeline;
 };
