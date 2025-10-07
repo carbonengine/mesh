@@ -201,7 +201,7 @@ void Renderer::SetModel( Model* model )
         m_pipeline = VK_NULL_HANDLE;
 	}
 
-    auto result = m_shaderCache.CreatePipeline( m_device->GetLogicalDevice(), "test", VK_POLYGON_MODE_FILL, m_renderPass, m_model->GetStride(), m_model->GetVertexDescriptions(), &m_pipeline );
+    auto result = m_shaderCache.CreatePipeline( m_device->GetLogicalDevice(), "test", VK_POLYGON_MODE_LINE, m_renderPass, m_model->GetStride(), m_model->GetVertexDescriptions(), &m_pipeline );
 
     if( result != VK_SUCCESS )
     {

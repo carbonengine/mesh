@@ -131,7 +131,7 @@ VkResult ShaderCache::CreatePipeline( VkDevice logicalDevice, std::string shader
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCI{};
 	rasterizationStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterizationStateCI.polygonMode = mode;
-	rasterizationStateCI.cullMode = VK_CULL_MODE_NONE; //mode == VK_POLYGON_MODE_FILL ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	rasterizationStateCI.cullMode = mode == VK_POLYGON_MODE_FILL ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 	rasterizationStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizationStateCI.depthClampEnable = VK_FALSE;
 	rasterizationStateCI.rasterizerDiscardEnable = VK_FALSE;
