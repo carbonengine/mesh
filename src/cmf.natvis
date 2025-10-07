@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <Type Name="cmf::v1::Span&lt;*&gt;">
+  <Type Name="cmf::Span&lt;*&gt;">
     <DisplayString>{{ size={byteSize / sizeof(value_type)} }}</DisplayString>
     <Expand>
       <Item Name="[size]" ExcludeView="simple">byteSize / sizeof(value_type)</Item>
@@ -10,7 +10,7 @@
       </ArrayItems>
     </Expand>
   </Type>
-  <Type Name="cmf::v1::Span&lt;char&gt;">
+  <Type Name="cmf::Span&lt;char&gt;">
     <DisplayString>{offset &amp; 1 ? (char*)(((uint8_t*)&amp;ptr) + (offset &amp; ~1ll)) : (char*)ptr}</DisplayString>
   </Type>
 </AutoVisualizer>

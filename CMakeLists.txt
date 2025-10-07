@@ -22,6 +22,11 @@ ccp_add_library(CarbonMesh
     src/cmf/writer.cpp
 )
 
+if (CMAKE_GENERATOR MATCHES "Visual Studio")
+    target_sources(CarbonMesh PUBLIC src/cmf.natvis)
+    target_link_options(CarbonMesh PUBLIC /NATVIS:${CMAKE_CURRENT_LIST_DIR}/cmf.natvis)
+endif()
+
 get_target_property(_SOURCES CarbonMesh SOURCES)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
         PREFIX "Sources"
@@ -120,6 +125,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
     endforeach()
 
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION .)
     
 
     # Install python package

@@ -54,4 +54,12 @@ if(NOT TARGET CarbonMesh)
         message(DEBUG "Setting CarbonMesh property ${_IMP_LOC_PROP} to ${_IMP_LOC_VAL}")
         set_target_properties(CarbonMesh PROPERTIES ${_IMP_LOC_PROP} ${_IMP_LOC_VAL})
     endforeach()
+
+    if (CMAKE_GENERATOR MATCHES "Visual Studio")
+        set_target_properties(CarbonMesh PROPERTIES 
+            INTERFACE_LINK_OPTIONS /NATVIS:"$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/cmf.natvis>"
+            INTERFACE_SOURCES "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/cmf.natvis>"
+        )
+    endif()
+
 endif()
