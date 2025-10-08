@@ -97,7 +97,7 @@ void Application::Initialize()
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
-            app->SetData( CmfDataLoader::LoadDataFromFile( paths[0] ) );
+            app->SetData( CmfContentLoader::LoadContentFromFile( paths[0] ) );
 		}
 	} );
 
@@ -139,11 +139,11 @@ void Application::Run()
 			CCP_LOGERR( "Failed to begin render" );
             break;
         }
-		if( m_cmfData )
+		if( m_cmfContent )
 		{
 			m_modelRenderer->SetPerFrameData( m_renderer );
 
-			for( size_t meshIndex = 0; meshIndex < m_cmfData->m_cmfData->meshes.size(); meshIndex++ )
+			for( size_t meshIndex = 0; meshIndex < m_cmfContent->m_cmfData->meshes.size(); meshIndex++ )
 			{
 				m_modelRenderer->RenderMesh( m_renderer, meshIndex, 0 );
 			}
@@ -165,15 +165,15 @@ void Application::Run()
 	glfwTerminate();
 }
 
-void Application::SetData( CmfData* data )
+void Application::SetData( CmfContent* data )
 {
     if( !data )
 	{
 		CCP_LOGERR( "Invalid CMF data. Ignoring" );
         return;
     }
-	m_cmfData = data;
-	m_modelRenderer->SetData( m_cmfData, m_renderer );
+	m_cmfContent = data;
+	m_modelRenderer->SetData( m_cmfContent, m_renderer );
 }
 
 void Application::OnMouseButton( int button, int action, int mods )

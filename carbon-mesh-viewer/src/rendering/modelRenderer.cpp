@@ -169,7 +169,7 @@ VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, 
     return VK_SUCCESS;
 }
 
-void ModelRenderer::SetData( const CmfData* data, const Renderer* renderer )
+void ModelRenderer::SetData( const CmfContent* data, const Renderer* renderer )
 {
 	ReleaseMeshes( renderer );
 

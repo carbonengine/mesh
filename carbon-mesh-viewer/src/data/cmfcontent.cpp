@@ -1,11 +1,11 @@
-#include "cmfdata.h"
+#include "cmfcontent.h"
 #include <cmf/utils.h>
 
-namespace CmfDataLoader
+namespace CmfContentLoader
 {
-CmfData* LoadDataFromFile( const std::string& filePath )
+CmfContent* LoadContentFromFile( const std::string& filePath )
 {
-	CCP_LOGNOTICE( "Loading cmf data from file: %s", filePath.c_str() );
+	CCP_LOGNOTICE( "Loading cmf file: %s", filePath.c_str() );
 
 	// read the file and cast it to m_cmfModel
 	const char* filename = filePath.c_str();
@@ -51,17 +51,17 @@ CmfData* LoadDataFromFile( const std::string& filePath )
 	}
 
 	// cast the data to m_cmfModel
-	return new CmfData( fileData, filePath );
+	return new CmfContent( fileData, filePath );
 }
 };
 
-CmfData::CmfData() :
+CmfContent::CmfContent() :
 	m_cmfData( nullptr ),
 	m_cmfHeader( nullptr )
 {
 }
 
-CmfData::CmfData( std::vector<uint8_t> fileContent, std::string filePath ) :
+CmfContent::CmfContent( std::vector<uint8_t> fileContent, std::string filePath ) :
 	m_fileContent( fileContent ),
 	m_filePath( filePath )
 {
@@ -76,7 +76,7 @@ CmfData::CmfData( std::vector<uint8_t> fileContent, std::string filePath ) :
 	}
 }
 
-CmfData::~CmfData()
+CmfContent::~CmfContent()
 {
 	if( m_cmfHeader )
 	{
@@ -88,7 +88,7 @@ CmfData::~CmfData()
 	}
 }
 
-CcpMath::Sphere CmfData::GetBoundingSphere() const
+CcpMath::Sphere CmfContent::GetBoundingSphere() const
 {
 	// add up all the bounding boxes and create a sphere
 	CcpMath::AxisAlignedBox accumulated;

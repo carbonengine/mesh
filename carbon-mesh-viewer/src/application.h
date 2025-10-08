@@ -1,6 +1,6 @@
 #pragma once
 
-#include "data/cmfdata.h"
+#include "data/cmfcontent.h"
 #include "rendering/renderer.h"
 #include "rendering/modelRenderer.h"
 
@@ -16,7 +16,7 @@ public:
 
 	void Initialize();
 	void Run();
-	void SetData( CmfData* data );
+	void SetData( CmfContent* data );
 
 private:
     void OnMouseButton( int button, int action, int mods );
@@ -30,5 +30,5 @@ private:
 
     GLFWwindow* m_window { nullptr };
 
-    CmfData* m_cmfData { nullptr };
+    CmfContent* m_cmfContent{ nullptr };
 };

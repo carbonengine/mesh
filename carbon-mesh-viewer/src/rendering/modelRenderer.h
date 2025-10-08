@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rendering/renderer.h"
-#include "data/cmfdata.h"
+#include "data/cmfContent.h"
 #include "vulkan/buffer.h"
 #include "vulkan/shadercache.h"
 
@@ -16,7 +16,7 @@ public:
     VkResult SetPerFrameData( const Renderer* renderer );
 	VkResult RenderMesh( const Renderer* renderer, size_t meshIndex, size_t lodIndex );
 	void Release( const Renderer* m_renderer );
-    void SetData( const CmfData* data, const Renderer* renderer );
+	void SetData( const CmfContent* data, const Renderer* renderer );
     void SetShader( std::string shaderName, const Renderer* renderer );
 	void SetPolygonMode( VkPolygonMode mode, const Renderer* renderer );
 

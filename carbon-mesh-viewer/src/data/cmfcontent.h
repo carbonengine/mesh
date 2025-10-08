@@ -1,12 +1,12 @@
 #pragma once
 #include <cmf/cmf.h>
 
-class CmfData
+class CmfContent
 {
 public:
-	CmfData();
-	CmfData( std::vector<uint8_t> fileContent, std::string filePath );
-	~CmfData();
+	CmfContent();
+	CmfContent( std::vector<uint8_t> fileContent, std::string filePath );
+	~CmfContent();
 
     CcpMath::Sphere GetBoundingSphere() const;  
 
@@ -18,7 +18,7 @@ public:
 	std::string m_filePath;
 };
 
-namespace CmfDataLoader
+namespace CmfContentLoader
 {
-CmfData* LoadDataFromFile( const std::string& filePath );
+CmfContent* LoadContentFromFile( const std::string& filePath );
 };
