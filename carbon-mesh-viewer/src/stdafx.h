@@ -52,3 +52,13 @@ static VkResult ReportVulkanError( VkResult err, const char* file, int line, con
 			return result;               \
 		}                                \
 	}
+
+#define ON_ERROR_LOG_AND_RETURN( res, message ) \
+    {                                          \
+        VkResult result = res;                 \
+        if( result != VK_SUCCESS )             \
+        {                                      \
+            CCP_LOGERR( message );             \
+            return;                            \
+        }                                      \
+    }

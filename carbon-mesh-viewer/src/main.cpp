@@ -22,8 +22,8 @@ int main()
 #endif
 	Application app;
 
-	app.init();
-	app.run();
+	app.Initialize();
+	app.Run();
 
 	return EXIT_SUCCESS;
 }

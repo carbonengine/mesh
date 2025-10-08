@@ -1,25 +1,16 @@
 #include "application.h"
 
-#include "model/Model.h"
-
 Application::Application() :
-	m_window( nullptr ),
-	m_inputHandler( nullptr ),
+	m_modelRenderer( nullptr ),
 	m_renderer( nullptr )
 {
 }
 
 Application::~Application()
 {
-	if( m_window )
-	{
-		glfwDestroyWindow( m_window );
-	}
-	glfwTerminate();
 }
 
-
-void Application::init()
+void Application::Initialize()
 {
 	// Initialize GLFW
 	if( !glfwInit() )
@@ -27,10 +18,13 @@ void Application::init()
 		CCP_LOGERR( "Failed to initialize GLFW" );
 		return;
 	}
+
+	uint32_t width = 2048;
+	uint32_t height = 1024;
 	glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 
 	// Create a windowed mode window and its OpenGL context
-	m_window = glfwCreateWindow( 2048, 1024, "Carbon Mesh Viewer", nullptr, nullptr );
+	m_window = glfwCreateWindow( width, height, "Carbon Mesh Viewer", nullptr, nullptr );
 	if( !m_window )
 	{
 		CCP_LOGERR( "Failed to create GLFW window" );
@@ -43,89 +37,173 @@ void Application::init()
 
 	std::vector<const char*> extensions( glfwExtensions, glfwExtensions + glfwExtensionCount );
 
-	uint32_t width, height;
-	int w, h;
-	glfwGetWindowSize( m_window, &w, &h );
-	width = static_cast<uint32_t>( w );
-	height = static_cast<uint32_t>( h );
-
 	// Initialize renderer
 	m_renderer = new Renderer();
-	if( m_renderer->CreateInstance( extensions ) != VK_SUCCESS )
+	m_renderer->Resize( width, height );
+
+	if( m_renderer->CreateInstance( extensions ) )
 	{
 		CCP_LOGERR( "Failed to create Vulkan instance" );
 		return;
 	}
-	VkSurfaceKHR windowSurface;
-	if( glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, &windowSurface ) != VK_SUCCESS )
+    
+	if( glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() ) != VK_SUCCESS )
 	{
 		CCP_LOGERR( "Failed to create window surface" );
 		return;
 	}
-	m_renderer->init( width, height, windowSurface );
+
+	m_renderer->Initialize();
+
+    if( !m_renderer->IsValid() )
+	{
+        m_renderer = nullptr;
+		CCP_LOGERR( "Failed to initialize renderer" );
+        return;
+    }
 
 	glfwSetWindowUserPointer( m_window, this );
 
+    m_modelRenderer = new ModelRenderer();
+	m_modelRenderer->Initialize( m_renderer );
+	m_modelRenderer->SetShader( "test", m_renderer );
+
 	// initialize input handler
-	m_inputHandler = new InputHandler();
 	glfwSetKeyCallback( m_window, []( GLFWwindow* window, int key, int scancode, int action, int mods ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
-		if( app && app->m_inputHandler )
+		if( app )
 		{
-			app->m_inputHandler->KeyCallback( key, scancode, action, mods );
-		}
+			app->OnKey( key, scancode, action, mods );
+        }
 	} );
 
 	glfwSetMouseButtonCallback( m_window, []( GLFWwindow* window, int button, int action, int mods ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
-		if( app && app->m_inputHandler )
+		if( app )
 		{
-			if( button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS )
-			{
-				app->callUpdate = true;
-			}
-			else
-			{
-				app->callUpdate = false;
-			}
-			app->m_inputHandler->MouseButtonCallback( button, action, mods );
+			app->OnMouseButton( button, action, mods );
 		}
 	} );
 
 	glfwSetCursorPosCallback( m_window, []( GLFWwindow* window, double x, double y ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
-		if( app && app->m_inputHandler )
+		if( app )
 		{
-			app->m_inputHandler->MouseCallback( x, y );
+			app->OnMouseMove( x, y );
 		}
 	} );
 
 	glfwSetDropCallback( m_window, []( GLFWwindow* window, int count, const char** paths ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
-		if( app && app->m_inputHandler )
+		if( app )
 		{
-			app->m_renderer->SetModel( ModelLoader::LoadModelFromFile( paths[0] ) );
+            app->SetData( CmfDataLoader::LoadDataFromFile( paths[0] ) );
 		}
 	} );
+
+    glfwSetWindowSizeCallback( m_window, [] (GLFWwindow* window, int width, int height) {
+		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
+		if( app )
+		{
+			app->Resize( width, height );
+        }
+    });
+
+    glfwSetWindowMaximizeCallback( m_window, [] (GLFWwindow* window, int maximized) {
+		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
+		if( app )
+		{
+			int width, height;
+			glfwGetWindowSize( window, &width, &height );
+			app->Resize( width, height );
+		}
+    });
 }
 
-void Application::run()
+void Application::Run()
 {
-	if( !m_window || !m_renderer )
+	if( !m_renderer )
 	{
 		return;
 	}
 	float time = (float)glfwGetTime();
+
 	while( !glfwWindowShouldClose( m_window ) )
 	{
 		// Poll for and process events
 		glfwPollEvents();
 		float newTime = (float)glfwGetTime();
-		if( callUpdate )
+
+        if( m_renderer->BeginRender() != VK_SUCCESS )
 		{
-			m_renderer->Update( ( newTime - time ) * 0.001f );
+			CCP_LOGERR( "Failed to begin render" );
+            break;
+        }
+		if( m_cmfData )
+		{
+			m_modelRenderer->SetPerFrameData( m_renderer );
+
+			for( size_t meshIndex = 0; meshIndex < m_cmfData->m_cmfData->meshes.size(); meshIndex++ )
+			{
+				m_modelRenderer->RenderMesh( m_renderer, meshIndex, 0 );
+			}
 		}
-		m_renderer->RenderFrame();
+		
+		if( m_renderer->EndRender() != VK_SUCCESS )
+		{
+			CCP_LOGERR( "Failed to end  nder" );
+			break;
+        }
 		time = newTime;
+	}
+
+    
+	if( m_window )
+	{
+		glfwDestroyWindow( m_window );
+	}
+	glfwTerminate();
+}
+
+void Application::SetData( CmfData* data )
+{
+    if( !data )
+	{
+		CCP_LOGERR( "Invalid CMF data. Ignoring" );
+        return;
+    }
+	m_cmfData = data;
+	m_modelRenderer->SetData( m_cmfData, m_renderer );
+}
+
+void Application::OnMouseButton( int button, int action, int mods )
+{
+}
+
+void Application::OnMouseMove( double xpos, double ypos )
+{
+}
+
+void Application::OnKey( int key, int scancode, int action, int mods )
+{ 
+}
+
+void Application::Resize( int width, int height )
+{
+    if( width == 0 || height == 0 )
+    {
+        return;
+    }
+
+	if( m_renderer )
+	{
+		if( width != m_renderer->GetWidth() || height != m_renderer->GetHeight() )
+		{
+	        m_renderer->PreResize();
+			m_renderer->ReleaseSurface();
+		    glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
+
+		    m_renderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
+        }
 	}
 }

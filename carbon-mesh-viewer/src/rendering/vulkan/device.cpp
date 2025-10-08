@@ -25,7 +25,7 @@ Device::~Device()
 	vkDestroyDevice( m_logicalDevice, nullptr );
 }
 
-VkResult Device::init( VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR surface )
+VkResult Device::Initialize( VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR surface )
 {
 	RETURN_ERROR( pickPhysicalDevice( instance, allocator, surface ) );
 	RETURN_ERROR( createLogicalDevice( allocator ) );

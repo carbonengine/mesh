@@ -25,7 +25,7 @@ public:
 	Device();
 	~Device();
 
-	VkResult init( VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR surface );
+	VkResult Initialize( VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR surface );
 
 	SwapChainSupportDetails GetSwapchainSupportDetails() const;
 	QueueFamilyIndices GetQueueFamilyIndices() const;

@@ -2,6 +2,7 @@
 #include "device.h"
 #include <cmf/cmf.h>
 #include <vulkan/vulkan.h>
+#include "rendering/renderer.h"
 
 enum BufferType
 {
@@ -15,8 +16,8 @@ public:
 	Buffer();
 	~Buffer();
 
-	void Release( Device* device, VkAllocationCallbacks* allocator );
-	VkResult Initialize( Device* device, BufferType type, const uint8_t* data, uint32_t size, uint32_t offset, uint32_t stride, uint32_t index );
+	void Release( const Renderer* renderer );
+	VkResult Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride );
 
 	VkBuffer GetGpuBuffer() const
 	{
@@ -26,21 +27,17 @@ public:
 	bool IsValid() const;
 
 	void CopyFromStaging( VkCommandBuffer commandBuffer );
-	void ReleaseStaging( Device* device );
+	void ReleaseStaging( const Renderer* renderer );
 
 	uint32_t size() const;
 	uint32_t stride() const;
-	uint32_t offset() const;
-	uint32_t index() const;
 
 private:
-	VkResult CreateBuffer( Device* device, BufferType type, const uint8_t* data );
+	VkResult CreateBuffer( const Renderer* renderer, BufferType type, const uint8_t* data );
 	VkDeviceMemory m_memory;
 	VkBuffer m_buffer;
 	uint32_t m_size;
 	uint32_t m_stride;
-	uint32_t m_offset;
-	uint32_t m_index;
 
 	VkDeviceMemory m_stagingMemory;
 	VkBuffer m_stagingBuffer;
@@ -51,5 +48,5 @@ private:
 
 namespace BufferBuilder
 {
-Buffer* Build( Device* device, const uint8_t* data, BufferType type, uint32_t size, uint32_t offset, uint32_t stride, uint32_t index );
+Buffer* Build( const Renderer* renderer, const uint8_t* data, uint32_t size, BufferType type, uint32_t stride );
 }

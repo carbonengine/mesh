@@ -5,6 +5,7 @@
 #include <tuple>
 #include <vector>
 #include "device.h"
+#include "../renderer.h"
 
 class Shader
 {
@@ -13,8 +14,8 @@ public:
 	Shader( std::vector<uint32_t> code );
 	~Shader() = default;
 
-	VkResult Initialize( VkDevice device, VkShaderStageFlagBits shaderFlag );
-	VkResult Release( VkDevice device, VkAllocationCallbacks* allocator );
+	VkResult Initialize( const Renderer* renderer, VkShaderStageFlagBits shaderFlag );
+	VkResult Release( const Renderer* renderer );
 
 private:
 	VkShaderModule m_module;
@@ -30,15 +31,17 @@ public:
 	ShaderCache();
 	~ShaderCache() = default;
 
-	VkResult Release( VkDevice device, VkAllocationCallbacks* allocator );
-	VkResult Initialize( VkDevice device );
-	VkResult CreatePipeline( VkDevice device, std::string shaderName, VkPolygonMode mode, VkRenderPass renderPass, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline );
-	VkResult CreatePipelineLayout( VkDevice device, VkDescriptorSetLayout descriptorSetLayout );
+	VkResult Release( const Renderer* renderer );
+	VkResult Initialize( const Renderer* renderer );
+	VkResult CreatePipeline( const Renderer* renderer, std::string shaderName, VkPolygonMode mode, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline );
+	VkResult CreatePipelineLayout( const Renderer* renderer );
 
     VkPipelineLayout GetPipelineLayout() const;
+	VkDescriptorSetLayout GetDescriptorSetLayout() const;
 
 private:
 	static std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> s_cache;
 
     VkPipelineLayout m_pipelineLayout;
+    VkDescriptorSetLayout m_descriptorSetLayout;
 };

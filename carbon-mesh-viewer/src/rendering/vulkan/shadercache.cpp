@@ -16,24 +16,24 @@ Shader::Shader( std::vector<uint32_t> code ) :
 	m_code = code;
 }
 
-VkResult Shader::Release( VkDevice device, VkAllocationCallbacks* allocator )
+VkResult Shader::Release( const Renderer* renderer )
 {
 	if( m_module != VK_NULL_HANDLE )
 	{
-		vkDestroyShaderModule( device, m_module, allocator );
+		vkDestroyShaderModule( renderer->GetDevice()->GetLogicalDevice(), m_module, renderer->GetAllocator() );
 		m_module = VK_NULL_HANDLE;
 	}
 	return VK_SUCCESS;
 }
 
-VkResult Shader::Initialize( VkDevice device, VkShaderStageFlagBits shaderFlag )
+VkResult Shader::Initialize( const Renderer* renderer, VkShaderStageFlagBits shaderFlag )
 {
 	VkShaderModuleCreateInfo shaderModuleCI = {};
 	shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	shaderModuleCI.codeSize = m_code.size() * sizeof( uint32_t );
 	shaderModuleCI.pCode = m_code.data();
 
-	VkResult result = vkCreateShaderModule( device, &shaderModuleCI, nullptr, &m_module );
+	VkResult result = vkCreateShaderModule( renderer->GetDevice()->GetLogicalDevice(), &shaderModuleCI, renderer->GetAllocator(), &m_module );
 	if( result != VK_SUCCESS )
 	{
 		return result;
@@ -51,43 +51,64 @@ ShaderCache::ShaderCache()
 {
 }
 
-VkResult ShaderCache::Release( VkDevice logicalDevice, VkAllocationCallbacks* allocator )
+VkResult ShaderCache::Release( const Renderer* renderer )
 {
 	for( auto& [key, shaderTuple] : s_cache )
 	{
 		auto& [vertexOpt, fragmentOpt] = shaderTuple;
 		if( vertexOpt.has_value() )
 		{
-			vertexOpt->Release( logicalDevice, allocator );
+			vertexOpt.value().Release( renderer );
 		}
 		if( fragmentOpt.has_value() )
 		{
-			fragmentOpt->Release( logicalDevice, allocator );
+			fragmentOpt.value().Release( renderer );
 		}
 	}
+	auto logical = renderer->GetDevice()->GetLogicalDevice();
+	auto allocator = renderer->GetAllocator();
+	vkDestroyDescriptorSetLayout( logical, m_descriptorSetLayout, allocator );
+	vkDestroyPipelineLayout( logical, m_pipelineLayout, allocator );
 	return VK_SUCCESS;
 }
 
-VkResult ShaderCache::Initialize( VkDevice logicalDevice )
+VkResult ShaderCache::Initialize( const Renderer* renderer )
 {
 	for( auto& [key, shaderTuple] : s_cache )
 	{
 		auto& [vertexOpt, fragmentOpt] = shaderTuple;
 		if( vertexOpt.has_value() )
 		{
-			CR_RETURN( vertexOpt->Initialize( logicalDevice, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
+			CR_RETURN( vertexOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
 		}
 		if( fragmentOpt.has_value() )
 		{
-			CR_RETURN( fragmentOpt->Initialize( logicalDevice, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
+			CR_RETURN( fragmentOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
 		}
 	}
+	CreatePipelineLayout( renderer );
 	return VK_SUCCESS;
 }
 
-VkResult ShaderCache::CreatePipelineLayout( VkDevice device, VkDescriptorSetLayout descriptorSetLayout )
+VkResult ShaderCache::CreatePipelineLayout( const Renderer* renderer )
 {
-	std::vector<VkDescriptorSetLayout> setLayouts = { descriptorSetLayout };
+	auto device = renderer->GetDevice()->GetLogicalDevice();
+
+    // Binding 0: Uniform buffer (Vertex shader)
+	VkDescriptorSetLayoutBinding layoutBinding{};
+	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	layoutBinding.descriptorCount = 1;
+	layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layoutBinding.pImmutableSamplers = nullptr;
+
+	VkDescriptorSetLayoutCreateInfo descriptorLayoutCI{};
+	descriptorLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptorLayoutCI.pNext = nullptr;
+	descriptorLayoutCI.bindingCount = 1;
+	descriptorLayoutCI.pBindings = &layoutBinding;
+	RETURN_LOG_ERROR( vkCreateDescriptorSetLayout( device, &descriptorLayoutCI, nullptr, &m_descriptorSetLayout ), "Failed to create descriptor set layout" );
+
+	std::vector<VkDescriptorSetLayout> setLayouts = { m_descriptorSetLayout };
 	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
 	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>( setLayouts.size() );
@@ -98,7 +119,7 @@ VkResult ShaderCache::CreatePipelineLayout( VkDevice device, VkDescriptorSetLayo
 	return VK_SUCCESS;
 }
 
-VkResult ShaderCache::CreatePipeline( VkDevice logicalDevice, std::string shaderName, VkPolygonMode mode, VkRenderPass renderPass, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline )
+VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shaderName, VkPolygonMode mode, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline )
 {
 	auto it = s_cache.find( shaderName );
 	if( it == s_cache.end() )
@@ -180,7 +201,7 @@ VkResult ShaderCache::CreatePipeline( VkDevice logicalDevice, std::string shader
 	// The layout used for this pipeline (can be shared among multiple pipelines using the same layout)
 	pipelineCI.layout = m_pipelineLayout;
 	// Renderpass this pipeline is attached to
-	pipelineCI.renderPass = renderPass;
+	pipelineCI.renderPass = renderer->GetRenderPass();
 
 	// No multisampling
 	VkPipelineMultisampleStateCreateInfo multisampleStateCI{};
@@ -204,13 +225,12 @@ VkResult ShaderCache::CreatePipeline( VkDevice logicalDevice, std::string shader
 	pipelineCI.pViewportState = &viewportStateCI;
 	pipelineCI.pDepthStencilState = &depthStencilStateCI;
 	pipelineCI.pDynamicState = &dynamicStateCI;
-	VkPipeline pipeline = { VK_NULL_HANDLE };
 
 	static VkPipelineCache pipelineCache;
 
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo;
 	pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-	CR_RETURN( vkCreateGraphicsPipelines( logicalDevice, pipelineCache, 1, &pipelineCI, nullptr, outPipeline ) );
+	CR_RETURN( vkCreateGraphicsPipelines( renderer->GetDevice()->GetLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, outPipeline ) );
 
 	return VK_SUCCESS;
 }
@@ -218,4 +238,9 @@ VkResult ShaderCache::CreatePipeline( VkDevice logicalDevice, std::string shader
 VkPipelineLayout ShaderCache::GetPipelineLayout() const
 {
 	return m_pipelineLayout;
+}
+
+VkDescriptorSetLayout ShaderCache::GetDescriptorSetLayout() const
+{
+    return m_descriptorSetLayout;
 }

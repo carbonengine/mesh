@@ -87,7 +87,7 @@ Texture* Texture::Create( Device* device, uint32_t width, uint32_t height, VkFor
 Texture* Texture::CreateFromImage( Device* device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags )
 {
 	Texture* texture = new Texture();
-	texture->m_image = image;
+	//texture->m_image = image;
 
 	auto logicalDevice = device->GetLogicalDevice();
 	VkImageViewCreateInfo viewInfo{};

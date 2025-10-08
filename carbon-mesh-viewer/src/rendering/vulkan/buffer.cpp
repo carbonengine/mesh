@@ -1,14 +1,15 @@
 #include "buffer.h"
+#include <rendering/renderer.h>
 
 
 namespace BufferBuilder
 {
 
-Buffer* Build( Device* device, const uint8_t* data, BufferType type, uint32_t size, uint32_t offset, uint32_t stride, uint32_t index )
+Buffer* Build( const Renderer* renderer, const uint8_t* data, uint32_t size, BufferType type, uint32_t stride )
 {
 	Buffer* buffer = new Buffer();
 
-	auto result = buffer->Initialize( device, type, data, size, offset, stride, index );
+	auto result = buffer->Initialize( renderer, type, data, size, stride );
 	if( result != VK_SUCCESS )
 	{
 		delete buffer;
@@ -26,9 +27,7 @@ Buffer::Buffer() :
 	m_stagingBuffer( VK_NULL_HANDLE ),
 	m_stagingMemory( VK_NULL_HANDLE ),
 	m_size( 0 ),
-	m_stride( 0 ),
-	m_offset( 0 ),
-	m_index( 0 )
+	m_stride( 0 )
 {
 }
 
@@ -36,19 +35,17 @@ Buffer::~Buffer()
 {
 }
 
-VkResult Buffer::Initialize( Device* device, BufferType type, const uint8_t* data, uint32_t size, uint32_t offset, uint32_t stride, uint32_t index )
+VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride )
 {
 	m_size = size;
 	m_stride = stride;
-	m_offset = offset;
-	m_index = index;
 
 	VkBufferUsageFlags usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	if( type == BufferType::BufferTypeIndex )
 	{
 		usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
-	auto result = CreateBuffer( device, type, data );
+	auto result = CreateBuffer( renderer, type, data );
 	if( result != VK_SUCCESS )
 	{
 		CCP_LOGERR( "Failed to create buffer." );
@@ -58,11 +55,14 @@ VkResult Buffer::Initialize( Device* device, BufferType type, const uint8_t* dat
 	return VK_SUCCESS;
 }
 
-void Buffer::Release( Device* device, VkAllocationCallbacks* allocator )
+void Buffer::Release( const Renderer* renderer )
 {
-	ReleaseStaging( device );
+	ReleaseStaging( renderer );
 
+	auto device = renderer->GetDevice();
 	auto logicalDevice = device->GetLogicalDevice();
+	auto allocator = renderer->GetAllocator();
+
 	if( m_buffer != VK_NULL_HANDLE )
 	{
 		vkDestroyBuffer( logicalDevice, m_buffer, allocator );
@@ -78,12 +78,13 @@ bool Buffer::IsValid() const
 	return m_buffer != VK_NULL_HANDLE && m_memory != VK_NULL_HANDLE && m_stagingBuffer == VK_NULL_HANDLE && m_stagingMemory == VK_NULL_HANDLE;
 }
 
-VkResult Buffer::CreateBuffer( Device* device, BufferType type, const uint8_t* data )
+VkResult Buffer::CreateBuffer( const Renderer* renderer, BufferType type, const uint8_t* data )
 {
+	auto device = renderer->GetDevice();
 	auto logicalDevice = device->GetLogicalDevice();
 
 	void* mappedData;
-	// most of this vertex code is based on https://github.com/SaschaWillems/Vulkan
+
 	VkMemoryAllocateInfo memAlloc{};
 	memAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	VkMemoryRequirements memReqs;
@@ -104,11 +105,10 @@ VkResult Buffer::CreateBuffer( Device* device, BufferType type, const uint8_t* d
 
 	// Map and copy
 	CR_RETURN( vkMapMemory( logicalDevice, m_stagingMemory, 0, memAlloc.allocationSize, 0, &mappedData ) );
-	memcpy( mappedData, data + m_offset, m_size );
+	memcpy( mappedData, data, m_size );
 	vkUnmapMemory( logicalDevice, m_stagingMemory );
 	CR_RETURN( vkBindBufferMemory( logicalDevice, m_stagingBuffer, m_stagingMemory, 0 ) );
 
-	// Create a device local buffer to which the (host local) vertex data will be copied and which will be used for rendering
 	if( type == BufferType::BufferTypeVertex )
 	{
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -140,23 +140,20 @@ void Buffer::CopyFromStaging( VkCommandBuffer commandBuffer )
 	vkCmdCopyBuffer( commandBuffer, m_stagingBuffer, m_buffer, 1, &copyRegion );
 }
 
-void Buffer::ReleaseStaging( Device* device )
+void Buffer::ReleaseStaging( const Renderer* renderer )
 {
+	auto device = renderer->GetDevice();
+	auto logicalDevice = device->GetLogicalDevice();
 	if( m_stagingBuffer != VK_NULL_HANDLE )
 	{
-		vkDestroyBuffer( device->GetLogicalDevice(), m_stagingBuffer, nullptr );
+		vkDestroyBuffer( logicalDevice, m_stagingBuffer, nullptr );
 		m_stagingBuffer = VK_NULL_HANDLE;
 	}
 	if( m_stagingMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( device->GetLogicalDevice(), m_stagingMemory, nullptr );
+		vkFreeMemory( logicalDevice, m_stagingMemory, nullptr );
 		m_stagingMemory = VK_NULL_HANDLE;
 	}
-}
-
-uint32_t Buffer::size() const
-{
-	return m_size;
 }
 
 uint32_t Buffer::stride() const
@@ -164,12 +161,7 @@ uint32_t Buffer::stride() const
 	return m_stride;
 }
 
-uint32_t Buffer::offset() const
+uint32_t Buffer::size() const
 {
-	return m_offset;
-}
-
-uint32_t Buffer::index() const
-{
-	return m_index;
+    return m_size;
 }

@@ -1,7 +1,9 @@
 #pragma once
 
-#include "input/inputhandler.h"
-#include "vulkan/renderer.h"
+#include "data/cmfdata.h"
+#include "rendering/renderer.h"
+#include "rendering/modelRenderer.h"
+
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -12,15 +14,21 @@ public:
 	Application();
 	~Application();
 
-	void init();
-	void run();
+	void Initialize();
+	void Run();
+	void SetData( CmfData* data );
 
 private:
-	GLFWwindow* m_window;
-	InputHandler* m_inputHandler;
-	Renderer* m_renderer;
+    void OnMouseButton( int button, int action, int mods );
+	void OnMouseMove( double xpos, double ypos );
+	void OnKey( int key, int scancode, int action, int mods );
 
-    Model* m_model;
+    void Resize( int width, int height );
 
-	bool callUpdate = false;
+    ModelRenderer* m_modelRenderer { nullptr };
+	Renderer* m_renderer { nullptr };
+
+    GLFWwindow* m_window { nullptr };
+
+    CmfData* m_cmfData { nullptr };
 };
