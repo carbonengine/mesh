@@ -5,6 +5,7 @@
 #include "vulkan/buffer.h"
 #include "vulkan/shadercache.h"
 
+// Handles rendering a cmf model
 class ModelRenderer
 {
 public:

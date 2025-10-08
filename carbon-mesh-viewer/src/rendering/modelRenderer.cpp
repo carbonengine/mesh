@@ -1,9 +1,7 @@
 #include "modelRenderer.h"
 #include "vulkan/vulkanenums.h"
 
-ModelRenderer::ModelRenderer() :
-	m_pipelineLayout( VK_NULL_HANDLE ),
-	m_shaderName( "" )
+ModelRenderer::ModelRenderer()
 {
 }
 

@@ -25,6 +25,7 @@ private:
 	friend class ShaderCache;
 };
 
+// Shader cache which holds on to shader modules and creates pipelines
 class ShaderCache
 {
 public:

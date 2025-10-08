@@ -1,7 +1,6 @@
 #pragma once
 #include "device.h"
 
-
 // Handles creating an destroying a textures image, view and memory
 class Texture
 {

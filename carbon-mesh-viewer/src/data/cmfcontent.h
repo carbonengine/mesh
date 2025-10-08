@@ -1,6 +1,9 @@
 #pragma once
 #include <cmf/cmf.h>
 
+
+// Simple owner class for the cmf data
+// only holds on to the content and provides access to the header and data and some utility functions
 class CmfContent
 {
 public:
@@ -10,12 +13,12 @@ public:
 
 	CcpMath::Sphere GetBoundingSphere() const;
 
-	cmf::Header* m_cmfHeader;
-	cmf::Data* m_cmfData;
+	cmf::Header* m_cmfHeader{ nullptr };
+	cmf::Data* m_cmfData{ nullptr };
 
 	std::vector<uint8_t> m_fileContent;
 
-	std::string m_filePath;
+	std::string m_filePath{ "" };
 };
 
 namespace CmfContentLoader

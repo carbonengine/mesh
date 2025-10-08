@@ -10,6 +10,9 @@ enum BufferType
 	BufferTypeIndex
 };
 
+
+// Simple buffer object.
+// Holds on to the memory and buffer
 class Buffer
 {
 public:

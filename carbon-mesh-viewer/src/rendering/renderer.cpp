@@ -32,23 +32,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFl
 }
 }
 
-Renderer::Renderer() :
-	m_instance( VK_NULL_HANDLE ),
-	m_surface( VK_NULL_HANDLE ),
-	m_swapchain( VK_NULL_HANDLE ),
-	m_renderPass( VK_NULL_HANDLE ),
-	m_device( nullptr ),
-	m_allocator( VK_NULL_HANDLE ),
-	m_descriptorPool( VK_NULL_HANDLE ),
-	m_currentFrame( 0 ),
-	m_currentSemaphore( 0 ),
-	m_depthTarget( nullptr ),
-	m_commandPool( VK_NULL_HANDLE ),
-	m_pipeline( VK_NULL_HANDLE ),
-	m_valid( false ),
-	m_imageIndex( 0 ),
-	m_width( 0 ),
-	m_height( 0 )
+Renderer::Renderer() 
 {
 }
 
@@ -57,10 +41,6 @@ Renderer::~Renderer()
 	if( m_instance != VK_NULL_HANDLE )
 	{
 		VkDevice logicalDevice = m_device->GetLogicalDevice();
-		if( m_pipeline != VK_NULL_HANDLE )
-		{
-			vkDestroyPipeline( logicalDevice, m_pipeline, m_allocator );
-		}
 		if( m_renderPass != VK_NULL_HANDLE )
 		{
 			vkDestroyRenderPass( logicalDevice, m_renderPass, m_allocator );

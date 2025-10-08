@@ -3,6 +3,7 @@
 #include "texture.h"
 
 
+// Swapchain class which handles creating and destroying the swapchain and its related resources
 class Swapchain
 {
 public:

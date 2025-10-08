@@ -19,6 +19,7 @@ struct SwapChainSupportDetails
 	std::vector<VkPresentModeKHR> presentModes;
 };
 
+// Device class which holds on to both logical and physical devices and related functionality
 class Device
 {
 public:

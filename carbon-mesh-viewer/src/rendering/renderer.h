@@ -11,7 +11,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSev
 static const int MAX_FRAMES_IN_FLIGHT = 2;
 }
 
-// handles all vulkan related tasks
+// Handles the boilerplate vulkan setup and begin/end of rendering
 class Renderer
 {
 public:
@@ -52,18 +52,18 @@ private:
 	VkResult CreateSyncObjects();
 	VkResult CreateDescriptorPool();
 
-	VkInstance m_instance;
-	VkSurfaceKHR m_surface;
-	VkRenderPass m_renderPass;
-	Swapchain* m_swapchain;
-	Device* m_device;
-	VkAllocationCallbacks* m_allocator;
-	VkDescriptorPool m_descriptorPool;
-	uint32_t m_currentFrame;
-	uint32_t m_currentSemaphore;
+	VkInstance m_instance{ VK_NULL_HANDLE };
+	VkSurfaceKHR m_surface{ VK_NULL_HANDLE };
+	VkRenderPass m_renderPass{ VK_NULL_HANDLE };
+	Swapchain* m_swapchain{ nullptr };
+	Device* m_device{ nullptr };
+	VkAllocationCallbacks* m_allocator{ nullptr };
+	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
+	uint32_t m_currentFrame{ 0 };
+	uint32_t m_currentSemaphore{ 0 };
 
-	Texture* m_depthTarget;
-	VkCommandPool m_commandPool;
+	Texture* m_depthTarget{ nullptr };
+	VkCommandPool m_commandPool{ VK_NULL_HANDLE };
 
 	std::vector<VkCommandBuffer> m_commandBuffers;
 
@@ -72,11 +72,8 @@ private:
 	std::vector<VkSemaphore> m_renderFinishedSemaphores;
 	std::vector<VkFence> m_inFlightFences;
 
-
-	uint32_t m_width;
-	uint32_t m_height;
-	float m_rot;
-	VkPipeline m_pipeline;
+	uint32_t m_width{ 0 };
+	uint32_t m_height{ 0 };
 
 	bool m_valid;
 };

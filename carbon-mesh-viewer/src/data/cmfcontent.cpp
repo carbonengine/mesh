@@ -7,7 +7,7 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 {
 	CCP_LOGNOTICE( "Loading cmf file: %s", filePath.c_str() );
 
-	// read the file and cast it to m_cmfModel
+	// read the file and create a CmfContent object
 	const char* filename = filePath.c_str();
 	const char* mode = "rb";
 
