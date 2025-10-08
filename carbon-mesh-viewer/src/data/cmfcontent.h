@@ -8,7 +8,7 @@ public:
 	CmfContent( std::vector<uint8_t> fileContent, std::string filePath );
 	~CmfContent();
 
-    CcpMath::Sphere GetBoundingSphere() const;  
+	CcpMath::Sphere GetBoundingSphere() const;
 
 	cmf::Header* m_cmfHeader;
 	cmf::Data* m_cmfData;

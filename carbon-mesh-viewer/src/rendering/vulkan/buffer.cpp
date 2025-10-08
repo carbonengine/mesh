@@ -163,5 +163,5 @@ uint32_t Buffer::stride() const
 
 uint32_t Buffer::size() const
 {
-    return m_size;
+	return m_size;
 }

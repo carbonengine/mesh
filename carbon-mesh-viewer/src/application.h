@@ -19,16 +19,16 @@ public:
 	void SetData( CmfContent* data );
 
 private:
-    void OnMouseButton( int button, int action, int mods );
+	void OnMouseButton( int button, int action, int mods );
 	void OnMouseMove( double xpos, double ypos );
 	void OnKey( int key, int scancode, int action, int mods );
 
-    void Resize( int width, int height );
+	void Resize( int width, int height );
 
-    ModelRenderer* m_modelRenderer { nullptr };
-	Renderer* m_renderer { nullptr };
+	ModelRenderer* m_modelRenderer{ nullptr };
+	Renderer* m_renderer{ nullptr };
 
-    GLFWwindow* m_window { nullptr };
+	GLFWwindow* m_window{ nullptr };
 
-    CmfContent* m_cmfContent{ nullptr };
+	CmfContent* m_cmfContent{ nullptr };
 };

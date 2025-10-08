@@ -20,33 +20,32 @@ public:
 
 	VkResult CreateInstance( std::vector<const char*> extensions );
 
-    void Initialize( );
-	void PreResize( );
+	void Initialize();
+	void PreResize();
 	VkResult Resize( uint32_t width, uint32_t height );
 	void ReleaseSurface();
 
-    VkResult BeginRender();
+	VkResult BeginRender();
 	VkResult EndRender();
 
-    bool IsValid() const;
+	bool IsValid() const;
 
 	VkInstance GetVulkanInstance() const;
 	VkRenderPass GetRenderPass() const;
 	VkCommandBuffer GetCurrentCommandBuffer() const;
 	VkAllocationCallbacks* GetAllocator() const;
-    Device* GetDevice() const;
-    VkCommandPool GetCommandPool() const;
-    uint32_t GetCurrentFrame() const;
+	Device* GetDevice() const;
+	VkCommandPool GetCommandPool() const;
+	uint32_t GetCurrentFrame() const;
 	VkDescriptorPool GetDescriptorPool() const;
 
-    uint32_t GetWidth() const;
+	uint32_t GetWidth() const;
 	uint32_t GetHeight() const;
 
-    VkSurfaceKHR* GetSurface();
+	VkSurfaceKHR* GetSurface();
 
 private:
-
-    uint32_t m_imageIndex;
+	uint32_t m_imageIndex;
 
 	VkResult CreateRenderPass();
 	VkResult CreateCommandBuffers();
@@ -77,8 +76,7 @@ private:
 	uint32_t m_width;
 	uint32_t m_height;
 	float m_rot;
-    VkPipeline m_pipeline;
+	VkPipeline m_pipeline;
 
-    bool m_valid;
-
+	bool m_valid;
 };

@@ -5,34 +5,35 @@
 #include <stdexcept>
 #include "vulkan/shadercache.h"
 
-namespace RenderUtils {
-    VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData )
-    {
-	    switch( messageSeverity )
-	    {
-	    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-		    CCP_LOGNOTICE( "[vulkan] validation layer: VERBOSE: %s", pCallbackData->pMessage );
-		    break;
-	    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-		    CCP_LOGNOTICE( "[vulkan] validation layer: INFO: %s", pCallbackData->pMessage );
-		    break;
-	    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-		    CCP_LOGWARN( "[vulkan] validation layer: WARNING: %s", pCallbackData->pMessage );
-		    break;
-	    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-		    CCP_LOGERR( "[vulkan] validation layer: ERROR: %s", pCallbackData->pMessage );
-		    break;
-	    default:
-		    CCP_LOGERR( "[vulkan] validation layer: UNKNOWN: %s", pCallbackData->pMessage );
-		    break;
-	    }
+namespace RenderUtils
+{
+VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData )
+{
+	switch( messageSeverity )
+	{
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+		CCP_LOGNOTICE( "[vulkan] validation layer: VERBOSE: %s", pCallbackData->pMessage );
+		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+		CCP_LOGNOTICE( "[vulkan] validation layer: INFO: %s", pCallbackData->pMessage );
+		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+		CCP_LOGWARN( "[vulkan] validation layer: WARNING: %s", pCallbackData->pMessage );
+		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+		CCP_LOGERR( "[vulkan] validation layer: ERROR: %s", pCallbackData->pMessage );
+		break;
+	default:
+		CCP_LOGERR( "[vulkan] validation layer: UNKNOWN: %s", pCallbackData->pMessage );
+		break;
+	}
 
-	    return VK_FALSE;
-    }
+	return VK_FALSE;
+}
 }
 
-Renderer::Renderer() : 
-    m_instance( VK_NULL_HANDLE ),
+Renderer::Renderer() :
+	m_instance( VK_NULL_HANDLE ),
 	m_surface( VK_NULL_HANDLE ),
 	m_swapchain( VK_NULL_HANDLE ),
 	m_renderPass( VK_NULL_HANDLE ),
@@ -51,35 +52,35 @@ Renderer::Renderer() :
 {
 }
 
-Renderer::~Renderer() 
-{	
-    if( m_instance != VK_NULL_HANDLE )
-    {
+Renderer::~Renderer()
+{
+	if( m_instance != VK_NULL_HANDLE )
+	{
 		VkDevice logicalDevice = m_device->GetLogicalDevice();
-        if( m_pipeline != VK_NULL_HANDLE )
-        {
+		if( m_pipeline != VK_NULL_HANDLE )
+		{
 			vkDestroyPipeline( logicalDevice, m_pipeline, m_allocator );
-        }
-        if( m_renderPass != VK_NULL_HANDLE )
-        {
+		}
+		if( m_renderPass != VK_NULL_HANDLE )
+		{
 			vkDestroyRenderPass( logicalDevice, m_renderPass, m_allocator );
-        }
-        if( m_descriptorPool != VK_NULL_HANDLE )
-        {
+		}
+		if( m_descriptorPool != VK_NULL_HANDLE )
+		{
 			vkDestroyDescriptorPool( logicalDevice, m_descriptorPool, m_allocator );
-        }
+		}
 
-        if( m_depthTarget )
-        {
-            m_depthTarget->Release( m_device );
-            delete m_depthTarget;
-            m_depthTarget = nullptr;
-        }
-        if( m_swapchain )
-        {
-            m_swapchain->Release( m_device, m_allocator );
-            delete m_swapchain;
-            m_swapchain = nullptr;
+		if( m_depthTarget )
+		{
+			m_depthTarget->Release( m_device );
+			delete m_depthTarget;
+			m_depthTarget = nullptr;
+		}
+		if( m_swapchain )
+		{
+			m_swapchain->Release( m_device, m_allocator );
+			delete m_swapchain;
+			m_swapchain = nullptr;
 		}
 
 		vkDestroyCommandPool( logicalDevice, m_commandPool, m_allocator );
@@ -90,7 +91,7 @@ Renderer::~Renderer()
 		for( auto& semaphore : m_imageAvailableSemaphores )
 		{
 			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
-        }
+		}
 		for( uint32_t i = 0; i < RenderUtils::MAX_FRAMES_IN_FLIGHT; ++i )
 		{
 			vkDestroyFence( logicalDevice, m_inFlightFences[i], m_allocator );
@@ -99,13 +100,12 @@ Renderer::~Renderer()
 		}
 		vkDestroyInstance( m_instance, m_allocator );
 	}
-
 }
 
 bool Renderer::IsValid() const
 {
-    return m_valid;
-}   
+	return m_valid;
+}
 
 VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 {
@@ -151,7 +151,7 @@ VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 	return VK_SUCCESS;
 }
 
-void Renderer::Initialize( )
+void Renderer::Initialize()
 {
 	// Initialize device
 	m_device = new Device();
@@ -168,10 +168,10 @@ void Renderer::Initialize( )
 	ON_ERROR_LOG_AND_RETURN( CreateSyncObjects(), "Could not create sync objects" );
 	ON_ERROR_LOG_AND_RETURN( CreateDescriptorPool(), "Could not cretae descriptor pool" );
 
-    m_valid = true;
+	m_valid = true;
 }
 
-void Renderer::PreResize( )
+void Renderer::PreResize()
 {
 	vkDeviceWaitIdle( m_device->GetLogicalDevice() );
 	if( m_depthTarget )
@@ -186,35 +186,34 @@ void Renderer::PreResize( )
 		delete m_swapchain;
 		m_swapchain = nullptr;
 	}
-  
 }
-	
+
 void Renderer::ReleaseSurface()
 {
 	vkDestroySurfaceKHR( m_instance, m_surface, m_allocator );
 }
 
-	
+
 VkResult Renderer::Resize( uint32_t width, uint32_t height )
 {
-    if( width == 0 || height == 0 )
-    {
-        return VK_SUCCESS;
-    }
-    m_width = width;
-    m_height = height;
+	if( width == 0 || height == 0 )
+	{
+		return VK_SUCCESS;
+	}
+	m_width = width;
+	m_height = height;
 	if( m_device == nullptr )
 	{
 		return VK_SUCCESS;
-    }
+	}
 	m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT );
 
-    m_swapchain = new Swapchain();
-    RETURN_ERROR( m_swapchain->Initialize( m_device, m_surface, m_allocator, m_width, m_height ) );
-    RETURN_ERROR( CreateRenderPass() );
-    RETURN_ERROR( m_swapchain->CreateFrameBuffers(m_device, m_renderPass, m_depthTarget) );
+	m_swapchain = new Swapchain();
+	RETURN_ERROR( m_swapchain->Initialize( m_device, m_surface, m_allocator, m_width, m_height ) );
+	RETURN_ERROR( CreateRenderPass() );
+	RETURN_ERROR( m_swapchain->CreateFrameBuffers( m_device, m_renderPass, m_depthTarget ) );
 
-    return VK_SUCCESS;
+	return VK_SUCCESS;
 }
 
 
@@ -237,15 +236,15 @@ VkResult Renderer::BeginRender()
 		//throw std::runtime_error( "Swap chain is out of date!" );
 		Resize( m_width, m_height );
 		return result;
-   	}
+	}
 	else if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR )
 	{
 		throw std::runtime_error( "failed to acquire swap chain image!" );
 	}
 
-    auto commandBuffer = m_commandBuffers[m_currentFrame];
+	auto commandBuffer = m_commandBuffers[m_currentFrame];
 
-    CR_RETURN( vkResetCommandBuffer( commandBuffer, /*VkCommandBufferResetFlagBits*/ 0 ) );
+	CR_RETURN( vkResetCommandBuffer( commandBuffer, /*VkCommandBufferResetFlagBits*/ 0 ) );
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -329,7 +328,7 @@ VkResult Renderer::EndRender()
 	if( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ) // || framebufferResized )
 	{
 		PreResize();
-		Resize(m_width, m_height);
+		Resize( m_width, m_height );
 		return VK_SUCCESS;
 	}
 	else if( result != VK_SUCCESS )
@@ -396,8 +395,8 @@ VkResult Renderer::CreateRenderPass()
 	renderPassInfo.dependencyCount = 1;
 	renderPassInfo.pDependencies = &dependency;
 
-	RETURN_LOG_ERROR( vkCreateRenderPass( m_device->GetLogicalDevice(), &renderPassInfo, nullptr, &m_renderPass ), "Failed to create render pass");
-    return VK_SUCCESS;
+	RETURN_LOG_ERROR( vkCreateRenderPass( m_device->GetLogicalDevice(), &renderPassInfo, nullptr, &m_renderPass ), "Failed to create render pass" );
+	return VK_SUCCESS;
 }
 
 VkResult Renderer::CreateCommandBuffers()
@@ -410,14 +409,14 @@ VkResult Renderer::CreateCommandBuffers()
 
 	CR_RETURN( vkCreateCommandPool( m_device->GetLogicalDevice(), &poolInfo, nullptr, &m_commandPool ) );
 
-    m_commandBuffers = std::vector<VkCommandBuffer>( RenderUtils::MAX_FRAMES_IN_FLIGHT );
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = m_commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t)m_commandBuffers.size();
-    RETURN_LOG_ERROR( vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &allocInfo, m_commandBuffers.data() ), "Failed to allocate command buffers" );
-    return VK_SUCCESS;
+	m_commandBuffers = std::vector<VkCommandBuffer>( RenderUtils::MAX_FRAMES_IN_FLIGHT );
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = m_commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = (uint32_t)m_commandBuffers.size();
+	RETURN_LOG_ERROR( vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &allocInfo, m_commandBuffers.data() ), "Failed to allocate command buffers" );
+	return VK_SUCCESS;
 }
 
 VkResult Renderer::CreateDescriptorPool()
@@ -446,28 +445,28 @@ VkResult Renderer::CreateSyncObjects()
 	m_imageAvailableSemaphores.resize( images );
 	m_renderFinishedSemaphores.resize( images );
 	m_inFlightFences.resize( images );
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	VkSemaphoreCreateInfo semaphoreInfo{};
+	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 	for( size_t i = 0; i < images; i++ )
-    {
-        RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i] ), "Failed to create semaphores for a frame" );
-        RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i] ), "Failed to create semaphores for a frame" );
-        RETURN_LOG_ERROR( vkCreateFence( m_device->GetLogicalDevice(), &fenceInfo, nullptr, &m_inFlightFences[i] ), "Failed to create fence for a frame" );
-    }
-    return VK_SUCCESS;
+	{
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateFence( m_device->GetLogicalDevice(), &fenceInfo, nullptr, &m_inFlightFences[i] ), "Failed to create fence for a frame" );
+	}
+	return VK_SUCCESS;
 }
 
 Device* Renderer::GetDevice() const
 {
-    return m_device;
+	return m_device;
 }
 
 VkAllocationCallbacks* Renderer::GetAllocator() const
 {
-    return m_allocator;
+	return m_allocator;
 }
 
 VkInstance Renderer::GetVulkanInstance() const
@@ -487,30 +486,30 @@ VkCommandPool Renderer::GetCommandPool() const
 
 VkRenderPass Renderer::GetRenderPass() const
 {
-    return m_renderPass;
+	return m_renderPass;
 }
 
 uint32_t Renderer::GetCurrentFrame() const
 {
-    return m_currentFrame;
+	return m_currentFrame;
 }
 
 VkDescriptorPool Renderer::GetDescriptorPool() const
 {
-    return m_descriptorPool;
+	return m_descriptorPool;
 }
 
 uint32_t Renderer::GetWidth() const
 {
-    return m_width;
+	return m_width;
 }
 
 uint32_t Renderer::GetHeight() const
 {
-    return m_height;
+	return m_height;
 }
 
 VkSurfaceKHR* Renderer::GetSurface()
 {
-    return &m_surface;
+	return &m_surface;
 }

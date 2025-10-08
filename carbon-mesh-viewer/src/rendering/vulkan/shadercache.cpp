@@ -1,11 +1,11 @@
 #include "shadercache.h"
 
 std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> ShaderCache::s_cache = {
-	#include "generatedShaderCache.h"
+#include "generatedShaderCache.h"
 };
 
-Shader::Shader() : 
-    m_module( VK_NULL_HANDLE)
+Shader::Shader() :
+	m_module( VK_NULL_HANDLE )
 {
 	CCP_LOGERR( "Default Shader constructor called. This is likely an error." );
 }
@@ -94,7 +94,7 @@ VkResult ShaderCache::CreatePipelineLayout( const Renderer* renderer )
 {
 	auto device = renderer->GetDevice()->GetLogicalDevice();
 
-    // Binding 0: Uniform buffer (Vertex shader)
+	// Binding 0: Uniform buffer (Vertex shader)
 	VkDescriptorSetLayoutBinding layoutBinding{};
 	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	layoutBinding.descriptorCount = 1;
@@ -242,5 +242,5 @@ VkPipelineLayout ShaderCache::GetPipelineLayout() const
 
 VkDescriptorSetLayout ShaderCache::GetDescriptorSetLayout() const
 {
-    return m_descriptorSetLayout;
+	return m_descriptorSetLayout;
 }

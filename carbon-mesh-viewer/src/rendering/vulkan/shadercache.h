@@ -22,7 +22,7 @@ private:
 	VkPipelineShaderStageCreateInfo m_stageInfo;
 	std::vector<uint32_t> m_code;
 
-    friend class ShaderCache;
+	friend class ShaderCache;
 };
 
 class ShaderCache
@@ -36,12 +36,12 @@ public:
 	VkResult CreatePipeline( const Renderer* renderer, std::string shaderName, VkPolygonMode mode, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline );
 	VkResult CreatePipelineLayout( const Renderer* renderer );
 
-    VkPipelineLayout GetPipelineLayout() const;
+	VkPipelineLayout GetPipelineLayout() const;
 	VkDescriptorSetLayout GetDescriptorSetLayout() const;
 
 private:
 	static std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> s_cache;
 
-    VkPipelineLayout m_pipelineLayout;
-    VkDescriptorSetLayout m_descriptorSetLayout;
+	VkPipelineLayout m_pipelineLayout;
+	VkDescriptorSetLayout m_descriptorSetLayout;
 };

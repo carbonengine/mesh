@@ -46,7 +46,7 @@ void Application::Initialize()
 		CCP_LOGERR( "Failed to create Vulkan instance" );
 		return;
 	}
-    
+
 	if( glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() ) != VK_SUCCESS )
 	{
 		CCP_LOGERR( "Failed to create window surface" );
@@ -55,16 +55,16 @@ void Application::Initialize()
 
 	m_renderer->Initialize();
 
-    if( !m_renderer->IsValid() )
+	if( !m_renderer->IsValid() )
 	{
-        m_renderer = nullptr;
+		m_renderer = nullptr;
 		CCP_LOGERR( "Failed to initialize renderer" );
-        return;
-    }
+		return;
+	}
 
 	glfwSetWindowUserPointer( m_window, this );
 
-    m_modelRenderer = new ModelRenderer();
+	m_modelRenderer = new ModelRenderer();
 	m_modelRenderer->Initialize( m_renderer );
 	m_modelRenderer->SetShader( "test", m_renderer );
 
@@ -74,7 +74,7 @@ void Application::Initialize()
 		if( app )
 		{
 			app->OnKey( key, scancode, action, mods );
-        }
+		}
 	} );
 
 	glfwSetMouseButtonCallback( m_window, []( GLFWwindow* window, int button, int action, int mods ) {
@@ -97,19 +97,19 @@ void Application::Initialize()
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
-            app->SetData( CmfContentLoader::LoadContentFromFile( paths[0] ) );
+			app->SetData( CmfContentLoader::LoadContentFromFile( paths[0] ) );
 		}
 	} );
 
-    glfwSetWindowSizeCallback( m_window, [] (GLFWwindow* window, int width, int height) {
+	glfwSetWindowSizeCallback( m_window, []( GLFWwindow* window, int width, int height ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
 			app->Resize( width, height );
-        }
-    });
+		}
+	} );
 
-    glfwSetWindowMaximizeCallback( m_window, [] (GLFWwindow* window, int maximized) {
+	glfwSetWindowMaximizeCallback( m_window, []( GLFWwindow* window, int maximized ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
@@ -117,7 +117,7 @@ void Application::Initialize()
 			glfwGetWindowSize( window, &width, &height );
 			app->Resize( width, height );
 		}
-    });
+	} );
 }
 
 void Application::Run()
@@ -134,11 +134,11 @@ void Application::Run()
 		glfwPollEvents();
 		float newTime = (float)glfwGetTime();
 
-        if( m_renderer->BeginRender() != VK_SUCCESS )
+		if( m_renderer->BeginRender() != VK_SUCCESS )
 		{
 			CCP_LOGERR( "Failed to begin render" );
-            break;
-        }
+			break;
+		}
 		if( m_cmfContent )
 		{
 			m_modelRenderer->SetPerFrameData( m_renderer );
@@ -148,16 +148,16 @@ void Application::Run()
 				m_modelRenderer->RenderMesh( m_renderer, meshIndex, 0 );
 			}
 		}
-		
+
 		if( m_renderer->EndRender() != VK_SUCCESS )
 		{
 			CCP_LOGERR( "Failed to end  nder" );
 			break;
-        }
+		}
 		time = newTime;
 	}
 
-    
+
 	if( m_window )
 	{
 		glfwDestroyWindow( m_window );
@@ -167,11 +167,11 @@ void Application::Run()
 
 void Application::SetData( CmfContent* data )
 {
-    if( !data )
+	if( !data )
 	{
 		CCP_LOGERR( "Invalid CMF data. Ignoring" );
-        return;
-    }
+		return;
+	}
 	m_cmfContent = data;
 	m_modelRenderer->SetData( m_cmfContent, m_renderer );
 }
@@ -185,25 +185,25 @@ void Application::OnMouseMove( double xpos, double ypos )
 }
 
 void Application::OnKey( int key, int scancode, int action, int mods )
-{ 
+{
 }
 
 void Application::Resize( int width, int height )
 {
-    if( width == 0 || height == 0 )
-    {
-        return;
-    }
+	if( width == 0 || height == 0 )
+	{
+		return;
+	}
 
 	if( m_renderer )
 	{
 		if( width != m_renderer->GetWidth() || height != m_renderer->GetHeight() )
 		{
-	        m_renderer->PreResize();
+			m_renderer->PreResize();
 			m_renderer->ReleaseSurface();
-		    glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
+			glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
 
-		    m_renderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
-        }
+			m_renderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
+		}
 	}
 }

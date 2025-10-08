@@ -21,11 +21,11 @@ VkResult Swapchain::Initialize( Device* device, VkSurfaceKHR surface, const VkAl
 
 VkResult Swapchain::Release( Device* device, const VkAllocationCallbacks* allocator )
 {
-    for( auto framebuffer : m_swapchainFramebuffers )
-    {
-        vkDestroyFramebuffer( device->GetLogicalDevice(), framebuffer, allocator );
-    }
-    m_swapchainFramebuffers.clear();
+	for( auto framebuffer : m_swapchainFramebuffers )
+	{
+		vkDestroyFramebuffer( device->GetLogicalDevice(), framebuffer, allocator );
+	}
+	m_swapchainFramebuffers.clear();
 
 	if( m_swapchain != VK_NULL_HANDLE )
 	{
@@ -40,7 +40,7 @@ VkResult Swapchain::Release( Device* device, const VkAllocationCallbacks* alloca
 	}
 	m_swapchainFrames.clear();
 
-    return VK_SUCCESS;
+	return VK_SUCCESS;
 }
 
 VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface, const VkAllocationCallbacks* allocator )
@@ -90,7 +90,7 @@ VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface,
 
 	RETURN_LOG_ERROR( vkCreateSwapchainKHR( logicalDevice, &createInfo, allocator, &m_swapchain ), "Failed to create swapchain" );
 
-    std::vector<VkImage> swapchainImages;
+	std::vector<VkImage> swapchainImages;
 	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, nullptr ) ) );
 	swapchainImages.resize( imageCount );
 	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, swapchainImages.data() ) ) );
