@@ -4,6 +4,8 @@
 #include "data/cmfContent.h"
 #include "vulkan/buffer.h"
 #include "vulkan/shadercache.h"
+#include "input/mousestate.h"
+#include "camera.h"
 
 // Handles rendering a cmf model
 class ModelRenderer
@@ -16,6 +18,9 @@ public:
 
 	VkResult SetPerFrameData( const Renderer* renderer );
 	VkResult RenderMesh( const Renderer* renderer, size_t meshIndex, size_t lodIndex );
+	void Update( float deltaTime, const MouseState& mouseState );
+	void Resize( uint32_t width, uint32_t height );
+
 	void Release( const Renderer* m_renderer );
 	void SetData( const CmfContent* data, const Renderer* renderer );
 	void SetShader( std::string shaderName, const Renderer* renderer );
@@ -64,5 +69,5 @@ private:
 	std::array<UniformBuffer, RenderUtils::MAX_FRAMES_IN_FLIGHT> m_perFrameBuffers;
 	uint32_t m_currentFrame{ 0 };
 
-	CcpMath::Sphere m_boundingSphere{};
+	Camera m_camera{};
 };

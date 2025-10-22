@@ -1,5 +1,6 @@
 #include "modelRenderer.h"
 #include "vulkan/vulkanenums.h"
+#include "Vector2.h"
 
 ModelRenderer::ModelRenderer()
 {
@@ -71,6 +72,13 @@ void ModelRenderer::Initialize( const Renderer* renderer )
 		writeDescriptorSet.dstBinding = 0;
 		vkUpdateDescriptorSets( logicalDevice, 1, &writeDescriptorSet, 0, nullptr );
 	}
+
+    m_camera.SetScreenSize( renderer->GetWidth(), renderer->GetHeight() );
+}
+
+void ModelRenderer::Resize( uint32_t width, uint32_t height )
+{
+    m_camera.SetScreenSize( width, height );
 }
 
 void ModelRenderer::Release( const Renderer* renderer )
@@ -83,6 +91,8 @@ void ModelRenderer::Release( const Renderer* renderer )
 void ModelRenderer::ReleaseMeshes( const Renderer* renderer )
 {
 	auto logicalDevice = renderer->GetDevice()->GetLogicalDevice();
+	vkDeviceWaitIdle( logicalDevice );
+
 	auto allocator = renderer->GetAllocator();
 	for( auto& mesh : m_meshes )
 	{
@@ -113,6 +123,35 @@ VkResult ModelRenderer::SetPerFrameData( const Renderer* renderer )
 	return VK_SUCCESS;
 }
 
+void ModelRenderer::Update( float deltaTime, const MouseState& mouseState )
+{
+    if( mouseState.IsButtonPressed( MouseButton::LEFT ) )
+    {
+		m_camera.Orbit( mouseState.GetLastPos(), mouseState.GetPos() );
+	}
+	if( Length( mouseState.GetScroll() ) > 0 )
+	{
+        auto delta = mouseState.GetScroll();
+        m_camera.Zoom( delta.y );
+	}
+	else if( mouseState.IsButtonPressed( MouseButton::RIGHT ) )
+    {
+		auto change = mouseState.GetPosChangePercentage();
+		auto absChange = Vector2( abs( change.x ), abs( change.y ) );
+		
+        float zoom = change.x;
+
+        if( absChange.y > absChange.x )
+		{
+		    zoom = change.y;
+        }
+
+		m_camera.Zoom( -zoom * 10.0f );
+	}
+
+    m_camera.Update( deltaTime );
+}
+
 VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, size_t lodIndex )
 {
 	if( m_meshes.size() == 0 )
@@ -139,13 +178,12 @@ VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, 
 
 	// Update the perframe data
 	PerFrameData perframe{};
-	perframe.proj = PerspectiveFovMatrix( 1.0f, (float)renderer->GetWidth() / (float)renderer->GetHeight(), 0.1f, 30000.0f );
-	perframe.view = LookAtMatrix( Vector3( 1.0, 0.4f, 1.0f ) * m_boundingSphere.radius, m_boundingSphere.center, Vector3( 0.0, 1.0, 0.0 ) );
+	perframe.proj = m_camera.GetProjection();
+	perframe.view = m_camera.GetView();
 
 	// Copy the current matrices to the current frame's uniform buffer
 	// Note: Since we requested a host coherent memory type for the uniform buffer, the write is instantly visible to the GPU
 	memcpy( m_perFrameBuffers[m_currentFrame].mapped, &perframe, sizeof( PerFrameData ) );
-
 
 	vkCmdBindDescriptorSets( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shaderCache.GetPipelineLayout(), 0, 1, &m_perFrameBuffers[m_currentFrame].descriptorSet, 0, nullptr );
 	vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh.pipeline );
@@ -263,8 +301,8 @@ void ModelRenderer::SetData( const CmfContent* data, const Renderer* renderer )
 		}
 	}
 
+	m_camera.LookAt( data->GetBoundingSphere() );
 	SetShader( m_shaderName, renderer );
-	m_boundingSphere = data->GetBoundingSphere();
 }
 
 void ModelRenderer::SetShader( std::string shaderName, const Renderer* renderer )

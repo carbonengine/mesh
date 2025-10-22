@@ -1,4 +1,5 @@
 #include "application.h"
+#include <algorithm>
 
 Application::Application() :
 	m_modelRenderer( nullptr ),
@@ -93,6 +94,15 @@ void Application::Initialize()
 		}
 	} );
 
+    glfwSetScrollCallback(m_window, []( GLFWwindow* window, double xoffset, double yoffset ){
+		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
+		if( app )
+		{
+			app->OnMouseScroll( xoffset, yoffset );
+		}
+    } );
+
+
 	glfwSetDropCallback( m_window, []( GLFWwindow* window, int count, const char** paths ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
@@ -127,6 +137,7 @@ void Application::Run()
 		return;
 	}
 	float time = (float)glfwGetTime();
+	m_mouseState.UpdateScreenSize( m_renderer->GetWidth(), m_renderer->GetHeight() );
 
 	while( !glfwWindowShouldClose( m_window ) )
 	{
@@ -141,6 +152,7 @@ void Application::Run()
 		}
 		if( m_cmfContent )
 		{
+			m_modelRenderer->Update( newTime - time, m_mouseState );
 			m_modelRenderer->SetPerFrameData( m_renderer );
 
 			for( size_t meshIndex = 0; meshIndex < m_cmfContent->m_cmfData->meshes.size(); meshIndex++ )
@@ -155,8 +167,8 @@ void Application::Run()
 			break;
 		}
 		time = newTime;
+        m_mouseState.Clean();
 	}
-
 
 	if( m_window )
 	{
@@ -178,10 +190,24 @@ void Application::SetData( CmfContent* data )
 
 void Application::OnMouseButton( int button, int action, int mods )
 {
+	if( action == 1 )
+	{
+		m_mouseState.PressButton( (MouseButton)button );
+    }
+	else if( action == 0 )
+	{
+		m_mouseState.ReleaseButton( (MouseButton)button );
+    }
+}
+
+void Application::OnMouseScroll( double xoffset, double yoffset )
+{
+	m_mouseState.UpdateScroll( (float)xoffset, (float)yoffset );
 }
 
 void Application::OnMouseMove( double xpos, double ypos )
 {
+	m_mouseState.UpdatePosition( (float)xpos, (float)ypos );
 }
 
 void Application::OnKey( int key, int scancode, int action, int mods )
@@ -202,8 +228,9 @@ void Application::Resize( int width, int height )
 			m_renderer->PreResize();
 			m_renderer->ReleaseSurface();
 			glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
-
+			m_mouseState.UpdateScreenSize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
 			m_renderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
+			m_modelRenderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
 		}
 	}
 }

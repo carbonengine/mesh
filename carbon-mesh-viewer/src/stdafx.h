@@ -9,9 +9,13 @@
 #include <set>
 #include <algorithm>
 
+#define PI 3.14159265358979323846f // pi
+#define TWO_PI 2.0f*PI
+
 #if !defined( NDEBUG )
 #define DEBUG_MODE
 #endif
+
 
 static VkResult ReportVulkanError( VkResult err, const char* file, int line, const char* caller )
 {
