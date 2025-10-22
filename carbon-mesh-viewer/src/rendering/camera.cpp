@@ -26,8 +26,9 @@ void Camera::SetScreenSize( uint32_t width, uint32_t height )
 
 void Camera::LookAt( CcpMath::Sphere boundingSphere )
 {
-	m_currentRotation = RotationQuaternion( 0.0f, PI/6.0f, 0.0f );
-
+	m_currentRotation = IdentityQuaternion();
+	m_pitch = 0.0f;
+	m_yaw = PI / 2.0f;
 	m_boundingSphere = boundingSphere;
 	m_zoom = boundingSphere.radius * 2.0f;
 	m_orbitRadius = boundingSphere.radius * 2.0f;
