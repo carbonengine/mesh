@@ -1,19 +1,17 @@
 #version 450
 
-layout (location = 0) in vec3 inPos;
+layout( location = 0 ) in vec3 inPos;
 
-layout (binding = 0) uniform PerFrame 
+layout( binding = 0 ) uniform PerFrame 
 {
     mat4 projectionMatrix;
     mat4 viewMatrix;
 } perframe;
 
-out gl_PerVertex 
-{
-    vec4 gl_Position;   
-};
+layout( location = 0 ) out vec3 viewPosition;
 
 void main() 
-{ 
-    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * vec4(inPos.xyz, 1.0);
+{
+    viewPosition = ( perframe.viewMatrix * vec4( inPos, 1.0 ) ).xyz;
+    gl_Position = perframe.projectionMatrix * vec4( viewPosition, 1.0 );
 }
