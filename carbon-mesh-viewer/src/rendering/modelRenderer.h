@@ -63,7 +63,7 @@ private:
 	std::vector<Mesh> m_meshes;
 
 	std::string m_shaderName{ "" };
-	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_LINE };
+	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 
 	ShaderCache m_shaderCache;
 	std::array<UniformBuffer, RenderUtils::MAX_FRAMES_IN_FLIGHT> m_perFrameBuffers;
