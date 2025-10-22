@@ -214,7 +214,7 @@ void Application::OnKey( int key, int scancode, int action, int mods )
 {
 }
 
-void Application::Resize( int width, int height )
+void Application::Resize( uint32_t width, uint32_t height )
 {
 	if( width == 0 || height == 0 )
 	{
@@ -228,9 +228,9 @@ void Application::Resize( int width, int height )
 			m_renderer->PreResize();
 			m_renderer->ReleaseSurface();
 			glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
-			m_mouseState.UpdateScreenSize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
-			m_renderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
-			m_modelRenderer->Resize( static_cast<uint32_t>( width ), static_cast<uint32_t>( height ) );
+			m_mouseState.UpdateScreenSize( width, height );
+			m_renderer->Resize( width, height );
+			m_modelRenderer->Resize( width, height );
 		}
 	}
 }

@@ -2,7 +2,7 @@
 
 Vector2 MouseState::GetPos() const
 {
-    return m_pos;
+	return m_pos;
 }
 
 Vector2 MouseState::GetLastPos() const
@@ -23,24 +23,24 @@ bool MouseState::IsButtonPressed( MouseButton button ) const
 
 Vector2 MouseState::GetButtonPressPos( MouseButton button ) const
 {
-    auto it = m_buttonsPressed.find( button );
-    if( it != m_buttonsPressed.end() )
-    {
-        return it->second;
-    }
-    return Vector2( FLT_MAX, FLT_MAX );
+	auto it = m_buttonsPressed.find( button );
+	if( it != m_buttonsPressed.end() )
+	{
+		return it->second;
+	}
+	return Vector2( FLT_MAX, FLT_MAX );
 }
 
 void MouseState::UpdatePosition( float x, float y )
 {
 	m_lastPos = m_pos;
 	m_pos.x = x;
-    m_pos.y = y;
+	m_pos.y = y;
 }
 
 void MouseState::UpdateScroll( float x, float y )
 {
-    m_scroll.x = x;
+	m_scroll.x = x;
 	m_scroll.y = y;
 }
 
@@ -56,17 +56,17 @@ void MouseState::ReleaseButton( MouseButton button )
 
 void MouseState::Clean()
 {
-    m_scroll *= 0.0f;
-    m_lastPos = m_pos;
+	m_scroll *= 0.0f;
+	m_lastPos = m_pos;
 }
 
-void MouseState::UpdateScreenSize( float x, float y )
+void MouseState::UpdateScreenSize( uint32_t x, uint32_t y )
 {
-    m_screenSize.x = x;
-    m_screenSize.y = y;
+	m_screenSize.x = (float)x;
+	m_screenSize.y = (float)y;
 }
 
 Vector2 MouseState::GetPosChangePercentage() const
 {
-	return (m_pos - m_lastPos) / m_screenSize;
+	return ( m_pos - m_lastPos ) / m_screenSize;
 }

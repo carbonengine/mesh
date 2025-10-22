@@ -25,7 +25,7 @@ public:
 
     void UpdatePosition( float x, float y);
 	void UpdateScroll( float x, float y );
-	void UpdateScreenSize( float x, float y );
+	void UpdateScreenSize( uint32_t x, uint32_t y );
 	void PressButton( MouseButton button );
 	void ReleaseButton( MouseButton button );
 	Vector2 GetButtonPressPos( MouseButton button ) const;

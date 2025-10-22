@@ -24,7 +24,7 @@ private:
 	void OnKey( int key, int scancode, int action, int mods );
 	void OnMouseScroll( double xoffset, double yoffset );
 
-	void Resize( int width, int height );
+	void Resize( uint32_t width, uint32_t height );
 
 	ModelRenderer* m_modelRenderer{ nullptr };
 	Renderer* m_renderer{ nullptr };
