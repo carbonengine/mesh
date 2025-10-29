@@ -69,10 +69,10 @@ CmfContent::CmfContent( std::vector<uint8_t> fileContent, std::string filePath )
 	{
 		auto data = m_fileContent.data();
 		m_cmfHeader = reinterpret_cast<cmf::Header*>( data );
-		cmf::OffsetsToPointers( m_cmfHeader );
+		cmf::OffsetsToPointers( *m_cmfHeader );
 
 		m_cmfData = reinterpret_cast<cmf::Data*>( data + m_cmfHeader->sections[0].offset );
-		cmf::OffsetsToPointers( m_cmfData );
+		cmf::OffsetsToPointers( *m_cmfData );
 	}
 }
 
