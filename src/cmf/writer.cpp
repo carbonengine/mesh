@@ -1,10 +1,45 @@
 #include "cmf/writer.h"
 #include "cmf/utils.h"
 
+namespace
+{
+
+template <typename T>
+void RemapBufferIndices( T& obj, std::vector<uint32_t>& indices )
+{
+	if constexpr( std::is_same_v<T, cmf::BufferView>  )
+    {
+		auto found = find( begin( indices ), end( indices ), obj.index );
+		if( found == end( indices ) )
+		{
+            indices.push_back( obj.index );
+			obj.index = uint32_t( indices.size() ); // +1 because 0 is the "data" segment
+        }
+        else
+        {
+			obj.index = uint32_t( distance( begin( indices ), found ) + 1 ); // +1 because 0 is the "data" segment
+        }
+    }
+	else if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
+	{
+		for( auto& element : obj )
+		{
+			RemapBufferIndices( element, indices );
+		}
+	}
+	else
+    {
+		cmf::EnumerateMembers( obj, [&indices]( auto&&, auto& value, const char* ) {
+			RemapBufferIndices( value, indices );
+		} );
+	}
+}
+}
+
 namespace cmf
 {
 
-std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers, const Metadata* metadata )
+std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata )
 {
 	MemoryAllocator allocator;
 
@@ -19,12 +54,15 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
 	dataSection.size = uint32_t( flattenedData.size );
 	dataSection.uncompressedSize = uint32_t( flattenedData.size );
 
-    for ( auto& buf : buffers.m_buffers )
+    std::vector<uint32_t> bufferIndices;
+	RemapBufferIndices( *reinterpret_cast<Data*>( flattenedData.data.get() ), bufferIndices );
+
+    for( auto& buf : bufferIndices )
     {
 		auto& section = Modify( header.sections, allocator ).emplace_back();
 		section.type = SectionType::GpuBuffer;
-		section.size = uint32_t( buf.size() );
-		section.uncompressedSize = uint32_t( buf.size() );
+		section.size = buffers.GetBuffer( buf ).size;
+		section.uncompressedSize = section.size;
     }
 
     FlattenedBuffer flattenedMetadata;
@@ -52,9 +90,10 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& buffers
 	std::vector<uint8_t> result;
     result.insert( end( result ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ), reinterpret_cast<uint8_t*>( flattenedHeader.data.get() ) + flattenedHeader.size );
 	result.insert( end( result ), reinterpret_cast<uint8_t*>( flattenedData.data.get() ), reinterpret_cast<uint8_t*>( flattenedData.data.get() ) + flattenedData.size );
-	for( auto& buf : buffers.m_buffers )
+	for( auto& buf : bufferIndices )
 	{
-		result.insert( end( result ), buf.begin(), buf.end() );
+		auto data = static_cast<const uint8_t*>( buffers.GetBuffer( buf ).data );
+		result.insert( end( result ), data, data + buffers.GetBuffer( buf ).size );
 	}
 
     {

@@ -355,22 +355,22 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 
 	auto& header = *static_cast<const Header*>( data );
 	if( size < sizeof( Header ) )
-    {
+	{
 		return { false, {} };
 	}
 	if( header.signature != FILE_SIGNATURE )
-    {
+	{
 		return { false, {} };
 	}
 	if( header.version != FILE_VERSION )
-    {
+	{
 		return { false, {} };
-    }
+	}
 	if( header.headerSize < sizeof( Header ) || header.headerSize > size )
 	{
 		return { false, {} };
 	}
-    if( options.validateCrc )
+	if( options.validateCrc )
 	{
 		auto crcOffset = offsetof( Header, crc32 );
 		auto crc = ComputeCrc32( static_cast<const uint8_t*>( data ) + crcOffset + sizeof( Header::crc32 ), size - ( crcOffset + sizeof( Header::crc32 ) ) );
@@ -381,22 +381,22 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		result.validateCrc = true;
 	}
 
-    if( !options.validateHeader && !options.validateMainData )
-    {
-        return { true, result };
+	if( !options.validateHeader && !options.validateMainData )
+	{
+		return { true, result };
 	}
 
 	if( !AreSpanPointersValid( header, &header, header.headerSize ) )
-    {
-        return { false, result };
+	{
+		return { false, result };
 	}
 	if( !AreHeaderSectionsValid( header, size ) )
-    {
-        return { false, result };
+	{
+		return { false, result };
 	}
 	result.validateHeader = true;
 
-    if( !options.validateMainData )
+	if( !options.validateMainData )
 	{
 		return { true, result };
 	}
@@ -405,68 +405,68 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	{
 		auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
 		if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].size ) )
-	    {
-		    return { false, result };
-	    }
-        if( !AreBufferViewsValid( mainData, header.sections ) )
-        {
+		{
 			return { false, result };
-        }
+		}
+		if( !AreBufferViewsValid( mainData, header.sections ) )
+		{
+			return { false, result };
+		}
 
 		for( auto& mesh : mainData.meshes )
-        {
+		{
 			if( !IsMeshValid( mesh, mainData.skeletons.size() ) )
 			{
 				return { false, result };
 			}
-        }
-        
-        for( auto& skeleton : mainData.skeletons )
+		}
+
+		for( auto& skeleton : mainData.skeletons )
 		{
 			// Skeleton must have at least one bone
-            if( skeleton.bones.empty() )
-            {
-                return { false, result };
-            }
-			// All skeleton arrays must have the same size
-            if ( skeleton.bones.size() != skeleton.parents.size() || skeleton.bones.size() != skeleton.restTransforms.size() || skeleton.bones.size() != skeleton.invBindTransforms.size() )
-            {
+			if( skeleton.bones.empty() )
+			{
 				return { false, result };
-            }
+			}
+			// All skeleton arrays must have the same size
+			if( skeleton.bones.size() != skeleton.parents.size() || skeleton.bones.size() != skeleton.restTransforms.size() || skeleton.bones.size() != skeleton.invBindTransforms.size() )
+			{
+				return { false, result };
+			}
 			for( auto& parent : skeleton.parents )
-            {
-                // Parent index must be either -1 (0xffffffff) or a valid bone index
-                if( parent != 0xffffffff && parent >= skeleton.bones.size() )
-                {
-                    return { false, result };
-                }
+			{
+				// Parent index must be either -1 (0xffffffff) or a valid bone index
+				if( parent != 0xffffffff && parent >= skeleton.bones.size() )
+				{
+					return { false, result };
+				}
 				// Parent index must be less than the bone index (no cycles)
 				auto idx = &parent - skeleton.parents.data();
 				if( parent != 0xffffffff && parent >= idx )
-                {
-                    return { false, result };
+				{
+					return { false, result };
 				}
 			}
 		}
 
-        for( auto& animation : mainData.animations )
-        {
+		for( auto& animation : mainData.animations )
+		{
 			// Animation durarion must be > 0
 			if( animation.duration <= 0 )
-            {
-                return { false, result };
+			{
+				return { false, result };
 			}
-            if( animation.channels.empty() )
-            {
-                return { false, result };
-            }
-            for( auto& channel : animation.channels )
-            {
+			if( animation.channels.empty() )
+			{
+				return { false, result };
+			}
+			for( auto& channel : animation.channels )
+			{
 				if( channel.curveIndex >= mainData.curves.size() )
-                {
-                    return { false, result };
+				{
+					return { false, result };
 				}
-            }
+			}
 		}
 		result.validateMainData = true;
 	}
@@ -494,29 +494,4 @@ uint32_t ComputeCrc32( const void* data, size_t size )
 	}
 	return ~crc;
 }
-
-CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb )
-{
-	CcpMath::AxisAlignedBox bounds;
-	auto element = std::find_if( mesh.decl.begin(), mesh.decl.end(), []( const auto& x ) { return x.usage == Usage::Position && x.usageIndex == 0; } );
-	if( element == mesh.decl.end() )
-	{
-		return bounds;
-	}
-	for( auto& lod : mesh.lods )
-	{
-		for( auto pos : BufferElementStream<Vector3>( *element, vb, lod.vb.size / lod.vb.stride, lod.vb.stride ) )
-		{
-			bounds.Include( pos );
-		}
-		break;
-	}
-	return bounds;
-}
-
-CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const void* vb, const void* ib, uint32_t firstElement, uint32_t elementCount )
-{
-	return CalculateBounds( mesh, vb );
-}
-
 }

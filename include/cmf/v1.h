@@ -41,8 +41,8 @@ enum class Usage : uint8_t
 	Binormal,
 	TexCoord,
 	Color,
-	BlendIndices,
-	BlendWeights,
+	BoneIndices,
+	BoneWeights,
     PackedTangent,
 };
 
@@ -166,7 +166,7 @@ struct MeshLod
 	BufferView ib;
 	Span<LodMeshArea> areas;
 	Span<LodMorphTarget> morphTargets;
-	uint32_t threshold = 0; // max visible diameter in pixels for this LOD
+	uint32_t threshold = 0xffffffff; // max visible diameter in pixels for this LOD
 
 	static constexpr std::string_view TypeName = "MeshLod";
 

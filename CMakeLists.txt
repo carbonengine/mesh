@@ -7,18 +7,22 @@ include(cmake/CcpGlobalSettings.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
 set(PUBLIC_HEADER_FILES
+    include/cmf/bounds.h
     include/cmf/cmf.h
     include/cmf/memallocator.h
     include/cmf/span.h
     include/cmf/utils.h
+    include/cmf/uvdensity.h
     include/cmf/v1.h
     include/cmf/writer.h
 )
 
 ccp_add_library(CarbonMesh 
     ${PUBLIC_HEADER_FILES}
+    src/cmf/bounds.cpp
     src/cmf/memallocator.cpp
     src/cmf/utils.cpp
+    src/cmf/uvdensity.cpp
     src/cmf/writer.cpp
 )
 
@@ -137,6 +141,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
 
 
 endif()
+
 
 add_subdirectory (src/cmf/test) 
 enable_testing()

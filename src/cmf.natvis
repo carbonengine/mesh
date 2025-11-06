@@ -11,6 +11,6 @@
     </Expand>
   </Type>
   <Type Name="cmf::Span&lt;char&gt;">
-    <DisplayString>{offset &amp; 1 ? (char*)(((uint8_t*)&amp;ptr) + (offset &amp; ~1ll)) : (char*)ptr}</DisplayString>
+    <DisplayString>{offset &amp; 1 ? (char*)(((uint8_t*)&amp;ptr) + (offset &amp; ~1ll)) : (char*)ptr, [byteSize]s}</DisplayString>
   </Type>
 </AutoVisualizer>

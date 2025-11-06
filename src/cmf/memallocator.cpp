@@ -20,21 +20,49 @@ void MemoryAllocator::Allocate( SpanRepr& a, size_t size )
 	a.byteSize = size;
 }
 
-BufferView BufferAllocator::AddBuffer( const void* data, uint32_t size, uint32_t stride )
+void* MemoryAllocator::Allocate( size_t size )
 {
-	m_buffers.push_back( std::vector<uint8_t>{ reinterpret_cast<const uint8_t*>( data ), reinterpret_cast<const uint8_t*>( data ) + size } );
-    // +1 for buffer index because 0 is the "data" segment
-	return { uint32_t( m_buffers.size() ), 0, size, stride };
+	m_allocations.push_back( std::vector<uint8_t>( size ) );
+	return m_allocations.back().data();
 }
 
-void* BufferAllocator::GetBufferData( const BufferView& view )
+
+BufferManager::BufferManager( MemoryAllocator& allocator )
+    : m_allocator( allocator )
 {
-	return m_buffers[view.index].data();
 }
 
-const void* BufferAllocator::GetBufferData( const BufferView& view ) const
+BufferView BufferManager::AllocateBuffer( const void* data, uint32_t size, uint32_t stride )
 {
-	return m_buffers[view.index].data();
+	m_buffers.push_back( { m_allocator.Allocate( size ), size } );
+    memcpy( m_buffers.back().data, data, size );
+	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
 }
+
+BufferView BufferManager::AddBuffer( void* data, uint32_t size, uint32_t stride )
+{
+	m_buffers.push_back( { data, size } );
+	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
+}
+
+void BufferManager::SetBuffer( uint32_t index, void* data, uint32_t size )
+{
+	if( m_buffers.size() <= index )
+    {
+        m_buffers.resize( index + 1 );
+	}
+	m_buffers[index] = { data, size };
+}
+
+void* BufferManager::GetData( const BufferView& view ) const
+{
+	return static_cast<uint8_t*>( m_buffers[view.index].data ) + view.offset;
+}
+
+BufferManager::Buffer BufferManager::GetBuffer( uint32_t index ) const
+{
+	return m_buffers[index];
+}
+
 
 }
