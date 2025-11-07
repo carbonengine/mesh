@@ -100,6 +100,7 @@ struct MeshArea
 
 struct LodMeshArea
 {
+    //TODO: These should be changed to be index counts, not primitive counts.
 	uint32_t firstElement = 0;
 	uint32_t elementCount = 0;
 

@@ -181,8 +181,8 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 			{
 				return false;
 			}
-			// Packed tangent must be 4-component unsigned normalized integer
-			if( ( element.type != cmf::ElementType::UInt16Norm && element.type != cmf::ElementType::UInt8Norm ) || element.elementCount != 4 )
+			// Packed tangent must be 4-component signed normalized integer
+			if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
 			{
 				return false;
 			}

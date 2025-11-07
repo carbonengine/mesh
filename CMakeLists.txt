@@ -6,6 +6,8 @@ find_package(carbon-math CONFIG REQUIRED)
 include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
+add_subdirectory( carbon-mesh-optimizer )
+
 set(PUBLIC_HEADER_FILES
     include/cmf/bounds.h
     include/cmf/cmf.h
