@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.30)
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
 
-include(cmake/CcpGlobalSettings.cmake)
+include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
 set(PUBLIC_HEADER_FILES
@@ -58,88 +58,52 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
     option(BUILD_DOCUMENTATION "Build Documentation" ${BUILD_DOCUMENTATION_DEFAULT_FLAG})
 
     if(BUILD_DOCUMENTATION)
-        # Find Doxygen, which is needed to parse C++ source files
-        find_package(Doxygen)
-
-        set(DOCUMENTATION_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/doc)
-
-        # Evaluate config file for Doxygen to input project values
-        set(DOXYFILE_IN ${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in)
-        set(DOXYFILE_OUT ${DOCUMENTATION_OUT_DIR}/Doxyfile)
-        configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
-
-        set(DOXYGEN_OUT_DIR ${DOCUMENTATION_OUT_DIR}/xml)
-        set(DOXYGEN_INDEX_FILE ${DOXYGEN_OUT_DIR}/index.xml)
-
-        # Regenerate with source changes
-        add_custom_command(OUTPUT ${DOXYGEN_INDEX_FILE}
-                DEPENDS ${_SOURCES}
-                COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
-                MAIN_DEPENDENCY ${DOXYFILE_OUT} ${DOXYFILE_IN}
-                COMMENT "Running Doxygen"
-                VERBATIM)
-
-        add_custom_target(Doxygen ALL DEPENDS ${DOXYGEN_INDEX_FILE})
-
         # Set up sphinx build for Python autodoc comments.
         set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/doc/source)
-        set(SPHINX_BUILD ${DOCUMENTATION_OUT_DIR}/build)
+        set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/doc/build)
 
-        # Select the correct pythonInterpreter to use based on build system.
-        if(WIN32)
-            set(CCP_PYTHON_INTERPRETER "${BRANCH_ROOT_DIR}/eve/client/pythonInterpreter.bat")
-        elseif(APPLE)
-            set(CCP_PYTHON_INTERPRETER "${BRANCH_ROOT_DIR}/eve/client/pythonInterpreter.sh")
-        endif()
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        include(cmake/CcpDocsGenerator.cmake)
 
-        # Run Sphinx against configuration file and Doxygen output
-        add_custom_target(Sphinx ALL
-                COMMAND ${CMAKE_COMMAND}
-                -E env
-                PYTHONPATH="$<TARGET_FILE_DIR:CarbonMesh>/;${CMAKE_SOURCE_DIR}/python"
-                BUILDFLAVOR=$<LOWER_CASE:$<CONFIG>>
-                ${CCP_PYTHON_INTERPRETER}
-                -m sphinx build -E -b html
-                -Dbreathe_projects.doxygen=${DOXYGEN_OUT_DIR}
-                -c ${SPHINX_SOURCE}
-                ${SPHINX_SOURCE} ${SPHINX_BUILD}
-                WORKING_DIRECTORY ${BRANCH_ROOT_DIR}
-                DEPENDS ${DOXYGEN_INDEX_FILE}
-                COMMENT "Generating documentation with Sphinx")
+        create_carbon_docs_sphinx_target(
+                PYTHON_EXE ${Python3_EXECUTABLE}
+                VENV_NAME docs_generation_venv
+                PYTHONPATH_ENV $ENV{PYTHONPATH}
+                SPHINX_SOURCE ${SPHINX_SOURCE}
+                SPHINX_BUILD ${SPHINX_BUILD}
+                DOXYGEN_SRC_FILES ${SRC_FILES}
+                SPHINX_TARGET_NAME Sphinx
+                DOXYGEN_TARGET_NAME Doxygen
+                INSTALL_DESTINATION documentation
+        )
 
-        # Install rule for documentation
-        install(DIRECTORY ${SPHINX_BUILD} DESTINATION documentation)
+        add_dependencies(Sphinx CarbonMesh)
     endif()
 
-    # Install rule to ensure that our runtime and linker files are in the expected, platform-specific folders
-    install(
-            TARGETS CarbonMesh
-            EXPORT CarbonMeshTarget
-            CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
-            LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-            ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-            RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-    )
+    option(INSTALL_TO_MONOLITH "Install this package to a perforce branch vendor folder - provided for backwards compatability" ON)
+    if (INSTALL_TO_MONOLITH)
+        # Install rule to ensure that our runtime and linker files are in the expected, platform-specific folders
+        install(
+                TARGETS CarbonMesh
+                EXPORT CarbonMeshTarget
+                CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+                LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+                ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+                RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+        )
 
-    # Install rule for available public headers
-    foreach(header_file ${PUBLIC_HEADER_FILES})
-        get_filename_component(relative_path ${header_file} DIRECTORY)
-        string(REPLACE "include/" "" relative_path ${relative_path})
-        install(FILES ${header_file} DESTINATION include/${relative_path})
-    endforeach()
+        # Install rule for available public headers
+        foreach(header_file ${PUBLIC_HEADER_FILES})
+            get_filename_component(relative_path ${header_file} DIRECTORY)
+            string(REPLACE "include/" "" relative_path ${relative_path})
+            install(FILES ${header_file} DESTINATION include/${relative_path})
+        endforeach()
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION .)
-    
-
-    # Install python package
-    install(DIRECTORY python/ DESTINATION python
-            FILES_MATCHING
-            PATTERN "*.py"
-            PATTERN "package.yaml"
-    )
-
-
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION .)
+    else ()
+        # Install rules for vcpkg goes here
+    endif()
 endif()
 
 

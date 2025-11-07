@@ -2,41 +2,220 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 16,
+    "minor": 31,
     "patch": 0
   },
   "configurePresets": [
     {
-      "name": "carbon_windows_vcpkg_vs",
+      "name": "common",
       "toolchainFile": "${sourceDir}/vendor/github.com/microsoft/vcpkg/scripts/buildsystems/vcpkg.cmake",
-      "binaryDir": "./.cmake-build-${generator}-${presetName}",
-      "generator": "Visual Studio 17 2022",
-      "toolset": {
-        "value": "v141"
+      "binaryDir": "${sourceDir}/.cmake-build-${presetName}",
+      "cacheVariables": {
+        "VCPKG_USE_HOST_TOOLS": "ON",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets"
       },
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/vendor/github.com/microsoft/vcpkg"
+      },
+      "hidden": true
+    },
+    {
+      "name": "windows",
+      "inherits": "common",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "hidden": true
+    },
+    {
+      "name": "osx",
+      "inherits": "common",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "hidden": true
+    },
+    {
+      "name": "x64-windows",
+      "inherits": "windows",
       "cacheVariables": {
-        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-carbon"
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/x64-carbon-windows.cmake"
+      },
+      "hidden": true
+    },
+    {
+      "name": "universal-osx",
+      "inherits": "osx",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/universal-carbon-osx.cmake"
+      },
+      "hidden": true
+    },
+    {
+      "name": "arm64-osx",
+      "inherits": "osx",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/arm64-carbon-osx.cmake"
+      },
+      "hidden": true
+    },
+    {
+      "name": "x64-osx",
+      "inherits": "osx",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "x86_64",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/x64-carbon-osx.cmake"
+      },
+      "hidden": true
+    },
+    {
+      "name": "x64-windows-internal",
+      "inherits": "x64-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Internal",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-internal",
+        "VCPKG_HOST_TRIPLET": "x64-windows-internal"
       }
     },
     {
-      "name": "carbon_windows_vcpkg_nmc",
-      "toolchainFile": "${sourceDir}/vendor/github.com/microsoft/vcpkg/scripts/buildsystems/vcpkg.cmake",
-      "binaryDir": "./.cmake-build-${generator}-${presetName}",
-      "generator": "Ninja Multi-Config",
+      "name": "x64-windows-release",
+      "inherits": "x64-windows",
       "cacheVariables": {
-        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-carbon"
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_HOST_TRIPLET": "x64-windows-release"
       }
     },
     {
-      "name": "carbon_osx_vcpkg",
-      "toolchainFile": "${sourceDir}/vendor/github.com/microsoft/vcpkg/scripts/buildsystems/vcpkg.cmake",
-      "binaryDir": "./.cmake-build-${generator}-${presetName}",
-      "generator": "Ninja Multi-Config",
+      "name": "x64-windows-debug",
+      "inherits": "x64-windows",
       "cacheVariables": {
-        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
-        "VCPKG_TARGET_TRIPLET": "arm64-osx-carbon"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-debug",
+        "VCPKG_HOST_TRIPLET": "x64-windows-debug"
+      }
+    },
+    {
+      "name": "x64-windows-trinitydev",
+      "inherits": "x64-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "TrinityDev",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-trinitydev",
+        "VCPKG_HOST_TRIPLET": "x64-windows-trinitydev"
+      }
+    },
+    {
+      "name": "universal-osx-internal",
+      "inherits": "universal-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Internal",
+        "VCPKG_TARGET_TRIPLET": "universal-osx-internal",
+        "VCPKG_HOST_TRIPLET": "universal-osx-internal"
+      }
+    },
+    {
+      "name": "universal-osx-release",
+      "inherits": "universal-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "universal-osx-release",
+        "VCPKG_HOST_TRIPLET": "universal-osx-release"
+      }
+    },
+    {
+      "name": "universal-osx-debug",
+      "inherits": "universal-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "universal-osx-debug",
+        "VCPKG_HOST_TRIPLET": "universal-osx-debug"
+      }
+    },
+    {
+      "name": "universal-osx-trinitydev",
+      "inherits": "universal-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "TrinityDev",
+        "VCPKG_TARGET_TRIPLET": "universal-osx-trinitydev",
+        "VCPKG_HOST_TRIPLET": "universal-osx-trinitydev"
+      }
+    },
+    {
+      "name": "arm64-osx-internal",
+      "inherits": "arm64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Internal",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-internal",
+        "VCPKG_HOST_TRIPLET": "arm64-osx-internal"
+      }
+    },
+    {
+      "name": "arm64-osx-release",
+      "inherits": "arm64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-release",
+        "VCPKG_HOST_TRIPLET": "arm64-osx-release"
+      }
+    },
+    {
+      "name": "arm64-osx-debug",
+      "inherits": "arm64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-debug",
+        "VCPKG_HOST_TRIPLET": "arm64-osx-debug"
+      }
+    },
+    {
+      "name": "arm64-osx-trinitydev",
+      "inherits": "arm64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "TrinityDev",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-trinitydev",
+        "VCPKG_HOST_TRIPLET": "arm64-osx-trinitydev"
+      }
+    },
+    {
+      "name": "x64-osx-internal",
+      "inherits": "x64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Internal",
+        "VCPKG_TARGET_TRIPLET": "x64-osx-internal",
+        "VCPKG_HOST_TRIPLET": "x64-osx-internal"
+      }
+    },
+    {
+      "name": "x64-osx-release",
+      "inherits": "x64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-osx-release",
+        "VCPKG_HOST_TRIPLET": "x64-osx-release"
+      }
+    },
+    {
+      "name": "x64-osx-debug",
+      "inherits": "x64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "x64-osx-debug",
+        "VCPKG_HOST_TRIPLET": "x64-osx-debug"
+      }
+    },
+    {
+      "name": "x64-osx-trinitydev",
+      "inherits": "x64-osx",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "TrinityDev",
+        "VCPKG_TARGET_TRIPLET": "x64-osx-trinitydev",
+        "VCPKG_HOST_TRIPLET": "x64-osx-trinitydev"
       }
     }
   ]
