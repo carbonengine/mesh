@@ -160,9 +160,9 @@ void print( CmfContent* content )
 int main()
 {
 
-    std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1.cmf";
+    //std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1.cmf";
 	//std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1_compressed.cmf";
-    //std::string path = "C:\\Users\\isheden\\Desktop\\Release\\mf1_t1.cmf";
+    std::string path = "C:\\Users\\isheden\\Desktop\\Release\\mf1_t1.cmf";
 	//std::string path = "C:\\Users\\isheden\\Desktop\\Release\\uwi01_t1.cmf";
 
     CmfContent* content = CmfContentLoader::LoadContentFromFile( path );

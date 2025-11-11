@@ -11,15 +11,13 @@
 using namespace cmf;
 using namespace cmf::optimizer;
 
-OptBufferData readBuffer( const CmfContent* content, const cmf::BufferView view )
+void readBuffer( const CmfContent* content, const cmf::BufferView view, OptBufferData& output )
 {
-	if( view.size == 0 )
-	{
-		return { std::vector<uint8_t>(), 1 };
-	}
 	uint32_t vertexBufferOffset = content->m_cmfHeader->sections[view.index].offset + view.offset;
 	const uint8_t* vertexData = content->m_fileContent.data() + vertexBufferOffset;
-	return { std::vector<uint8_t>( vertexData, vertexData + view.size ), view.stride };
+
+    output.data.assign( vertexData, vertexData + view.size );
+	output.stride = view.stride;
 }
 
 /*
@@ -29,24 +27,27 @@ OptBufferData convertVertexBuffer( const OptBufferData vertexBuffer, std::vector
 }
 */
 
-OptBufferData convertIndexBuffer( const OptBufferData indexBuffer, const uint32_t newStride )
+void convertIndexBuffer( const OptBufferData indexBuffer, const uint32_t newStride, OptBufferData& output )
 {
 	if( indexBuffer.stride == newStride )
 	{
-		return indexBuffer;
+        // No conversion needed, just copy.
+        // This should be avoided, as it is an unnecessary copy.
+		output.data.resize( indexBuffer.data.size() );
+		memcpy( output.data.data(), indexBuffer.data.data(), indexBuffer.data.size() );
+		return;
 	}
 
     uint32_t length = indexBuffer.length();
     
-	OptBufferData newIndexBuffer;
-	newIndexBuffer.data.resize( length * newStride );
-	newIndexBuffer.stride = newStride;
+	output.data.resize( length * newStride );
+	output.stride = newStride;
 
 
     if (indexBuffer.stride == 2 && newStride == 4)
     {
 		const uint16_t* oldData = reinterpret_cast<const uint16_t*>(indexBuffer.data.data());
-		uint32_t* newData = reinterpret_cast<uint32_t*>( newIndexBuffer.data.data() );
+		uint32_t* newData = reinterpret_cast<uint32_t*>( output.data.data() );
 
         for( uint32_t i = 0; i < length; i++ )
 		{
@@ -57,7 +58,7 @@ OptBufferData convertIndexBuffer( const OptBufferData indexBuffer, const uint32_
     else if (indexBuffer.stride == 4 && newStride == 2)
 	{
 		const uint32_t* oldData = reinterpret_cast<const uint32_t*>( indexBuffer.data.data() );
-		uint16_t* newData = reinterpret_cast<uint16_t*>( newIndexBuffer.data.data() );
+		uint16_t* newData = reinterpret_cast<uint16_t*>( output.data.data() );
 
 		for( uint32_t i = 0; i < length; i++ )
 		{
@@ -67,10 +68,7 @@ OptBufferData convertIndexBuffer( const OptBufferData indexBuffer, const uint32_
 	else
 	{
 		printf( "Unsupported index buffer stride conversion: %d --> %d", indexBuffer.stride, newStride );
-		return indexBuffer;
 	}
-
-    return newIndexBuffer;
 }
 
 Optimizer::Optimizer( CmfContent* content ) :
@@ -89,11 +87,19 @@ Optimizer::Optimizer( CmfContent* content ) :
         {
             OptMeshLod optLod;
 
-			optLod.vertexBuffer = readBuffer( content, lod.vb );
+			readBuffer( content, lod.vb, optLod.vertexBuffer );
 
             //Convert to 32-bit indices for simplicity during optimizations.
-            OptBufferData indexBuffer = readBuffer( content, lod.ib );
-			optLod.indexBuffer = convertIndexBuffer( indexBuffer, 4 );
+			if( lod.ib.stride == 4 )
+			{
+				readBuffer( content, lod.ib, optLod.indexBuffer );
+			}
+			else
+			{
+				OptBufferData indexBuffer;
+				readBuffer( content, lod.ib, indexBuffer );
+				convertIndexBuffer( indexBuffer, 4, optLod.indexBuffer );
+			}
 
 			for( LodMeshArea& area : lod.areas )
 			{
@@ -102,7 +108,9 @@ Optimizer::Optimizer( CmfContent* content ) :
 
 			for( LodMorphTarget& morphTarget : lod.morphTargets )
 			{
-				optLod.morphTargetLods.push_back( { readBuffer( content, morphTarget.vb ) } );
+				OptMorphTargetLod morphLod;
+				readBuffer( content, morphTarget.vb, morphLod.vertexBuffer );
+				optLod.morphTargetLods.push_back( std::move( morphLod ) );
 			}
 
             optLod.threshold = lod.threshold;
@@ -531,8 +539,6 @@ void unpackTangents( Vector4 t, Vector3* normal, Vector3* tangent, Vector3* bita
 #endif
 
 
-
-
 }
 
 void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
@@ -621,7 +627,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 			uint32_t vertexCount = lod.vertexBuffer.length();
 			uint32_t vertexStride = lod.vertexBuffer.stride;
 
-			// Create a new vertex and index buffer that includes the new tangent and bitangent data.
+			// Create a new vertex with the packed tangent
 			OptBufferData newVertexBuffer;
 			newVertexBuffer.stride = newVertexStride;
 			newVertexBuffer.data.resize( vertexCount * newVertexStride );
@@ -640,6 +646,20 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 				for( std::pair<VertexElement, VertexElement> elements : vertexElementMapping )
 				{
 					Vector4 attribute = readAttribute( elements.first, oldData );
+
+                    for( int i = 0; i < 4; i++ )
+					{
+						float quantized = meshopt_quantizeFloat( attribute[i], 16 );
+
+                        uint32_t before = *reinterpret_cast<uint32_t*>( &attribute[i] );
+						uint32_t after = *reinterpret_cast<uint32_t*>( &quantized );
+						if( before != after)
+						{
+							printf( "Quantized: %f --> %f, difference: %f\n", attribute[i], quantized, abs( quantized - attribute[i] ) );
+						}
+						attribute[i] = quantized;
+                    }
+
 					writeAttribute( elements.second, newData, attribute );
 				}
 
@@ -897,7 +917,7 @@ std::vector<uint8_t> Optimizer::toCmf()
 	{
 		const Mesh& oldMesh = content->m_cmfData->meshes[meshIndex];
 
-		const OptMesh& optMesh = meshes[meshIndex];
+		OptMesh& optMesh = meshes[meshIndex];
 
 		Mesh& newMesh = newData.meshes[meshIndex];
 
@@ -927,24 +947,46 @@ std::vector<uint8_t> Optimizer::toCmf()
 		newMesh.lods = allocator.AllocateSpan<MeshLod>( optMesh.lods.size() );
 		for( uint32_t lodIndex = 0; lodIndex < optMesh.lods.size(); lodIndex++ )
 		{
-			const OptMeshLod& optLod = optMesh.lods[lodIndex];
+			OptMeshLod& optLod = optMesh.lods[lodIndex];
 
 			MeshLod& newLod = newMesh.lods[lodIndex];
 
-            OptBufferData vertexBuffer = optLod.vertexBuffer;
-			OptBufferData indexBuffer = optLod.indexBuffer;
+            OptBufferData& vertexBuffer = optLod.vertexBuffer;
+			OptBufferData& indexBuffer = optLod.indexBuffer;
 
             
-			//meshopt_encodeVertexBufferBound()
+            {
+				size_t maxSize = meshopt_encodeVertexBufferBound( vertexBuffer.length(), vertexBuffer.stride );
+				std::vector<uint8_t> compressedData;
+				compressedData.resize( maxSize );
+				size_t actualSize = meshopt_encodeVertexBufferLevel( compressedData.data(), maxSize, vertexBuffer.data.data(), vertexBuffer.length(), vertexBuffer.stride, 3, 1 );
+				printf( "Compressed vertex data from %zu bytes to %zu bytes (%f %% compression ratio)\n", vertexBuffer.data.size(), actualSize, 100.0f * actualSize / vertexBuffer.data.size() );
+			}
 
 			newLod.vb = bufferAllocator.AddBuffer( vertexBuffer.data.data(), (uint32_t) vertexBuffer.data.size(), vertexBuffer.stride );
 
             
             if( vertexBuffer.length() < (1u << 16) )
             {
-				indexBuffer = convertIndexBuffer( indexBuffer, 2 );
+				OptBufferData indexBuffer16;
+				convertIndexBuffer( indexBuffer, 2, indexBuffer16 );
+				newLod.ib = bufferAllocator.AllocateBuffer( indexBuffer16.data.data(), (uint32_t)indexBuffer16.data.size(), indexBuffer16.stride );
+			}
+			else
+			{
+				newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t)indexBuffer.data.size(), indexBuffer.stride );
             }
-			newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t) indexBuffer.data.size(), indexBuffer.stride );
+
+			{
+				meshopt_encodeIndexVersion( 1 );
+				size_t maxSize = meshopt_encodeIndexBufferBound( indexBuffer.length(), vertexBuffer.length() );
+				std::vector<uint8_t> compressedData;
+				compressedData.resize( maxSize );
+				size_t actualSize = meshopt_encodeIndexBuffer( compressedData.data(), maxSize, reinterpret_cast<uint32_t*>( indexBuffer.data.data() ), indexBuffer.length() );
+
+				printf( "Compressed index data from %zu bytes to %zu bytes (%f %% compression ratio)\n", indexBuffer.data.size(), actualSize, 100.0f * actualSize / indexBuffer.data.size() );
+			}
+			
 
             newLod.areas = allocator.AllocateSpan<LodMeshArea>( optLod.areas.size() );
 			for( uint32_t areaIndex = 0; areaIndex < optLod.areas.size(); areaIndex++ )

@@ -12,11 +12,19 @@ namespace optimizer
 struct OptBufferData
 {
 	std::vector<uint8_t> data;
-	uint32_t stride;
+	uint32_t stride = 1;
 
 	uint32_t length() const
 	{
 		return (uint32_t)(data.size() / stride);
+	}
+
+    OptBufferData& operator=( OptBufferData other )
+	{
+        data.assign( other.data.begin(), other.data.end() );
+		stride = other.stride;
+
+		return *this;
 	}
 };
 
