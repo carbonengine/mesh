@@ -1,5 +1,3 @@
-#pragma once
-
 #include <attributes.h>
 #include <meshoptimizer.h>
 
@@ -39,7 +37,7 @@ const char* getUsageString( Usage usage )
 		return "PackedTangent";
 
 	default:
-		printf( "Unknown usage: %d", usage );
+		printf( "Unknown usage: %hhu", usage );
 		return "Unknown usage!";
 	}
 }
@@ -79,7 +77,7 @@ const char* getElementTypeString( ElementType type )
 		return "Int8";
 
 	default:
-		printf( "Unknown element type: %d", type );
+		printf( "Unknown element type: %hhu", type );
 		return "Unknown element type!";
 	}
 }
