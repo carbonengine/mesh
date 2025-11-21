@@ -7,6 +7,7 @@ find_package(meshoptimizer CONFIG REQUIRED)
 include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 
+add_subdirectory( carbon-mesh-viewer )
 add_subdirectory( carbon-mesh-optimizer )
 
 set(PUBLIC_HEADER_FILES
