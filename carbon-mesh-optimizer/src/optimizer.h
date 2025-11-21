@@ -76,7 +76,7 @@ public:
 	void decompressTangents( uint32_t usageIndex );
 	void optimizeVertexPerformance();
 
-	std::vector<uint8_t> toCmf();
+	std::vector<uint8_t> toCmf( bool compress );
 
 private:
 	

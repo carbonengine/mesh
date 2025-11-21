@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 find_package(carbon-math CONFIG REQUIRED)
-find_package(meshoptimizer CONFIG REQUIRED)
 find_package(mikktspace CONFIG REQUIRED)
 
 
@@ -20,7 +19,7 @@ file(GLOB_RECURSE SOURCES
 
 add_executable(CarbonMeshOptimizer ${SOURCES})
 
-target_link_libraries(CarbonMeshOptimizer PUBLIC CarbonMesh CcpMath meshoptimizer::meshoptimizer mikktspace::mikktspace)
+target_link_libraries(CarbonMeshOptimizer PUBLIC CarbonMesh CcpMath mikktspace::mikktspace)
 target_precompile_headers(CarbonMeshOptimizer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)
 
 target_compile_options(CarbonMeshOptimizer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)

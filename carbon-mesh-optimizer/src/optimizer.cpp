@@ -647,7 +647,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 				{
 					Vector4 attribute = readAttribute( elements.first, oldData );
 
-                    for( int i = 0; i < 4; i++ )
+                    /* for( int i = 0; i < 4; i++ )
 					{
 						float quantized = meshopt_quantizeFloat( attribute[i], 16 );
 
@@ -658,7 +658,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 							printf( "Quantized: %f --> %f, difference: %f\n", attribute[i], quantized, abs( quantized - attribute[i] ) );
 						}
 						attribute[i] = quantized;
-                    }
+                    }*/
 
 					writeAttribute( elements.second, newData, attribute );
 				}
@@ -902,7 +902,7 @@ Span<T> convertToSpan( MemoryAllocator& allocator, const std::vector<T>& element
     return span;
 }
 
-std::vector<uint8_t> Optimizer::toCmf()
+std::vector<uint8_t> Optimizer::toCmf( bool compress )
 {
 	MemoryAllocator allocator;
 	BufferManager bufferAllocator(allocator);
@@ -955,37 +955,22 @@ std::vector<uint8_t> Optimizer::toCmf()
 			OptBufferData& indexBuffer = optLod.indexBuffer;
 
             
-            {
-				size_t maxSize = meshopt_encodeVertexBufferBound( vertexBuffer.length(), vertexBuffer.stride );
-				std::vector<uint8_t> compressedData;
-				compressedData.resize( maxSize );
-				size_t actualSize = meshopt_encodeVertexBufferLevel( compressedData.data(), maxSize, vertexBuffer.data.data(), vertexBuffer.length(), vertexBuffer.stride, 3, 1 );
-				printf( "Compressed vertex data from %zu bytes to %zu bytes (%f %% compression ratio)\n", vertexBuffer.data.size(), actualSize, 100.0f * actualSize / vertexBuffer.data.size() );
-			}
+			newLod.vb = bufferAllocator.AddBuffer( vertexBuffer.data.data(), (uint32_t)vertexBuffer.data.size(), vertexBuffer.stride, compress ? SectionCompression::MeshOptimizerVertexBuffer : SectionCompression::None );
 
-			newLod.vb = bufferAllocator.AddBuffer( vertexBuffer.data.data(), (uint32_t) vertexBuffer.data.size(), vertexBuffer.stride );
 
             
-            if( vertexBuffer.length() < (1u << 16) )
+            if( vertexBuffer.length() < ( 1u << 16 ) )
             {
 				OptBufferData indexBuffer16;
 				convertIndexBuffer( indexBuffer, 2, indexBuffer16 );
-				newLod.ib = bufferAllocator.AllocateBuffer( indexBuffer16.data.data(), (uint32_t)indexBuffer16.data.size(), indexBuffer16.stride );
+                //Use AllocateBuffer here since the data we have isn't persistent
+				newLod.ib = bufferAllocator.AllocateBuffer( indexBuffer16.data.data(), (uint32_t)indexBuffer16.data.size(), indexBuffer16.stride, compress ? SectionCompression::MeshOptimizerIndexBuffer : SectionCompression::None );
 			}
 			else
 			{
-				newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t)indexBuffer.data.size(), indexBuffer.stride );
+				newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t)indexBuffer.data.size(), indexBuffer.stride, compress ? SectionCompression::MeshOptimizerIndexBuffer : SectionCompression::None );
             }
-
-			{
-				meshopt_encodeIndexVersion( 1 );
-				size_t maxSize = meshopt_encodeIndexBufferBound( indexBuffer.length(), vertexBuffer.length() );
-				std::vector<uint8_t> compressedData;
-				compressedData.resize( maxSize );
-				size_t actualSize = meshopt_encodeIndexBuffer( compressedData.data(), maxSize, reinterpret_cast<uint32_t*>( indexBuffer.data.data() ), indexBuffer.length() );
-
-				printf( "Compressed index data from %zu bytes to %zu bytes (%f %% compression ratio)\n", indexBuffer.data.size(), actualSize, 100.0f * actualSize / indexBuffer.data.size() );
-			}
+            
 			
 
             newLod.areas = allocator.AllocateSpan<LodMeshArea>( optLod.areas.size() );
@@ -999,7 +984,7 @@ std::vector<uint8_t> Optimizer::toCmf()
 			for( uint32_t morphIndex = 0; morphIndex < optLod.morphTargetLods.size(); morphIndex++ )
 			{
 				OptMorphTargetLod optMorphTarget = optLod.morphTargetLods[morphIndex];
-				newLod.morphTargets[morphIndex] = { bufferAllocator.AddBuffer( optMorphTarget.vertexBuffer.data.data(), (uint32_t) optMorphTarget.vertexBuffer.data.size(), optMorphTarget.vertexBuffer.stride ) };
+				newLod.morphTargets[morphIndex] = { bufferAllocator.AddBuffer( optMorphTarget.vertexBuffer.data.data(), (uint32_t)optMorphTarget.vertexBuffer.data.size(), optMorphTarget.vertexBuffer.stride, compress ? SectionCompression::MeshOptimizerVertexBuffer : SectionCompression::None ) };
 			}
 
 			newLod.threshold = optLod.threshold;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cmf.h"
-#include "memallocator.h"
 #include <vector>
 
 
@@ -34,12 +33,14 @@ public:
     {
 		void* data = nullptr;
 		uint32_t size = 0;
+		uint32_t compressionStride = 0;
+		SectionCompression compression = SectionCompression::None;
     };
 
 	explicit BufferManager( MemoryAllocator& allocator );
 
-    BufferView AllocateBuffer( const void* data, uint32_t size, uint32_t stride );
-	BufferView AddBuffer( void* data, uint32_t size, uint32_t stride );
+    BufferView AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
+	BufferView AddBuffer( void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
 
 	void SetBuffer( uint32_t index, void* data, uint32_t size );
 
