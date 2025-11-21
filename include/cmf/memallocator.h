@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cmf.h"
-#include "memallocator.h"
 #include <vector>
 
 
@@ -12,6 +11,7 @@ class MemoryAllocator
 {
 public:
 	void Allocate( SpanRepr& a, size_t size );
+	void* Allocate( size_t size );
 	String AllocateString( std::string_view str );
 
     template <typename T>
@@ -26,16 +26,31 @@ private:
 	std::vector<std::vector<uint8_t>> m_allocations;
 };
 
-class BufferAllocator
+class BufferManager
 {
 public:
-	BufferView AddBuffer( const void* data, uint32_t size, uint32_t stride );
-	void* GetBufferData( const BufferView& view );
-	const void* GetBufferData( const BufferView& view ) const;
+    struct Buffer
+    {
+		void* data = nullptr;
+		uint32_t size = 0;
+		uint32_t compressionStride = 0;
+		SectionCompression compression = SectionCompression::None;
+    };
 
-	std::vector<std::vector<uint8_t>> m_buffers;
+	explicit BufferManager( MemoryAllocator& allocator );
+
+    BufferView AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
+	BufferView AddBuffer( void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
+
+	void SetBuffer( uint32_t index, void* data, uint32_t size );
+
+    void* GetData( const BufferView& view ) const;
+    Buffer GetBuffer( uint32_t index ) const;
+
+private:
+    MemoryAllocator& m_allocator;
+	std::vector<Buffer> m_buffers;
 };
-
 
 template <typename T>
 struct SpanModifier
@@ -74,7 +89,7 @@ struct SpanModifier
 		return data.end();
 	}
     template <typename Iter>
-    void insert( T* where, Iter* srcBegin, Iter* srcEnd )
+    void insert( T* where, Iter srcBegin, Iter srcEnd )
     {
 		if( where > end() || where < begin() || srcEnd < srcBegin )
 		{

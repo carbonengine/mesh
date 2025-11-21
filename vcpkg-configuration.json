@@ -9,7 +9,7 @@
       "kind": "git",
       "repository": "git@github.com:ccpgames/carbon-vcpkg-registry.git",
       "baseline": "126293b3e25aafb7fa420b834a5a12e3cf5bcfc1",
-      "packages": ["carbon-*", "ccp-debug-info", "tracy"]
+      "packages": ["carbon-*", "ccp-debug-info", "tracy", "python3-prebuilt"]
     }
   ]
 }

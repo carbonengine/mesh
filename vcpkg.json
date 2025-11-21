@@ -1,5 +1,5 @@
 {
-  "dependencies": [ 
+  "dependencies": [
     {
       "name": "glfw3",
       "version>=": "3.4#1"
@@ -17,9 +17,25 @@
       "version>=": "2023-12-17"
     },
     {
+      "name": "meshoptimizer",
+      "version>=": "0.25"
+    },
+    {
+      "name": "mikktspace",
+      "version>=": "2020-10-06#3"
+    },
+    {
       "name": "imgui",
       "version>=": "1.91.9",
-      "features": ["vulkan-binding"]
+      "features": [ "vulkan-binding" ]
+    },
+    {
+      "name": "gtest",
+      "version>=": "1.16.0"
+    },
+    {
+      "name": "python3-prebuilt",
+      "version>=": "3.12.3#3"
     }
   ]
 }

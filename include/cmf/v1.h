@@ -41,8 +41,8 @@ enum class Usage : uint8_t
 	Binormal,
 	TexCoord,
 	Color,
-	BlendIndices,
-	BlendWeights,
+	BoneIndices,
+	BoneWeights,
     PackedTangent,
 };
 
@@ -100,6 +100,7 @@ struct MeshArea
 
 struct LodMeshArea
 {
+    //TODO: These should be changed to be index counts, not primitive counts.
 	uint32_t firstElement = 0;
 	uint32_t elementCount = 0;
 
@@ -166,7 +167,7 @@ struct MeshLod
 	BufferView ib;
 	Span<LodMeshArea> areas;
 	Span<LodMorphTarget> morphTargets;
-	uint32_t threshold = 0; // max visible diameter in pixels for this LOD
+	uint32_t threshold = 0xffffffff; // max visible diameter in pixels for this LOD
 
 	static constexpr std::string_view TypeName = "MeshLod";
 
@@ -383,7 +384,7 @@ enum class SectionType : uint8_t
 struct Section
 {
 	uint32_t offset = 0;
-	uint32_t size = 0;
+	uint32_t compressedSize = 0;
 	uint32_t uncompressedSize = 0;
 	uint16_t gpuAlignment = 0;
 	SectionType type = SectionType::Data;
@@ -395,7 +396,7 @@ struct Section
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, offset, "offset" );
-		visitor( *this, size, "size" );
+		visitor( *this, compressedSize, "compressedSize" );
 		visitor( *this, uncompressedSize, "uncompressedSize" );
 		visitor( *this, gpuAlignment, "gpuAlignment" );
 		visitor( *this, type, "type" );

@@ -3,6 +3,7 @@
 #include "cmf.h"
 #include "cmf/memallocator.h"
 #include <vector>
+#include <memory>
 
 namespace cmf
 {
@@ -32,7 +33,7 @@ size_t _GetSpanSizes( const T& value, size_t chunkAlignment )
 	size_t size = 0;
 	if constexpr( std::is_base_of_v<SpanRepr, T> )
 	{
-		size = value.byteSize;
+		size = chunkAlignment + value.byteSize;
 		for( auto& element : value )
 		{
 			size += _GetSpanSizes( element, chunkAlignment );
@@ -134,7 +135,7 @@ FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
 	return result;
 }
 
-std::vector<uint8_t> BuildFile( const Data& data, const BufferAllocator& allocator, const Metadata* metadata = nullptr );
+std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata = nullptr );
 
 
 
