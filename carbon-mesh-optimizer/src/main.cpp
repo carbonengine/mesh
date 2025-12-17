@@ -61,9 +61,10 @@ void print( CmfContent* content )
 			printf( "        Type: %s\n", getElementTypeString( attribute.type ) );
 		}*/
 
-		for( const MeshLod& lod : mesh.lods )
+		for( uint32_t lodIndex = 0; lodIndex < mesh.lods.size(); lodIndex++ )
 		{
-			printf( "    LOD:\n" );
+			const MeshLod& lod = mesh.lods[lodIndex];
+			printf( "    LOD %d:\n", lodIndex );
 			printf( "        Num vertices: %d\n", lod.vb.size / lod.vb.stride );
 			printf( "        Vertex stride: %d\n", lod.vb.stride );
 
@@ -167,7 +168,11 @@ int main()
 	optimizer.compressTangents( 0, false );
 	//optimizer.decompressTangents( 0 );
 
-    optimizer.optimizeVertexPerformance();
+	optimizer.optimizeVertexPerformance();
+
+    optimizer.generateLODs();
+
+	optimizer.optimizeVertexPerformance();
 
 	{
 
