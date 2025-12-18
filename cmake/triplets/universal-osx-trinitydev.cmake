@@ -11,7 +11,7 @@ set(VCPKG_ENV_PASSTHROUGH_UNTRACKED VCPKG_ROOT)
 
 set(CARBON_BUILD_TYPE "TrinityDev")
 
-if (PORT MATCHES "carbon-*")
+if (PORT MATCHES "carbon-.*")
     set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/../toolchains/universal-osx-triplet.cmake")
     set(VCPKG_HASH_ADDITIONAL_FILES "${CMAKE_CURRENT_LIST_DIR}/../toolchains/universal-carbon-osx.cmake")
 endif ()
