@@ -52,7 +52,7 @@ struct Span : public SpanRepr
 	{
 		return begin();
 	}
-	size_t size() const
+	std::size_t size() const
 	{
 		return this->byteSize / sizeof( T );
 	}
@@ -60,11 +60,11 @@ struct Span : public SpanRepr
 	{
 		return this->byteSize == 0;
 	}
-	T& operator[]( size_t index )
+	T& operator[]( std::size_t index )
 	{
 		return data()[index];
 	}
-	const T& operator[]( size_t index ) const
+	const T& operator[]( std::size_t index ) const
 	{
 		return data()[index];
 	}
