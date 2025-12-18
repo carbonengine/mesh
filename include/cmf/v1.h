@@ -100,6 +100,7 @@ struct MeshArea
 
 struct LodMeshArea
 {
+    //TODO: These should be changed to be index counts, not primitive counts.
 	uint32_t firstElement = 0;
 	uint32_t elementCount = 0;
 
@@ -383,7 +384,7 @@ enum class SectionType : uint8_t
 struct Section
 {
 	uint32_t offset = 0;
-	uint32_t size = 0;
+	uint32_t compressedSize = 0;
 	uint32_t uncompressedSize = 0;
 	uint16_t gpuAlignment = 0;
 	SectionType type = SectionType::Data;
@@ -395,7 +396,7 @@ struct Section
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, offset, "offset" );
-		visitor( *this, size, "size" );
+		visitor( *this, compressedSize, "compressedSize" );
 		visitor( *this, uncompressedSize, "uncompressedSize" );
 		visitor( *this, gpuAlignment, "gpuAlignment" );
 		visitor( *this, type, "type" );

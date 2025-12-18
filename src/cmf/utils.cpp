@@ -93,7 +93,7 @@ bool AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 	for( auto& section : header.sections )
 	{
 		// Section must be within file bounds
-		if( section.offset + section.size > fileSize )
+		if( section.offset + section.compressedSize > fileSize )
 		{
 			return false;
 		}
@@ -110,7 +110,7 @@ bool AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 		// If not compressed, uncompressedSize must match size
 		if( section.compression == cmf::SectionCompression::None )
 		{
-			if( section.uncompressedSize != section.size )
+			if( section.uncompressedSize != section.compressedSize )
 			{
 				return false;
 			}
@@ -181,8 +181,8 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 			{
 				return false;
 			}
-			// Packed tangent must be 4-component unsigned normalized integer
-			if( ( element.type != cmf::ElementType::UInt16Norm && element.type != cmf::ElementType::UInt8Norm ) || element.elementCount != 4 )
+			// Packed tangent must be 4-component signed normalized integer
+			if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
 			{
 				return false;
 			}
@@ -404,7 +404,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	if( options.validateMainData )
 	{
 		auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
-		if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].size ) )
+		if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
 		{
 			return { false, result };
 		}

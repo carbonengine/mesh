@@ -3,6 +3,7 @@
 #include "cmf.h"
 #include "cmf/memallocator.h"
 #include <vector>
+#include <memory>
 
 namespace cmf
 {

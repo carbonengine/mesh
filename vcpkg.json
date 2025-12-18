@@ -17,6 +17,14 @@
       "version>=": "2023-12-17"
     },
     {
+      "name": "meshoptimizer",
+      "version>=": "0.25"
+    },
+    {
+      "name": "mikktspace",
+      "version>=": "2020-10-06#3"
+    },
+    {
       "name": "imgui",
       "version>=": "1.91.9",
       "features": [ "vulkan-binding" ]

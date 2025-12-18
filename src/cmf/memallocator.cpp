@@ -32,27 +32,28 @@ BufferManager::BufferManager( MemoryAllocator& allocator )
 {
 }
 
-BufferView BufferManager::AllocateBuffer( const void* data, uint32_t size, uint32_t stride )
+BufferView BufferManager::AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression )
 {
-	m_buffers.push_back( { m_allocator.Allocate( size ), size } );
-    memcpy( m_buffers.back().data, data, size );
-	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
+	void* copy = m_allocator.Allocate( size );
+	memcpy( copy, data, size );
+
+    return AddBuffer( copy, size, compressionStride, compression );
 }
 
-BufferView BufferManager::AddBuffer( void* data, uint32_t size, uint32_t stride )
+BufferView BufferManager::AddBuffer( void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression )
 {
-	m_buffers.push_back( { data, size } );
-	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
+	m_buffers.push_back( { data, size, compressionStride, compression } );
+	return { uint32_t( m_buffers.size() - 1 ), 0, size, compressionStride };
 }
 
-void BufferManager::SetBuffer( uint32_t index, void* data, uint32_t size )
+/* void BufferManager::SetBuffer( uint32_t index, void* data, uint32_t size )
 {
 	if( m_buffers.size() <= index )
     {
         m_buffers.resize( index + 1 );
 	}
-	m_buffers[index] = { data, size };
-}
+	m_buffers[index] = { data, size, size, stride, SectionCompression::None };
+}*/
 
 void* BufferManager::GetData( const BufferView& view ) const
 {

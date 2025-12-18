@@ -1,0 +1,42 @@
+#pragma once
+#include <Matrix.h>
+#include <Sphere.h>
+
+
+class Camera
+{
+public:
+	Camera() = default;
+
+	Matrix GetProjection();
+	Matrix GetView();
+
+	void SetFOV( float fov );
+
+	void SetScreenSize( uint32_t width, uint32_t height );
+
+	void LookAt( CcpMath::Sphere boundingSphere );
+
+	void Orbit( Vector2 currentPos, Vector2 previousPos );
+	void Zoom( float deltaZoom );
+	void Pan( Vector2 percentageChange );
+
+	void Update( float deltaTime );
+
+private:
+	Vector3 CalcEye();
+
+	float m_fov{ PI / 4.0f };
+	CcpMath::Sphere m_boundingSphere{ { 0.0f, 0.0f, 0.0f }, 0.0f };
+	Vector2 m_screenSize{ 0.0f, 0.0f };
+
+	Vector3 m_at{ 0.0, 0.0, 0.0 };
+	Vector3 m_targetAt{ 0.0, 0.0, 0.0 };
+
+	float m_zoom{ 0.0f };
+	float m_targetZoom{ 0.0f };
+	float m_closestZoom{ 0.0f };
+
+	Quaternion m_targetRotation{ IdentityQuaternion() };
+	Quaternion m_currentRotation{ IdentityQuaternion() };
+};

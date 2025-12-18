@@ -2,9 +2,13 @@ cmake_minimum_required(VERSION 3.30)
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
+find_package(meshoptimizer CONFIG REQUIRED)
 
 include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
+
+add_subdirectory( carbon-mesh-viewer )
+add_subdirectory( carbon-mesh-optimizer )
 
 set(PUBLIC_HEADER_FILES
     include/cmf/bounds.h
@@ -38,7 +42,7 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
-target_link_libraries(CarbonMesh PUBLIC CcpMath)
+target_link_libraries(CarbonMesh PUBLIC CcpMath meshoptimizer::meshoptimizer)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

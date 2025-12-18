@@ -1,0 +1,79 @@
+#pragma once
+
+#include "vulkan/device.h"
+#include "vulkan/swapchain.h"
+#include "vulkan/texture.h"
+
+
+namespace RenderUtils
+{
+static VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData );
+static const int MAX_FRAMES_IN_FLIGHT = 2;
+}
+
+// Handles the boilerplate vulkan setup and begin/end of rendering
+class Renderer
+{
+public:
+	Renderer();
+	~Renderer();
+
+	VkResult CreateInstance( std::vector<const char*> extensions );
+
+	void Initialize();
+	void PreResize();
+	VkResult Resize( uint32_t width, uint32_t height );
+	void ReleaseSurface();
+
+	VkResult BeginRender();
+	VkResult EndRender();
+
+	bool IsValid() const;
+
+	VkInstance GetVulkanInstance() const;
+	VkRenderPass GetRenderPass() const;
+	VkCommandBuffer GetCurrentCommandBuffer() const;
+	VkAllocationCallbacks* GetAllocator() const;
+	Device* GetDevice() const;
+	VkCommandPool GetCommandPool() const;
+	uint32_t GetCurrentFrame() const;
+	VkDescriptorPool GetDescriptorPool() const;
+
+	uint32_t GetWidth() const;
+	uint32_t GetHeight() const;
+
+	VkSurfaceKHR* GetSurface();
+
+private:
+	uint32_t m_imageIndex;
+
+	VkResult CreateRenderPass();
+	VkResult CreateCommandBuffers();
+	VkResult CreateSyncObjects();
+	VkResult CreateDescriptorPool();
+
+	VkInstance m_instance{ VK_NULL_HANDLE };
+	VkSurfaceKHR m_surface{ VK_NULL_HANDLE };
+	VkRenderPass m_renderPass{ VK_NULL_HANDLE };
+	Swapchain* m_swapchain{ nullptr };
+	Device* m_device{ nullptr };
+	VkAllocationCallbacks* m_allocator{ nullptr };
+	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
+	uint32_t m_currentFrame{ 0 };
+	uint32_t m_currentSemaphore{ 0 };
+
+	Texture* m_depthTarget{ nullptr };
+	VkCommandPool m_commandPool{ VK_NULL_HANDLE };
+
+	std::vector<VkCommandBuffer> m_commandBuffers;
+
+	// fences and semaphores
+	std::vector<VkSemaphore> m_imageAvailableSemaphores;
+	std::vector<VkSemaphore> m_renderFinishedSemaphores;
+	std::vector<VkFence> m_inFlightFences;
+
+	uint32_t m_width{ 0 };
+	uint32_t m_height{ 0 };
+
+	bool m_valid;
+};
