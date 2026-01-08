@@ -136,7 +136,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
 		totalUncompressed += section.uncompressedSize;
 	}
 
-	printf( "Total compression: %d --> %d bytes (%f %% of original size)\n", totalCompressed, totalUncompressed, 100.0f * totalCompressed / totalUncompressed );
+	printf( "Total compression: %d --> %d bytes (%f %% of original size)\n", totalUncompressed, totalCompressed, 100.0f * totalCompressed / totalUncompressed );
 
     FlattenedBuffer flattenedMetadata;
     if( metadata )

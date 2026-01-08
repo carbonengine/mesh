@@ -843,23 +843,22 @@ void Optimizer::optimizeVertexPerformance()
             // Regenerate the index buffer.
             // - Some exporters may not be perfect.
             // - Some vertices may get merged after attribute compression.
-            // - Important to do after generating tangents, as it outputs an unindexed mesh.
             {
 				std::vector<uint32_t> remap( vertexCount );
 				uint32_t newVertexCount = (uint32_t) meshopt_generateVertexRemap( remap.data(), indexData, indexCount, vertexData, vertexCount, vertexStride );
 
 				meshopt_remapVertexBuffer( vertexData, vertexData, vertexCount, vertexStride, remap.data() );
-				meshopt_remapIndexBuffer( indexData, indexData, indexCount, remap.data() );
 
+				meshopt_remapIndexBuffer( indexData, indexData, indexCount, remap.data() );
                 lod.vertexBuffer.data.resize( newVertexCount * vertexStride );
 
 				for( OptMorphTargetLod& morph : lod.morphTargetLods )
 				{
 					uint8_t* morphData = morph.vertexBuffer.data.data();
 					uint32_t morphStride = morph.vertexBuffer.stride;
-					meshopt_remapVertexBuffer( morphData, morphData, vertexCount, morphStride, remap.data() );
 
-                    morph.vertexBuffer.data.resize( newVertexCount * vertexStride );
+					meshopt_remapVertexBuffer( morphData, morphData, vertexCount, morphStride, remap.data() );
+					morph.vertexBuffer.data.resize( newVertexCount * morphStride );
 				}
 
                 vertexCount = newVertexCount;
@@ -893,6 +892,359 @@ void Optimizer::optimizeVertexPerformance()
         }
     }
 }
+
+void cmf::optimizer::Optimizer::generateLODs()
+{
+	for( OptMesh& mesh : meshes )
+	{
+
+        if( mesh.lods.size() > 1 )
+		{
+			printf( "Mesh %s already has %zu LODs. Deleting them.\n", mesh.name.c_str(), mesh.lods.size() );
+
+            mesh.lods.resize( 1 );
+		}
+
+        /* while( mesh.lods[0].areas.size() > 1 )
+		{
+			mesh.lods[0].areas.erase( mesh.lods[0].areas.begin() + 1 );
+		}*/
+
+        
+        if( true )
+		{
+
+
+            uint32_t numFloats = 0u;
+			std::vector<float> attributeWeights;
+
+		    for( VertexElement element : mesh.vertexDeclaration )
+		    {
+                for( uint32_t i = 0; i < element.elementCount; i++ )
+				{
+                    numFloats++;
+					if( element.usage != Usage::Position )
+                    {
+						attributeWeights.push_back( 1.0f );
+					}
+				}
+		    }
+
+            numFloats += 1u; //for area index
+			attributeWeights.push_back( 100.0f );
+
+
+
+			std::vector<float> vertexAttributeFloats;
+			std::vector<uint32_t> indexData;
+
+            {
+				OptMeshLod& originalLod = mesh.lods[0];
+				uint8_t* vertexBuffer = originalLod.vertexBuffer.data.data();
+				uint32_t vertexCount = originalLod.vertexBuffer.length();
+				uint32_t vertexStride = originalLod.vertexBuffer.stride;
+
+				uint32_t* indexBuffer = reinterpret_cast<uint32_t*>( originalLod.indexBuffer.data.data() );
+				uint32_t indexCount = originalLod.indexBuffer.length();
+
+
+
+				for( size_t areaIndex = 0; areaIndex < originalLod.areas.size(); areaIndex++ )
+				{
+					OptMeshAreaLod& area = originalLod.areas[areaIndex];
+
+					for( uint32_t i = area.firstElement; i < area.firstElement + area.elementCount; i++ )
+					{
+
+						uint32_t index = indexBuffer[i];
+
+						for( VertexElement attribute : mesh.vertexDeclaration )
+						{
+							Vector4 values = readAttribute( attribute, vertexBuffer + index * vertexStride );
+							for( uint32_t j = 0; j < attribute.elementCount; j++ )
+							{
+								vertexAttributeFloats.push_back( values[j] );
+							}
+						}
+						vertexAttributeFloats.push_back( (float)areaIndex );
+
+						indexData.push_back( i );
+					}
+				}
+			}
+
+            {
+                
+				uint32_t indexCount = (uint32_t) indexData.size();
+				
+				uint32_t vertexCount = (uint32_t) vertexAttributeFloats.size() / numFloats;
+				uint32_t vertexStride = sizeof( float ) * numFloats;
+
+				std::vector<uint32_t> remap( indexCount );
+				uint32_t newVertexCount = (uint32_t)meshopt_generateVertexRemap( remap.data(), indexData.data(), indexCount, vertexAttributeFloats.data(), indexCount, vertexStride );
+
+				meshopt_remapVertexBuffer( vertexAttributeFloats.data(), vertexAttributeFloats.data(), indexCount, vertexStride, remap.data() );
+
+				meshopt_remapIndexBuffer( indexData.data(), indexData.data(), indexCount, remap.data() );
+				vertexAttributeFloats.resize( newVertexCount * numFloats );
+			}
+
+			uint32_t previousLodIndexCount = mesh.lods[0].indexBuffer.length();
+			while( previousLodIndexCount > 3 * 128 )
+			//for( int i = 0; i < 6; i++ )
+			{
+
+				uint32_t targetIndexCount = previousLodIndexCount / 2u;
+
+                //uint32_t targets[6] = { 32517, 29106, 20373, 11535, 5301, 1929 };
+                //uint32_t targetIndexCount = targets[i];
+
+				printf( "Generating LOD with a target of %d indices.\n", targetIndexCount );
+
+                
+				uint32_t vertexCount = (uint32_t) vertexAttributeFloats.size() / numFloats;
+				uint32_t vertexStride = sizeof( float ) * numFloats;
+
+				std::vector<float> lodVertexAttributeFloats;
+				lodVertexAttributeFloats.assign( vertexAttributeFloats.begin(), vertexAttributeFloats.end() );
+
+				std::vector<uint32_t> lodIndexBuffer;
+				lodIndexBuffer.assign( indexData.begin(), indexData.end() );
+
+				float error;
+
+				auto options = 0;
+				options |= meshopt_SimplifyPermissive;
+				options |= meshopt_SimplifyPrune;
+				//options |= meshopt_SimplifyRegularize;
+				//options |= meshopt_SimplifyLockBorder;
+                
+                /*
+                uint32_t lodIndexCount = (uint32_t)meshopt_simplifyWithAttributes( 
+                    lodIndexBuffer.data(), lodIndexBuffer.data(), lodIndexBuffer.size(),
+                    vertexData.data(), vertexCount, vertexStride, 
+                    vertexData.data() + 3, vertexStride, 
+                    attributeWeights.data(), numFloats - 3,
+                    nullptr, 
+                    targetIndexCount, 
+                    FLT_MAX, 
+                    options, 
+                    &error
+                );
+                */
+                
+
+                
+                uint32_t lodIndexCount = (uint32_t)meshopt_simplifyWithUpdate(
+                    lodIndexBuffer.data(), lodIndexBuffer.size(),
+                    lodVertexAttributeFloats.data(), vertexCount, vertexStride, 
+                    lodVertexAttributeFloats.data() + 3, vertexStride, 
+                    attributeWeights.data(), attributeWeights.size(), 
+                    nullptr, 
+                    targetIndexCount, 
+                    FLT_MAX, 
+                    options, 
+                    &error
+                );
+                
+                
+				//uint32_t lodIndexCount = (uint32_t)meshopt_simplify( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, FLT_MAX, options, &error );
+				
+
+
+				if( lodIndexCount >= targetIndexCount * 1.1f || lodIndexCount == 0 )
+				{
+					printf( "Generated LOD with %d indices, so we're stuck. Cancelling.\n", lodIndexCount );
+					break;
+				}
+
+				lodIndexBuffer.resize( lodIndexCount );
+
+				/* 
+                for( int i = 0; i < lodVertexBuffer.size(); i++ )
+				{
+					if( vertexData[i] != lodVertexBuffer[i] )
+					{
+						if( i % numFloats == numFloats - 1 )
+						{
+							printf( "INDEX CHANGED %d: %f --> %f, diff: %f\n", i, vertexData[i], lodVertexBuffer[i], abs( vertexData[i] - lodVertexBuffer[i] ) );
+						}
+						else
+						{
+							//printf( "A %d: %f --> %f, diff: %f\n", i, vertexData[i], lodVertexBuffer[i], abs( vertexData[i] - lodVertexBuffer[i] ) );
+						}
+						
+					}
+				}
+                */
+				printf( "Generated LOD with %d indices with error %f.\n", lodIndexCount, error );
+
+
+                
+
+				OptMeshLod& lod = mesh.lods.emplace_back();
+
+				lod.threshold = 1.0f / error;
+
+
+				if( false )
+				{
+
+					lod.vertexBuffer.data.resize( vertexCount * vertexStride );
+					lod.vertexBuffer.stride = vertexStride;
+
+					uint8_t* vertexPointer = lod.vertexBuffer.data.data();
+
+                    for( uint32_t i = 0; i < vertexCount; i++ )
+					{
+
+					}
+				} 
+                else 
+                {
+
+
+                    uint32_t newStride = mesh.lods[0].vertexBuffer.stride;
+
+
+                    lod.vertexBuffer.data.resize( lodIndexCount * newStride );
+					lod.vertexBuffer.stride = newStride;
+
+                    uint8_t* vertexPointer = lod.vertexBuffer.data.data();
+
+                    std::vector<std::vector<uint32_t>> areaIndexBuffers( mesh.lods[0].areas.size() );
+
+					for( uint32_t i = 0; i < lodIndexCount; i += 3 )
+					{
+
+						float areaIndices[3];
+
+						for( uint32_t j = 0; j < 3; j++ )
+						{
+							uint32_t index = lodIndexBuffer[i + j];
+
+                            float* vertexFloats = lodVertexAttributeFloats.data() + index * numFloats;
+							for( VertexElement attribute : mesh.vertexDeclaration )
+							{
+								Vector4 values(0, 0, 0, 0);
+								for( uint32_t k = 0; k < attribute.elementCount; k++ )
+								{
+									values[k] = *(vertexFloats++);
+								}
+								writeAttribute( attribute, vertexPointer, values );
+							}
+							vertexPointer += newStride;
+
+                            areaIndices[j] = roundf( *(vertexFloats++) );
+						}
+
+						if( areaIndices[0] != areaIndices[1] || areaIndices[0] != areaIndices[2] )
+						{
+							printf( "Area indices of triangle are messed up! %f, %f, %f\n", areaIndices[0], areaIndices[1], areaIndices[2] );
+						}
+
+                        uint32_t areaIndex = (uint32_t) areaIndices[0];
+
+                        areaIndexBuffers[areaIndex].push_back( i + 0 );
+						areaIndexBuffers[areaIndex].push_back( i + 1 );
+						areaIndexBuffers[areaIndex].push_back( i + 2 );
+					}
+
+                    
+
+                    lod.indexBuffer.data.resize( lodIndexCount * 4 );
+					lod.indexBuffer.stride = 4;
+					uint32_t test = lod.indexBuffer.length();
+
+					uint32_t* indexPointer = reinterpret_cast<uint32_t*>( lod.indexBuffer.data.data() );
+					uint32_t firstElement = 0u;
+                    for( uint32_t areaIndex = 0; areaIndex < mesh.lods[0].areas.size(); areaIndex++ )
+                    {
+						uint32_t elementCount = (uint32_t)areaIndexBuffers[areaIndex].size();
+						lod.areas.push_back( { firstElement, elementCount } );
+
+                        for( uint32_t i = 0; i < elementCount; i++ )
+						{
+							indexPointer[firstElement + i] = areaIndexBuffers[areaIndex][i];
+						}
+
+                        firstElement += elementCount;
+						
+                    }
+				}
+
+				previousLodIndexCount = lodIndexCount;
+
+
+			}
+
+
+
+            printf( "Done\n" );
+
+		}
+		else
+		{
+
+
+            uint32_t previousLodIndexCount = mesh.lods[0].indexBuffer.length();
+		    while( previousLodIndexCount > 3 * 128 )
+		    {
+
+			    OptMeshLod& originalLod = mesh.lods[0];
+
+			    float* originalVertexBuffer = reinterpret_cast<float*>( originalLod.vertexBuffer.data.data() );
+			    uint32_t originalVertexCount = originalLod.vertexBuffer.length();
+			    uint32_t vertexStride = originalLod.vertexBuffer.stride;
+
+			    uint32_t* originalIndexBuffer = reinterpret_cast<uint32_t*>( originalLod.indexBuffer.data.data() );
+			    uint32_t originalIndexCount = originalLod.indexBuffer.length();
+
+
+
+                uint32_t targetIndexCount = previousLodIndexCount / 2u;
+
+                std::vector<uint8_t> lodIndexBuffer( originalIndexCount * 4 );
+			    float error;
+
+                auto options = 0;
+			    options |= meshopt_SimplifyPermissive;
+			    options |= meshopt_SimplifyPrune;
+			    options |= meshopt_SimplifyRegularize;
+			    uint32_t lodIndexCount = (uint32_t)meshopt_simplify( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, FLT_MAX, options, &error );
+			    //uint32_t lodIndexCount = (uint32_t)meshopt_simplifySloppy( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, 1.0f, &error );
+            
+
+                if( lodIndexCount >= targetIndexCount * 3 / 2 || lodIndexCount == 0 )
+			    {
+				    printf( "Generated LOD with %d indices, so we're stuck. Cancelling.\n", lodIndexCount );
+				    break;
+                }
+
+                lodIndexBuffer.resize( lodIndexCount * 4 );
+
+                printf( "Generated LOD with %d indices with error %f.\n", lodIndexCount, error );
+
+                OptMeshLod& lod = mesh.lods.emplace_back();
+
+                lod.threshold = 1.0f / error;
+
+                lod.vertexBuffer = mesh.lods[0].vertexBuffer;
+
+			    lod.indexBuffer.data.assign( lodIndexBuffer.begin(), lodIndexBuffer.end() );
+			    lod.indexBuffer.stride = 4;
+
+                lod.areas.push_back( {0, lodIndexCount} );
+
+                previousLodIndexCount = lodIndexCount;
+			}
+		}
+    }
+}
+
+
+
+
 
 template <typename T>
 Span<T> convertToSpan( MemoryAllocator& allocator, const std::vector<T>& elements )
