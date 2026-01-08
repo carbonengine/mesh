@@ -32,7 +32,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFl
 }
 }
 
-Renderer::Renderer() 
+Renderer::Renderer()
 {
 }
 

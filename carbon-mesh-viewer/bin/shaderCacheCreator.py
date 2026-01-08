@@ -39,8 +39,9 @@ def enumerate_files( directory, output):
                 #include \"%s\"
              })""" % shaders[1]
 
-        code +=  "{\"%s\", { \n            %s,\n            %s\n         } }" % (name, vertShader, fragShader)
+        code +=  "{\"%s\", { \n            %s,\n            %s\n         } },\n" % (name, vertShader, fragShader)
 
+    code = code[:-2]
     with open(output, 'w') as f:
         f.write(code)
 

@@ -73,12 +73,12 @@ void ModelRenderer::Initialize( const Renderer* renderer )
 		vkUpdateDescriptorSets( logicalDevice, 1, &writeDescriptorSet, 0, nullptr );
 	}
 
-    m_camera.SetScreenSize( renderer->GetWidth(), renderer->GetHeight() );
+	m_camera.SetScreenSize( renderer->GetWidth(), renderer->GetHeight() );
 }
 
 void ModelRenderer::Resize( uint32_t width, uint32_t height )
 {
-    m_camera.SetScreenSize( width, height );
+	m_camera.SetScreenSize( width, height );
 }
 
 void ModelRenderer::Release( const Renderer* renderer )
@@ -125,31 +125,35 @@ VkResult ModelRenderer::SetPerFrameData( const Renderer* renderer )
 
 void ModelRenderer::Update( float deltaTime, const MouseState& mouseState )
 {
-    if( mouseState.IsButtonPressed( MouseButton::LEFT ) )
-    {
-		m_camera.Orbit( mouseState.GetLastPos(), mouseState.GetPos() );
+	if( mouseState.IsButtonPressed( MouseButton::LEFT ) )
+	{
+		m_camera.Orbit( mouseState.GetPos(), mouseState.GetLastPos() );
 	}
 	if( Length( mouseState.GetScroll() ) > 0 )
 	{
-        auto delta = mouseState.GetScroll();
-        m_camera.Zoom( delta.y );
+		auto delta = mouseState.GetScroll();
+		m_camera.Zoom( delta.y );
 	}
-	else if( mouseState.IsButtonPressed( MouseButton::RIGHT ) )
-    {
+	else if( mouseState.IsButtonPressed( MouseButton::MIDDLE ) )
+	{
 		auto change = mouseState.GetPosChangePercentage();
 		auto absChange = Vector2( abs( change.x ), abs( change.y ) );
-		
-        float zoom = change.x;
 
-        if( absChange.y > absChange.x )
+		float zoom = change.x;
+
+		if( absChange.y > absChange.x )
 		{
-		    zoom = change.y;
-        }
+			zoom = change.y;
+		}
 
 		m_camera.Zoom( -zoom * 10.0f );
 	}
+	if( mouseState.IsButtonPressed( MouseButton::RIGHT ) )
+	{
+		m_camera.Pan( mouseState.GetPosChangePercentage() );
+	}
 
-    m_camera.Update( deltaTime );
+	m_camera.Update( deltaTime );
 }
 
 VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, size_t lodIndex )
@@ -195,7 +199,13 @@ VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, 
 		auto indexBuffer = lod.indexBuffer->GetGpuBuffer();
 
 		vkCmdBindIndexBuffer( commandBuffer, indexBuffer, 0, lod.indexStride == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32 );
-		vkCmdDrawIndexed( commandBuffer, lod.indexBuffer->size() / lod.indexStride, 1, 0, 0, 0 );
+
+		// Render each area separately. Perhaps this should be done in different colors?
+		for( uint32_t areaIndex = 0; areaIndex < lod.areas.size(); areaIndex++ )
+		{
+			auto area = lod.areas[areaIndex];
+			vkCmdDrawIndexed( commandBuffer, area.elementCount, 1, area.firstElement, 0, 0 );
+		}
 	}
 	else
 	{
@@ -248,24 +258,34 @@ void ModelRenderer::SetData( const CmfContent* data, const Renderer* renderer )
 
 			if( vertexDescriptions.empty() )
 			{
-				uint32_t location = 0;
 				for( const auto& decl : cmfMesh.decl )
 				{
+
+					// Generate a predictable location so that shaders can find the attribute.
+					uint32_t location = (uint32_t)decl.usage * 4u + decl.usageIndex;
+
 					VkVertexInputAttributeDescription attrDesc{};
 					attrDesc.binding = 0;
-					attrDesc.location = location++;
+					attrDesc.location = location;
 					attrDesc.offset = decl.offset;
 					attrDesc.format = VulkanEnums::ElementTypeToVkFormat( decl.type, decl.elementCount );
 					vertexDescriptions.push_back( attrDesc );
 				}
 			}
 			mesh.stride = modelLod.vertexStride;
-			mesh.lods.push_back( modelLod );
+
+			for( const auto& area : lod.areas )
+			{
+				modelLod.areas.push_back( { area.firstElement * 3, area.elementCount * 3 } );
+			}
+
+
+			mesh.lods.push_back( std::move( modelLod ) );
 		}
 		if( mesh.lods.size() > 0 )
 		{
 			mesh.vertexDescriptions = vertexDescriptions;
-			m_meshes.push_back( mesh );
+			m_meshes.push_back( std::move( mesh ) );
 		}
 	}
 
@@ -310,6 +330,8 @@ void ModelRenderer::SetShader( std::string shaderName, const Renderer* renderer 
 	m_shaderName = shaderName;
 
 	auto logicalDevice = renderer->GetDevice()->GetLogicalDevice();
+
+	vkDeviceWaitIdle( logicalDevice );
 	for( auto& mesh : m_meshes )
 	{
 		if( mesh.pipeline != VK_NULL_HANDLE )

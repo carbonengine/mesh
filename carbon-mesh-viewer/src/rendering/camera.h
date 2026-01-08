@@ -17,29 +17,26 @@ public:
 
 	void LookAt( CcpMath::Sphere boundingSphere );
 
-	void Orbit( Vector2 start, Vector2 end );
+	void Orbit( Vector2 currentPos, Vector2 previousPos );
 	void Zoom( float deltaZoom );
+	void Pan( Vector2 percentageChange );
 
-    void Update( float deltaTime );
+	void Update( float deltaTime );
 
 private:
+	Vector3 CalcEye();
+
 	float m_fov{ PI / 4.0f };
 	CcpMath::Sphere m_boundingSphere{ { 0.0f, 0.0f, 0.0f }, 0.0f };
 	Vector2 m_screenSize{ 0.0f, 0.0f };
 
-    float m_zoom{ 0.0f };
-	float m_zoomTarget{ 0.0f };
+	Vector3 m_at{ 0.0, 0.0, 0.0 };
+	Vector3 m_targetAt{ 0.0, 0.0, 0.0 };
+
+	float m_zoom{ 0.0f };
+	float m_targetZoom{ 0.0f };
 	float m_closestZoom{ 0.0f };
 
-    float m_orbitRadius{ 0.0f };
-
-    Vector3 m_eye{ 0.0f, 0.0f, 0.0f };
-	Vector3 m_at{ 0.0f, 0.0f, 0.0f };
-    Vector3 m_up{ 0.0f, 1.0f ,0.0f };
-
-    Quaternion m_currentRotation{ IdentityQuaternion() };
-
-    float m_yaw{ 0.0f };
-	float m_pitch{ 0.0f };
-    bool m_flipped{ false };
+	Quaternion m_targetRotation{ IdentityQuaternion() };
+	Quaternion m_currentRotation{ IdentityQuaternion() };
 };

@@ -33,6 +33,5 @@ private:
 
 	CmfContent* m_cmfContent{ nullptr };
 
-    MouseState m_mouseState = MouseState();
-
+	MouseState m_mouseState = MouseState();
 };

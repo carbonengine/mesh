@@ -2,16 +2,17 @@
 
 Matrix Camera::GetProjection()
 {
+	float distToModel = Length( m_at - m_boundingSphere.center );
 	return PerspectiveFovMatrix(
 		m_fov,
 		m_screenSize.x / m_screenSize.y,
-		std::max( 0.1f, m_zoom - m_boundingSphere.radius ),
-		m_zoom + m_boundingSphere.radius );
+		std::max( 0.1f, m_zoom - distToModel - m_boundingSphere.radius ),
+		distToModel + m_zoom + m_boundingSphere.radius );
 }
 
 Matrix Camera::GetView()
 {
-	return LookAtMatrix( m_eye, m_at, m_up );
+	return TranslationMatrix( m_at ) * RotationMatrix( m_currentRotation ) * TranslationMatrix( Vector3( 0.0, 0.0, -m_zoom ) );
 }
 
 void Camera::SetFOV( float fov )
@@ -26,77 +27,76 @@ void Camera::SetScreenSize( uint32_t width, uint32_t height )
 
 void Camera::LookAt( CcpMath::Sphere boundingSphere )
 {
-	m_currentRotation = IdentityQuaternion();
-	m_pitch = 0.0f;
-	m_yaw = PI / 2.0f;
+	m_currentRotation = RotationQuaternion( 0.0f, 0.0f, 0.0f );
 	m_boundingSphere = boundingSphere;
 	m_zoom = boundingSphere.radius * 2.0f;
-	m_orbitRadius = boundingSphere.radius * 2.0f;
-	m_zoomTarget = m_zoom;
+	m_targetZoom = m_zoom;
 	m_at = boundingSphere.center;
 	m_closestZoom = boundingSphere.radius / 100.0f;
+	m_targetRotation = m_currentRotation;
+	m_targetAt = m_at;
 }
 
-// Helper: Map screen coordinates to arcball sphere
-static Vector3 ArcballMap( const Vector2& point, const Vector2& screenSize )
+Vector3 Camera::CalcEye()
 {
-	float x = ( 2.0f * point.x - screenSize.x ) / screenSize.x;
-	float y = ( screenSize.y - 2.0f * point.y ) / screenSize.y;
-	float lengthSq = x * x + y * y;
+	return m_at + TransformCoord( Vector3( 0.0, 0.0, m_zoom ), RotationMatrix( m_currentRotation ) );
+}
 
-	if( lengthSq > 1.0f )
+static Quaternion NdcToArc( const Vector2& ndc )
+{
+	Vector3 ndcAsVec3( ndc.x, ndc.y, 0.0f );
+	const float length = Dot( ndcAsVec3, ndcAsVec3 );
+
+	if( length <= 1.0f )
 	{
-		// Outside the sphere, project onto the sphere's surface
-		float length = sqrtf( lengthSq );
-		x /= length;
-		y /= length;
-		return Vector3( x, y, 0.0f );
+		// point is on the sphere
+		return Quaternion( ndc.x, ndc.y, sqrt( 1.0f - length ), 0.0f );
 	}
 	else
 	{
-		// Inside the sphere
-		float z = sqrtf( 1.0f - lengthSq );
-		return Vector3( x, y, z );
+		// point is outside the sphere, project onto sphere
+		return Normalize( Quaternion( ndc.x, ndc.y, 0.0f, 0.0f ) );
 	}
 }
 
-void Camera::Orbit( Vector2 start, Vector2 end )
+static Vector2 ScreenToNdc( const Vector2& point, const Vector2& screenSize )
 {
-	if( m_screenSize.x <= 0.0f || m_screenSize.y <= 0.0f )
+	return Vector2( 1.0, -1.0 ) * ( 2.0f * point / screenSize - Vector2( 1.0, 1.0 ) );
+}
+
+void Camera::Orbit( Vector2 currentPos, Vector2 previousPos )
+{
+	if( currentPos == previousPos )
+	{
 		return;
+	}
 
-    float yawDelta = -( end.x - start.x ) / m_screenSize.x * 2.0f * PI;
-	float pitchDelta = ( end.y - start.y ) / m_screenSize.y * PI;
+	const Vector2 currentNdcPos = ScreenToNdc( currentPos, m_screenSize );
+	const Vector2 previousNdcPos = ScreenToNdc( previousPos, m_screenSize );
 
-	m_yaw += yawDelta;
-	m_pitch += pitchDelta;
-
-	// Clamp pitch to avoid flipping
-	const float limit = PI / 2.0f - 0.01f;
-	if( m_pitch > limit )
-		m_pitch = limit;
-	if( m_pitch < -limit )
-		m_pitch = -limit;
+	const Quaternion currentRotation = NdcToArc( currentNdcPos );
+	const Quaternion previousRotation = NdcToArc( previousNdcPos );
+	m_targetRotation *= Normalize( previousRotation * currentRotation );
 }
 
 void Camera::Zoom( float zoomAmount )
 {
 	float zoomStepSize = m_zoom / 10.0f;
-	m_zoomTarget = std::max( m_zoomTarget + zoomAmount * zoomStepSize, m_closestZoom );
+	m_targetZoom = std::max( m_targetZoom + zoomAmount * zoomStepSize, m_closestZoom );
+}
+
+void Camera::Pan( Vector2 percentageChange )
+{
+	Vector3 right = TransformCoord( Vector3( 1.0f, 0.0f, 0.0f ), RotationMatrix( Inverse( m_currentRotation ) ) );
+	Vector3 up = TransformCoord( Vector3( 0.0f, 1.0f, 0.0f ), RotationMatrix( Inverse( m_currentRotation ) ) );
+	float panSpeed = m_zoom * 0.5f;
+	m_targetAt += ( right * percentageChange.x - up * percentageChange.y ) * panSpeed;
 }
 
 void Camera::Update( float deltaTime )
 {
 	// Smoothly interpolate to the target zoom level
-	m_zoom = m_zoom + ( m_zoomTarget - m_zoom ) * std::min( deltaTime * 5.0f, 1.0f );
-
-	// Spherical coordinates
-	float x = m_zoom * cosf( m_pitch ) * sinf( m_yaw );
-	float y = m_zoom * sinf( m_pitch );
-	float z = m_zoom * cosf( m_pitch ) * cosf( m_yaw );
-
-	m_eye = m_at + Vector3( x, y, z );
-
-	// Always use world up for the up vector
-	m_up = Vector3( 0, 1, 0 );
+	m_zoom = m_zoom + ( m_targetZoom - m_zoom ) * std::min( deltaTime * 6.5f, 1.0f );
+	m_at = m_at + ( m_targetAt - m_at ) * std::min( deltaTime * 6.5f, 1.0f );
+	m_currentRotation = Slerp( m_currentRotation, m_targetRotation, std::min( deltaTime * 6.5f, 1.0f ) );
 }

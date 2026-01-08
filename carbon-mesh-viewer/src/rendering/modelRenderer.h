@@ -29,12 +29,20 @@ public:
 private:
 	void ReleaseMeshes( const Renderer* renderer );
 
+	struct ModelArea
+	{
+		uint32_t firstElement = 0;
+		uint32_t elementCount = 0;
+	};
+
 	struct ModelLod
 	{
 		Buffer* vertexBuffer{ VK_NULL_HANDLE };
 		uint32_t vertexStride{ 0 };
 		Buffer* indexBuffer{ VK_NULL_HANDLE };
 		uint8_t indexStride{ 0 };
+
+		std::vector<ModelArea> areas;
 	};
 
 	struct Mesh

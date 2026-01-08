@@ -37,9 +37,10 @@ file(GLOB_RECURSE SOURCES
     shaders/*.*
 )
 
-add_executable(CarbonMeshViewer ${SOURCES})
+add_executable(CarbonMeshViewer ${SOURCES} ${GENERATED_SHADER_DIR})
+set(COMPILED_SHADERS "")
+
 foreach( SHADER_PATH ${SHADERS} )
-    message( STATUS "Compiling shader: ${SHADER_PATH}" )
     file( RELATIVE_PATH SHADER_RELATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shaders ${SHADER_PATH} )
 
     get_filename_component( SHADER_NAME ${SHADER_RELATIVE_PATH} NAME )
@@ -48,18 +49,27 @@ foreach( SHADER_PATH ${SHADERS} )
         file( MAKE_DIRECTORY ${GENERATED_SHADER_DIR} )
     endif()
 
-    message( STATUS "Running: ${SHADER_COMPILER} \"${SHADER_PATH}\" -o \"${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h\" -mfmt=num" )
-
     add_custom_command(
-        TARGET CarbonMeshViewer PRE_BUILD
+        OUTPUT "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+        DEPENDS ${SHADER_PATH} 
         COMMAND ${SHADER_COMPILER} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+        COMMENT "Compiling shader: ${SHADER_PATH} to ${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h"
     )
+    list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" )
 endforeach()
 
 add_custom_command( 
-    TARGET CarbonMeshViewer PRE_BUILD
+    OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    DEPENDS ${SHADERS} 
     COMMAND python ${SHADER_BINARY_TO_SHADER_CACHE} "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    COMMENT "Generating shader cache header ${GENERATED_SHADER_DIR}/generatedShaderCache.h"
 )
+
+list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/generatedShaderCache.h" )
+
+add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
+add_dependencies(CarbonMeshViewer CompileShaders)
+
 
 target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath CcpCore glfw Vulkan::Vulkan imgui::imgui)
 target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)

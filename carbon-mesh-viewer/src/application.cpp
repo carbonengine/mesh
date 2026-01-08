@@ -67,7 +67,9 @@ void Application::Initialize()
 
 	m_modelRenderer = new ModelRenderer();
 	m_modelRenderer->Initialize( m_renderer );
-	m_modelRenderer->SetShader( "test", m_renderer );
+
+	m_modelRenderer->SetShader( "simple", m_renderer );
+	m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_LINE, m_renderer );
 
 	// initialize input handler
 	glfwSetKeyCallback( m_window, []( GLFWwindow* window, int key, int scancode, int action, int mods ) {
@@ -94,13 +96,13 @@ void Application::Initialize()
 		}
 	} );
 
-    glfwSetScrollCallback(m_window, []( GLFWwindow* window, double xoffset, double yoffset ){
+	glfwSetScrollCallback( m_window, []( GLFWwindow* window, double xoffset, double yoffset ) {
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
 			app->OnMouseScroll( xoffset, yoffset );
 		}
-    } );
+	} );
 
 
 	glfwSetDropCallback( m_window, []( GLFWwindow* window, int count, const char** paths ) {
@@ -155,9 +157,18 @@ void Application::Run()
 			m_modelRenderer->Update( newTime - time, m_mouseState );
 			m_modelRenderer->SetPerFrameData( m_renderer );
 
+			int lodIndex = 0;
+			for( int i = 1; i <= 9; i++ )
+			{
+				if( glfwGetKey( m_window, GLFW_KEY_0 + i ) )
+				{
+					lodIndex = i;
+				}
+			}
+
 			for( size_t meshIndex = 0; meshIndex < m_cmfContent->m_cmfData->meshes.size(); meshIndex++ )
 			{
-				m_modelRenderer->RenderMesh( m_renderer, meshIndex, 0 );
+				m_modelRenderer->RenderMesh( m_renderer, meshIndex, lodIndex );
 			}
 		}
 
@@ -167,7 +178,7 @@ void Application::Run()
 			break;
 		}
 		time = newTime;
-        m_mouseState.Clean();
+		m_mouseState.Clean();
 	}
 
 	if( m_window )
@@ -193,11 +204,11 @@ void Application::OnMouseButton( int button, int action, int mods )
 	if( action == 1 )
 	{
 		m_mouseState.PressButton( (MouseButton)button );
-    }
+	}
 	else if( action == 0 )
 	{
 		m_mouseState.ReleaseButton( (MouseButton)button );
-    }
+	}
 }
 
 void Application::OnMouseScroll( double xoffset, double yoffset )
@@ -212,6 +223,29 @@ void Application::OnMouseMove( double xpos, double ypos )
 
 void Application::OnKey( int key, int scancode, int action, int mods )
 {
+	switch( key )
+	{
+	case GLFW_KEY_Q:
+		m_modelRenderer->SetShader( "simple", m_renderer );
+		m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_LINE, m_renderer );
+		break;
+	case GLFW_KEY_W:
+		m_modelRenderer->SetShader( "facenormal", m_renderer );
+		m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_FILL, m_renderer );
+		break;
+	case GLFW_KEY_E:
+		m_modelRenderer->SetShader( "normal", m_renderer );
+		m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_FILL, m_renderer );
+		break;
+	case GLFW_KEY_R:
+		m_modelRenderer->SetShader( "packednormal", m_renderer );
+		m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_FILL, m_renderer );
+		break;
+	case GLFW_KEY_T:
+		m_modelRenderer->SetShader( "oldpackednormal", m_renderer );
+		m_modelRenderer->SetPolygonMode( VK_POLYGON_MODE_FILL, m_renderer );
+		break;
+	}
 }
 
 void Application::Resize( uint32_t width, uint32_t height )
