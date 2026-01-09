@@ -10,7 +10,7 @@ if (NOT _CCP_TOOLCHAIN_FILE_LOADED)
     set (CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
     set (CMAKE_XCODE_GENERATE_SCHEME ON)
     set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-    set (CMAKE_OSX_DEPLOYMENT_TARGET 10.14)
+    set (CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
 
     #[[
         - `CCP_PLATFORM` indicates the operating system a binary was built for

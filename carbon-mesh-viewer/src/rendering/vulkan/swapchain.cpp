@@ -1,4 +1,5 @@
 #include "swapchain.h"
+#include "vulkanerrors.h"
 
 Swapchain::Swapchain() :
 	m_swapchain( VK_NULL_HANDLE ),

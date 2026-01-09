@@ -4,7 +4,7 @@
 #include "rendering/renderer.h"
 #include "rendering/modelRenderer.h"
 
-#define GLFW_INCLUDE_VULKAN
+#include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 #include "input/mousestate.h"
 

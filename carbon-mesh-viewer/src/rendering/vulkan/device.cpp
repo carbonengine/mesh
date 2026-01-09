@@ -1,9 +1,14 @@
 #include "device.h"
+#include "vulkanerrors.h"
 #include <stdexcept>
 
-const std::vector<const char*> deviceExtensions = {
+const std::vector<const char*> DEVICE_EXTENSIONS = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_MAINTENANCE1_EXTENSION_NAME
+#ifdef APPLE
+    ,
+    VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
+#endif
 };
 
 const std::vector<const char*> validationLayers = {
@@ -38,7 +43,7 @@ VkResult Device::pickPhysicalDevice( VkInstance instance, const VkAllocationCall
 	CR_RETURN( vkEnumeratePhysicalDevices( instance, &deviceCount, nullptr ) );
 	if( deviceCount == 0 )
 	{
-		CCP_LOGERR( "Failed to find GPUs with Vulkan support!" );
+		Log::Error( "Failed to find GPUs with Vulkan support!" );
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 	std::vector<VkPhysicalDevice> devices( deviceCount );
@@ -55,13 +60,13 @@ VkResult Device::pickPhysicalDevice( VkInstance instance, const VkAllocationCall
 	}
 	if( m_physicalDevice == VK_NULL_HANDLE )
 	{
-		CCP_LOGERR( "Failed to find a suitable GPU!" );
+        Log::Error( "Failed to find a suitable GPU!" );
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
 	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &m_memoryProperties );
-	CCP_LOGNOTICE( "Using GPU %s", properties.deviceName );
+	Log::Info( "Using GPU %s", properties.deviceName );
 	return VK_SUCCESS;
 }
 
@@ -93,8 +98,8 @@ VkResult Device::createLogicalDevice( const VkAllocationCallbacks* allocator )
 
 	createInfo.pEnabledFeatures = &deviceFeatures;
 
-	createInfo.enabledExtensionCount = static_cast<uint32_t>( deviceExtensions.size() );
-	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+	createInfo.enabledExtensionCount = static_cast<uint32_t>( DEVICE_EXTENSIONS.size() );
+	createInfo.ppEnabledExtensionNames = DEVICE_EXTENSIONS.data();
 
 #ifdef DEBUG_MODE
 	createInfo.enabledLayerCount = static_cast<uint32_t>( validationLayers.size() );
@@ -115,7 +120,7 @@ bool Device::IsDeviceSuitable( VkPhysicalDevice device, VkSurfaceKHR surface )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( device, &properties );
-	CCP_LOGNOTICE( "Checking GPU %s", properties.deviceName );
+    Log::Info( "Checking GPU %s", properties.deviceName );
 	QueueFamilyIndices indices = FindQueueFamilies( device, surface );
 
 	bool extensionsSupported = DeviceSupportsExtensions( device );
@@ -217,7 +222,7 @@ bool Device::DeviceSupportsExtensions( VkPhysicalDevice device )
 	std::vector<VkExtensionProperties> availableExtensions( extensionCount );
 	vkEnumerateDeviceExtensionProperties( device, nullptr, &extensionCount, availableExtensions.data() );
 
-	std::set<std::string> requiredExtensions( deviceExtensions.begin(), deviceExtensions.end() );
+	std::set<std::string> requiredExtensions( DEVICE_EXTENSIONS.begin(), DEVICE_EXTENSIONS.end() );
 
 	for( const auto& extension : availableExtensions )
 	{

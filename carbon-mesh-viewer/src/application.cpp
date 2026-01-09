@@ -16,10 +16,13 @@ void Application::Initialize()
 	// Initialize GLFW
 	if( !glfwInit() )
 	{
-		CCP_LOGERR( "Failed to initialize GLFW" );
+        Log::Error( "Failed to initialize GLFW" );
 		return;
 	}
-
+	if (!glfwVulkanSupported()) {
+        Log::Error("GLFW was not built with Vulkan support or no Vulkan loader was found!");
+		return;
+	}
 	uint32_t width = 2048;
 	uint32_t height = 1024;
 	glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
@@ -28,29 +31,36 @@ void Application::Initialize()
 	m_window = glfwCreateWindow( width, height, "Carbon Mesh Viewer", nullptr, nullptr );
 	if( !m_window )
 	{
-		CCP_LOGERR( "Failed to create GLFW window" );
+        Log::Error( "Failed to create GLFW window" );
 		return;
 	}
 
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions;
 	glfwExtensions = glfwGetRequiredInstanceExtensions( &glfwExtensionCount );
+	if (!glfwExtensions) {
+		const char* errorDesc = nullptr;
+		int errorCode = glfwGetError(&errorDesc);
+        Log::Error("glfwGetRequiredInstanceExtensions returned nullptr. GLFW error %d: %s", errorCode, errorDesc ? errorDesc : "(no description)");
+	}
 
 	std::vector<const char*> extensions( glfwExtensions, glfwExtensions + glfwExtensionCount );
-
+#ifdef APPLE
+    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
 	// Initialize renderer
 	m_renderer = new Renderer();
 	m_renderer->Resize( width, height );
 
 	if( m_renderer->CreateInstance( extensions ) )
 	{
-		CCP_LOGERR( "Failed to create Vulkan instance" );
+        Log::Error( "Failed to create Vulkan instance" );
 		return;
 	}
 
 	if( glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() ) != VK_SUCCESS )
 	{
-		CCP_LOGERR( "Failed to create window surface" );
+        Log::Error( "Failed to create window surface" );
 		return;
 	}
 
@@ -59,7 +69,7 @@ void Application::Initialize()
 	if( !m_renderer->IsValid() )
 	{
 		m_renderer = nullptr;
-		CCP_LOGERR( "Failed to initialize renderer" );
+        Log::Error( "Failed to initialize renderer" );
 		return;
 	}
 
@@ -149,7 +159,7 @@ void Application::Run()
 
 		if( m_renderer->BeginRender() != VK_SUCCESS )
 		{
-			CCP_LOGERR( "Failed to begin render" );
+            Log::Error( "Failed to begin render" );
 			break;
 		}
 		if( m_cmfContent )
@@ -174,7 +184,7 @@ void Application::Run()
 
 		if( m_renderer->EndRender() != VK_SUCCESS )
 		{
-			CCP_LOGERR( "Failed to end  nder" );
+            Log::Error( "Failed to end  nder" );
 			break;
 		}
 		time = newTime;
@@ -192,7 +202,7 @@ void Application::SetData( CmfContent* data )
 {
 	if( !data )
 	{
-		CCP_LOGERR( "Invalid CMF data. Ignoring" );
+        Log::Error( "Invalid CMF data. Ignoring" );
 		return;
 	}
 	m_cmfContent = data;

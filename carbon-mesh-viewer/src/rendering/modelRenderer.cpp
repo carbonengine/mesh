@@ -1,4 +1,5 @@
 #include "modelRenderer.h"
+#include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 #include "Vector2.h"
 
@@ -165,13 +166,13 @@ VkResult ModelRenderer::RenderMesh( const Renderer* renderer, size_t meshIndex, 
 
 	if( meshIndex >= m_meshes.size() )
 	{
-		CCP_LOGERR( "Mesh index out of range" );
+        Log::Error( "Mesh index out of range" );
 		return VK_SUCCESS;
 	}
 	auto& mesh = m_meshes[meshIndex];
 	if( lodIndex >= mesh.lods.size() )
 	{
-		CCP_LOGERR( "Mesh index out of range" );
+        Log::Error( "Mesh index out of range" );
 		return VK_SUCCESS;
 	}
 

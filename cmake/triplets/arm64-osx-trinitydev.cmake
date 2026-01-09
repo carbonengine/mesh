@@ -44,3 +44,7 @@ endif()
 if (PORT MATCHES "carbon-pdmprotowrapper")
     set(VCPKG_LIBRARY_LINKAGE static)
 endif ()
+
+if (PORT MATCHES "glslang")
+    set(VCPKG_OSX_DEPLOYMENT_TARGET 10.15)
+endif ()

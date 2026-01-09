@@ -8,18 +8,30 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(imgui REQUIRED)
-find_package(carbon-core CONFIG REQUIRED)
 find_package(carbon-math CONFIG REQUIRED)
 
+set(VCPKG_INSTALLED_PATH "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
 
-set( SHADER_BINARY_TO_SHADER_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/bin/shaderCacheCreator.py)  
+set( SHADER_BINARY_TO_SHADER_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/scripts/shaderCacheCreator.py)  
 set( GENERATED_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedShaders)  
+set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc.exe")
+set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/bin")
+set( ENV{VULKAN_SDK} "${VCPKG_INSTALLED_PATH}")
+set( PYTHON_EXECUTABLE "python")
 
-if( WIN32 )
-    set( SHADER_COMPILER ${CMAKE_CURRENT_SOURCE_DIR}/bin/glslc.exe)    
-else()
-    set( SHADER_COMPILER ${CMAKE_CURRENT_SOURCE_DIR}/bin/glslc)       
+if(APPLE)
+    set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/share/vulkan/explicit_layer.d")
+    set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc")
+    set( ENV{VK_DRIVER_FILES} "${_VCPKG_INSTALLED_DIR}/../../vendor/github.com/moltenVK/MoltenVK/dylib/macOS/MoltenVK_icd.json")
+    set( PYTHON_EXECUTABLE "python3")
 endif()
+
+set( CMAKE_INSTALL_RPATH "$ORIGIN/" )
+
+message(STATUS "Using glslc executable at: ${GLSLC_EXECUTABLE}")
+message(STATUS "VK layer path: $ENV{VK_LAYER_PATH}")
+message(STATUS "VK VK_DRIVER_FILES path: $ENV{VK_DRIVER_FILES}")
+
 
 file( GLOB SHADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.*
@@ -30,7 +42,10 @@ include_directories(
     src/vulkan
     src/mesh
     src/input
+    $ENV{VULKAN_SDK}/include
 )
+
+link_directories($ENV{VULKAN_SDK}/lib)
 
 file(GLOB_RECURSE SOURCES
     src/*.*
@@ -52,7 +67,7 @@ foreach( SHADER_PATH ${SHADERS} )
     add_custom_command(
         OUTPUT "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
         DEPENDS ${SHADER_PATH} 
-        COMMAND ${SHADER_COMPILER} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+        COMMAND ${GLSLC_EXECUTABLE} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
         COMMENT "Compiling shader: ${SHADER_PATH} to ${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h"
     )
     list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" )
@@ -60,8 +75,8 @@ endforeach()
 
 add_custom_command( 
     OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
-    DEPENDS ${SHADERS} 
-    COMMAND python ${SHADER_BINARY_TO_SHADER_CACHE} "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    DEPENDS ${SHADERS} ${COMPILED_SHADERS}
+    COMMAND ${PYTHON_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     COMMENT "Generating shader cache header ${GENERATED_SHADER_DIR}/generatedShaderCache.h"
 )
 
@@ -70,17 +85,27 @@ list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/generatedShaderCache.h" )
 add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 add_dependencies(CarbonMeshViewer CompileShaders)
 
-
-target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath CcpCore glfw Vulkan::Vulkan imgui::imgui)
+target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath glfw Vulkan::Vulkan imgui::imgui)
 target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)
 target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_SHADER_DIR})
 
 target_compile_options(CarbonMeshViewer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)
 target_compile_features(CarbonMeshViewer PRIVATE cxx_std_17)
+
+if(APPLE)
+
+set_target_properties(CarbonMeshViewer PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+    BUILD_WITH_INSTALL_RPATH FALSE
+    LINK_FLAGS "-Wl,-rpath,./"
+)
+else()
 set_target_properties(CarbonMeshViewer PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
 )
+endif()
 
 if(CMAKE_GENERATOR STREQUAL "Xcode" OR CMAKE_GENERATOR MATCHES "Visual Studio.*")
     source_group(
@@ -89,6 +114,25 @@ if(CMAKE_GENERATOR STREQUAL "Xcode" OR CMAKE_GENERATOR MATCHES "Visual Studio.*"
         FILES ${SOURCES}
     )
 endif()
+
+IF (APPLE)
+    # Automatically set Xcode scheme environment variables for Vulkan when building on macOS with Xcode
+    if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
+        set(xcode_environment_variables "")
+        list( APPEND xcode_environment_variables "VK_DRIVER_FILES=$ENV{VK_DRIVER_FILES}" )
+        list( APPEND xcode_environment_variables "VK_LAYER_PATH=$ENV{VK_LAYER_PATH}" )
+        set_target_properties(CarbonMeshViewer PROPERTIES
+            XCODE_SCHEME_ENVIRONMENT "${xcode_environment_variables}"
+        )
+        message(STATUS "Set Xcode scheme environment variables to ${xcode_environment_variables}")
+    endif()
+    
+    # Portability subset definition needed for MoltenVK
+    add_compile_definitions(VKB_ENABLE_PORTABILITY)
+    # Beta extensions are needed for the portability subset in MoltenVK
+    add_compile_definitions(VK_ENABLE_BETA_EXTENSIONS) 
+    add_compile_definitions("APPLE")
+ENDIF()
 
 install(
         TARGETS CarbonMeshViewer

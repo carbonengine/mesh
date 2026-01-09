@@ -1,5 +1,6 @@
 #include "buffer.h"
 #include <rendering/renderer.h>
+#include "vulkanerrors.h"
 
 
 namespace BufferBuilder
@@ -48,7 +49,7 @@ VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const ui
 	auto result = CreateBuffer( renderer, type, data );
 	if( result != VK_SUCCESS )
 	{
-		CCP_LOGERR( "Failed to create buffer." );
+        Log::Error( "Failed to create buffer.\n" );
 		return result;
 	}
 	m_isValid = true;
@@ -119,7 +120,7 @@ VkResult Buffer::CreateBuffer( const Renderer* renderer, BufferType type, const 
 	}
 	else
 	{
-		CCP_LOGERR( "Invalid buffer type" );
+        Log::Error( "Invalid buffer type\n" );
 		return VK_ERROR_UNKNOWN;
 	}
 

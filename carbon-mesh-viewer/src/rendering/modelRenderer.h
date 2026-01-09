@@ -1,7 +1,7 @@
 #pragma once
 
 #include "rendering/renderer.h"
-#include "data/cmfContent.h"
+#include "data/cmfcontent.h"
 #include "vulkan/buffer.h"
 #include "vulkan/shadercache.h"
 #include "input/mousestate.h"

@@ -1,6 +1,20 @@
 #include "cmfcontent.h"
 #include <cmf/utils.h>
 
+#ifndef _WIN32
+// Special case for non windows builders
+inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
+{
+    *stream = fopen( fileName, mode );
+    if( !*stream )
+    {
+        auto error = errno;
+        return error ? error : -1;
+    }
+    return 0;
+}
+
+#endif
 namespace CmfContentLoader
 {
 CmfContent* LoadContentFromFile( const std::string& filePath )

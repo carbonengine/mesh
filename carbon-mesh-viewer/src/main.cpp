@@ -2,24 +2,19 @@
 #include <iostream>
 #include "application.h"
 
-extern const char* g_moduleName = "CarbonMeshViewer";
-
-void LogToStdOut( CcpLogChannel_t& logObject, CCP::LogType type, unsigned long userData, const char* message )
-{
-	std::cout << logObject.facility << "." << logObject.object << " logged a message with severity " << type << ": " << message << std::endl;
+void SetVulkanEnvironmentVariables(){
+#ifdef APPLE
+    setenv("VK_DRIVER_FILES", "MoltenVK_icd.json", 0);
+    setenv("VULKAN_LAYER_PATH", "explicit_layer.d", 0);
+    
+    Log::Info("VK_DRIVER_FILES points is %s", getenv("VK_DRIVER_FILES"));
+    Log::Info("VULKAN_LAYER_PATH points is %s", getenv("VULKAN_LAYER_PATH"));
+#endif
 }
 
 int main()
 {
-	// let the logging framework know about the main thread ID
-	CCP::SetLogMainThreadId();
-
-	// log all messages of type info or higher to stdout
-#ifdef DEBUG_MODE
-	CCP::RegisterLogEcho( LogToStdOut, CCP::LOGTYPE_LOWEST, true );
-#else
-	CCP::RegisterLogEcho( LogToStdOut, CCP::LOGTYPE_WARN, true );
-#endif
+    SetVulkanEnvironmentVariables();
 	Application app;
 
 	app.Initialize();
@@ -27,3 +22,4 @@ int main()
 
 	return EXIT_SUCCESS;
 }
+

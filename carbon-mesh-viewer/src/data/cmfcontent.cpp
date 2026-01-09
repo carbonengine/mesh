@@ -1,11 +1,25 @@
 #include "cmfcontent.h"
 #include <cmf/utils.h>
 
+#ifndef _WIN32
+// Special case for non windows builders
+inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
+{
+    *stream = fopen( fileName, mode );
+    if( !*stream )
+    {
+        auto error = errno;
+        return error ? error : -1;
+    }
+    return 0;
+}
+#endif
+
 namespace CmfContentLoader
 {
 CmfContent* LoadContentFromFile( const std::string& filePath )
 {
-	CCP_LOGNOTICE( "Loading cmf file: %s", filePath.c_str() );
+	Log::Info( "Loading cmf file: %s", filePath.c_str() );
 
 	// read the file and create a CmfContent object
 	const char* filename = filePath.c_str();
@@ -16,7 +30,7 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 
 	if( !file )
 	{
-		CCP_LOGERR( "Failed to open file: %s", filename );
+        Log::Error( "Failed to open file: %s", filename );
 		return nullptr;
 	}
 
@@ -27,7 +41,7 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	size_t bytesRead = fread( fileData.data(), 1, fileSize, file );
 	if( bytesRead != fileSize )
 	{
-		CCP_LOGERR( "Failed to read file: %s", filename );
+        Log::Error( "Failed to read file: %s", filename );
 		fclose( file );
 		return nullptr;
 	}
@@ -36,17 +50,17 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	auto validationResult = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
 	if( !validationResult.first )
 	{
-		CCP_LOGERR( "File validation failed: %s", filename );
+        Log::Error( "File validation failed: %s", filename );
 		return nullptr;
 	}
 	if( !validationResult.second.validateHeader )
 	{
-		CCP_LOGERR( "File header validation failed: %s", filename );
+        Log::Error( "File header validation failed: %s", filename );
 		return nullptr;
 	}
 	if( !validationResult.second.validateMainData )
 	{
-		CCP_LOGERR( "File main data validation failed: %s", filename );
+        Log::Error( "File main data validation failed: %s", filename );
 		return nullptr;
 	}
 

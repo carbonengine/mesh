@@ -9,12 +9,12 @@
       "version>=": "1.1.4"
     },
     {
-      "name": "carbon-core",
-      "version>=": "2.3.2"
-    },
-    {
       "name": "vulkan",
       "version>=": "2023-12-17"
+    },
+    {
+      "name": "shaderc",
+      "version>=": "2025.2#1"
     },
     {
       "name": "meshoptimizer",
