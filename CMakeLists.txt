@@ -31,7 +31,7 @@ add_library(CarbonMesh SHARED
     src/cmf/writer.cpp
 )
 generate_export_header(CarbonMesh BASE_NAME CARBON_MESH)
-
+set_build_flavor(CarbonMesh)
 
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
     target_sources(CarbonMesh PUBLIC src/cmf.natvis)
