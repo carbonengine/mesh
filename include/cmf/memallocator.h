@@ -10,9 +10,9 @@ namespace cmf
 class MemoryAllocator
 {
 public:
-	void Allocate( SpanRepr& a, size_t size );
-	void* Allocate( size_t size );
-	String AllocateString( std::string_view str );
+	CARBON_MESH_EXPORT void Allocate( SpanRepr& a, size_t size );
+	CARBON_MESH_EXPORT void* Allocate( size_t size );
+	CARBON_MESH_EXPORT String AllocateString( std::string_view str );
 
     template <typename T>
 	Span<T> AllocateSpan( size_t size )
@@ -37,15 +37,15 @@ public:
 		SectionCompression compression = SectionCompression::None;
     };
 
-	explicit BufferManager( MemoryAllocator& allocator );
+	CARBON_MESH_EXPORT explicit BufferManager( MemoryAllocator& allocator );
 
-    BufferView AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
-	BufferView AddBuffer( void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
+    CARBON_MESH_EXPORT BufferView AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
+	CARBON_MESH_EXPORT BufferView AddBuffer( void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression );
 
-	void SetBuffer( uint32_t index, void* data, uint32_t size );
+	CARBON_MESH_EXPORT void SetBuffer( uint32_t index, void* data, uint32_t size );
 
-    void* GetData( const BufferView& view ) const;
-    Buffer GetBuffer( uint32_t index ) const;
+    CARBON_MESH_EXPORT void* GetData( const BufferView& view ) const;
+	CARBON_MESH_EXPORT Buffer GetBuffer( uint32_t index ) const;
 
 private:
     MemoryAllocator& m_allocator;

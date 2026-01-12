@@ -6,6 +6,7 @@ find_package(meshoptimizer CONFIG REQUIRED)
 
 include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
+include(GenerateExportHeader)
 
 add_subdirectory( carbon-mesh-viewer )
 add_subdirectory( carbon-mesh-optimizer )
@@ -21,7 +22,7 @@ set(PUBLIC_HEADER_FILES
     include/cmf/writer.h
 )
 
-ccp_add_library(CarbonMesh 
+add_library(CarbonMesh SHARED
     ${PUBLIC_HEADER_FILES}
     src/cmf/bounds.cpp
     src/cmf/memallocator.cpp
@@ -29,6 +30,8 @@ ccp_add_library(CarbonMesh
     src/cmf/uvdensity.cpp
     src/cmf/writer.cpp
 )
+generate_export_header(CarbonMesh BASE_NAME CARBON_MESH)
+
 
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
     target_sources(CarbonMesh PUBLIC src/cmf.natvis)
@@ -46,6 +49,7 @@ target_link_libraries(CarbonMesh PUBLIC CcpMath meshoptimizer::meshoptimizer)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # Provide an install target if this is the top level project only
@@ -102,6 +106,9 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
             string(REPLACE "include/" "" relative_path ${relative_path})
             install(FILES ${header_file} DESTINATION include/${relative_path})
         endforeach()
+        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/carbon_mesh_export.h DESTINATION include/cmf)
+
+
 
         install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
         install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION .)

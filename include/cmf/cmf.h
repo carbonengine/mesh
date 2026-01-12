@@ -1,5 +1,6 @@
 #pragma once
 
+#include "carbon_mesh_export.h"
 #include <cstdint>
 #include <type_traits>
 

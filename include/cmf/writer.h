@@ -135,7 +135,7 @@ FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
 	return result;
 }
 
-std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata = nullptr );
+CARBON_MESH_EXPORT std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata = nullptr );
 
 
 

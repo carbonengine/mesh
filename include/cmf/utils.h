@@ -467,7 +467,7 @@ using IndexBufferStream = BaseIndexBufferStream<void>;
 const VertexElement* FindElement( const Span<VertexElement>& decl, Usage usage, uint8_t usageIndex = 0 );
 VertexElement* FindElement( Span<VertexElement>& decl, Usage usage, uint8_t usageIndex = 0 );
 
-uint32_t ComputeCrc32( const void* data, size_t size );
+CARBON_MESH_EXPORT uint32_t ComputeCrc32( const void* data, size_t size );
 
 
 struct ValidationOptions
@@ -480,6 +480,6 @@ struct ValidationOptions
 
 using ValidationResult = std::pair<bool, ValidationOptions>;
 
-ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options );
+CARBON_MESH_EXPORT ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options );
 
 }
