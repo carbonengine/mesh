@@ -12,7 +12,7 @@ endif()
 
 if(NOT TARGET CarbonMesh)
     set(_IMPORT_PREFIX ${CMAKE_CURRENT_LIST_DIR})
-    add_library(CarbonMesh STATIC IMPORTED)
+    add_library(CarbonMesh SHARED IMPORTED)
     set_target_properties(CarbonMesh PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>"
         INTERFACE_LINK_LIBRARIES ""
@@ -37,7 +37,7 @@ if(NOT TARGET CarbonMesh)
             else()
                 set(_IMP_IMP_VAL ${_IMPORT_PREFIX}/${CCP_VENDOR_LIB_PATH}/CarbonMesh_${_LCCT}${_IMPORT_LIBRARY_SUFFIX})
             endif()
-            set_target_properties(CcpParser PROPERTIES ${_IMP_IMP_PROP} ${_IMP_IMP_VAL})
+            set_target_properties(CarbonMesh PROPERTIES ${_IMP_IMP_PROP} ${_IMP_IMP_VAL})
             set(_IMP_LOC_SUFFIX ${_SHARED_LIBRARY_SUFFIX})
         else()
             set(_VENDOR_PATH ${CCP_VENDOR_LIB_PATH})

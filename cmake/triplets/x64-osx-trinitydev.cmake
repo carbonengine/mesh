@@ -47,3 +47,7 @@ endif ()
 if (PORT MATCHES "glslang")
     set(VCPKG_OSX_DEPLOYMENT_TARGET 10.15)
 endif ()
+
+if (PORT MATCHES "meshoptimizer")
+    set(VCPKG_LIBRARY_LINKAGE static)
+endif ()
