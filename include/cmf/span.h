@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace cmf
 {
@@ -71,5 +72,10 @@ struct Span : public SpanRepr
 };
 
 using String = Span<char>;
+
+inline std::string ToStdString( const String& str )
+{
+    return std::string( str.begin(), str.end() );
+}
 
 }

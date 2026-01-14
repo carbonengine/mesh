@@ -1,5 +1,6 @@
 #include "cmf/writer.h"
 #include "cmf/utils.h"
+#include "cmf/compression.h"
 #include "meshoptimizer.h"
 
 namespace
@@ -40,54 +41,6 @@ void RemapBufferIndices( T& obj, std::vector<uint32_t>& indices )
 namespace cmf
 {
 
-void Compress(BufferManager::Buffer buffer, std::vector<uint8_t>& compressedData)
-{
-	switch( buffer.compression )
-	{
-
-	case SectionCompression::MeshOptimizerVertexBuffer: {
-
-		size_t count = buffer.size / buffer.compressionStride;
-		size_t maximumSize = meshopt_encodeVertexBufferBound( count, buffer.compressionStride );
-		compressedData.resize( maximumSize );
-		size_t compressedSize = meshopt_encodeVertexBuffer( compressedData.data(), compressedData.size(), buffer.data, count, buffer.compressionStride );
-		compressedData.resize( compressedSize );
-		break;
-	}
-
-	case SectionCompression::MeshOptimizerIndexBuffer: {
-
-		size_t count = buffer.size / buffer.compressionStride;
-		size_t maximumSize = meshopt_encodeIndexBufferBound( count, (uint32_t)-1 );
-		compressedData.resize( maximumSize );
-
-		size_t compressedSize;
-
-		if( buffer.compressionStride == 4 )
-		{
-			compressedSize = meshopt_encodeIndexBuffer( compressedData.data(), compressedData.size(), reinterpret_cast<const uint32_t*>( buffer.data ), count );
-		}
-		else if( buffer.compressionStride == 2 )
-		{
-			compressedSize = meshopt_encodeIndexBuffer( compressedData.data(), compressedData.size(), reinterpret_cast<const uint16_t*>( buffer.data ), count );
-		}
-		else
-		{
-			compressedSize = meshopt_encodeIndexBuffer( compressedData.data(), compressedData.size(), reinterpret_cast<const uint8_t*>( buffer.data ), count );
-		}
-
-		compressedData.resize( compressedSize );
-
-		break;
-	}
-	default:
-		//No compression
-		const uint8_t* pointer = reinterpret_cast<const uint8_t*>( buffer.data );
-		compressedData.assign( pointer, pointer + buffer.size );
-		break;
-	}
-}
-
 std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata )
 {
 	MemoryAllocator allocator;
@@ -123,9 +76,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
 
         // Compress the buffer and store the result
         std::vector<uint8_t>& compressedData = compressedBufferDatas[i];
-		Compress( buffer, compressedData );
-
-        printf( "Compressed buffer %d from %d to %zu bytes (%f %% of original size)\n", bufferIndex, buffer.size, compressedData.size(), 100.0f * compressedData.size() / buffer.size );
+		compressedData = Compress( buffer );
 
 		section.compressedSize = (uint32_t) compressedData.size();
 		section.uncompressedSize = buffer.size;
@@ -135,8 +86,6 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
         totalCompressed += section.compressedSize;
 		totalUncompressed += section.uncompressedSize;
 	}
-
-	printf( "Total compression: %d --> %d bytes (%f %% of original size)\n", totalUncompressed, totalCompressed, 100.0f * totalCompressed / totalUncompressed );
 
     FlattenedBuffer flattenedMetadata;
     if( metadata )

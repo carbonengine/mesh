@@ -1,5 +1,5 @@
 #include "cmf/uvdensity.h"
-#include "cmf/utils.h"
+#include "cmf/bufferstreams.h"
 
 namespace
 {

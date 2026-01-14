@@ -3,6 +3,7 @@ project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
+find_package(mikktspace CONFIG REQUIRED)
 
 include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
@@ -13,9 +14,15 @@ add_subdirectory( carbon-mesh-optimizer )
 
 set(PUBLIC_HEADER_FILES
     include/cmf/bounds.h
+    include/cmf/bufferstreams.h
+    include/cmf/bufferutils.h
     include/cmf/cmf.h
+    include/cmf/compression.h
+    include/cmf/converters.h
+    include/cmf/declutils.h
     include/cmf/memallocator.h
     include/cmf/span.h
+    include/cmf/tangents.h
     include/cmf/utils.h
     include/cmf/uvdensity.h
     include/cmf/v1.h
@@ -25,7 +32,11 @@ set(PUBLIC_HEADER_FILES
 add_library(CarbonMesh SHARED
     ${PUBLIC_HEADER_FILES}
     src/cmf/bounds.cpp
+    src/cmf/bufferutils.cpp
+    src/cmf/compression.cpp
+    src/cmf/declutils.cpp
     src/cmf/memallocator.cpp
+    src/cmf/tangents.cpp
     src/cmf/utils.cpp
     src/cmf/uvdensity.cpp
     src/cmf/writer.cpp
@@ -45,7 +56,7 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
-target_link_libraries(CarbonMesh PUBLIC CcpMath meshoptimizer::meshoptimizer)
+target_link_libraries(CarbonMesh PUBLIC CcpMath meshoptimizer::meshoptimizer mikktspace::mikktspace)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

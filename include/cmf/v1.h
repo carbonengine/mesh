@@ -44,6 +44,7 @@ enum class Usage : uint8_t
 	BoneIndices,
 	BoneWeights,
     PackedTangent,
+	PackedTangentLegacy,
 };
 
 enum class ElementType : uint8_t

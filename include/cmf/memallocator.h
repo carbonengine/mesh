@@ -114,6 +114,26 @@ struct SpanModifier
 		}
 		data = s;
 	}
+	void insert( T* where, const T& value )
+	{
+		if( where > end() || where < begin() )
+		{
+			return;
+		}
+		auto s = allocator.AllocateSpan<T>( data.size() + 1 );
+		auto dest = static_cast<T*>( s.ptr );
+		size_t index = size_t( where - begin() );
+		for( size_t i = 0; i < index; ++i )
+		{
+			new( dest + i ) T{ std::move( data[i] ) };
+		}
+		new( dest + index ) T{ value };
+        for( size_t i = index; i < data.size(); ++i )
+        {
+            new( dest + ( i + 1 ) ) T{ std::move( data[i] ) };
+		}
+		data = s;
+	}
 	SpanModifier<T>& operator=( const std::vector<T>& other )
 	{
 		data = allocator.AllocateSpan<T>( other.size() );

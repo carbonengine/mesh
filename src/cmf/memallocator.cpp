@@ -35,7 +35,10 @@ BufferManager::BufferManager( MemoryAllocator& allocator )
 BufferView BufferManager::AllocateBuffer( const void* data, uint32_t size, uint32_t compressionStride, SectionCompression compression )
 {
 	void* copy = m_allocator.Allocate( size );
-	memcpy( copy, data, size );
+	if( data )
+	{
+		memcpy( copy, data, size );
+	}
 
     return AddBuffer( copy, size, compressionStride, compression );
 }

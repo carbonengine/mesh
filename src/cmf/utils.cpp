@@ -187,6 +187,19 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 				return false;
 			}
 		}
+		if( element.usage == cmf::Usage::PackedTangentLegacy )
+		{
+			// If the declaration contains a packed tangent, it must be the only tangent space element with the same usageIndex
+			if( std::find_if( decl.begin(), decl.end(), [&element]( const auto& x ) { return ( x.usage == cmf::Usage::Normal || x.usage == cmf::Usage::Tangent || x.usage == cmf::Usage::Binormal ) && x.usageIndex == element.usageIndex; } ) != decl.end() )
+			{
+				return false;
+			}
+			// Packed tangent must be 4-component unsigned normalized integer
+			if( ( element.type != cmf::ElementType::UInt16Norm && element.type != cmf::ElementType::UInt8Norm ) || element.elementCount != 4 )
+			{
+				return false;
+			}
+		}
 	}
 	return true;
 }
