@@ -9,6 +9,7 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(imgui REQUIRED)
 find_package(carbon-math CONFIG REQUIRED)
+find_package(tinyfiledialogs  CONFIG REQUIRED)
 
 set(VCPKG_INSTALLED_PATH "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
 
@@ -53,6 +54,8 @@ file(GLOB_RECURSE SOURCES
 )
 
 add_executable(CarbonMeshViewer ${SOURCES} ${GENERATED_SHADER_DIR})
+set_build_flavor(CarbonMeshViewer)
+
 set(COMPILED_SHADERS "")
 
 foreach( SHADER_PATH ${SHADERS} )
@@ -85,7 +88,7 @@ list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/generatedShaderCache.h" )
 add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 add_dependencies(CarbonMeshViewer CompileShaders)
 
-target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath glfw Vulkan::Vulkan imgui::imgui)
+target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath glfw Vulkan::Vulkan imgui::imgui tinyfiledialogs::tinyfiledialogs)
 target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)
 target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_SHADER_DIR})
 

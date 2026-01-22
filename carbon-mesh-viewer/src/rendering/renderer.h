@@ -1,5 +1,6 @@
 #pragma once
 
+#include "appState.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
 #include "vulkan/texture.h"
@@ -15,7 +16,7 @@ static const int MAX_FRAMES_IN_FLIGHT = 2;
 class Renderer
 {
 public:
-	Renderer();
+	Renderer( AppState& appState );
 	~Renderer();
 
 	VkResult CreateInstance( std::vector<const char*> extensions );
@@ -38,6 +39,8 @@ public:
 	VkCommandPool GetCommandPool() const;
 	uint32_t GetCurrentFrame() const;
 	VkDescriptorPool GetDescriptorPool() const;
+
+	const Swapchain* GetSwapchain() const;
 
 	uint32_t GetWidth() const;
 	uint32_t GetHeight() const;

@@ -1,11 +1,15 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-
-#include <vector>
+#include <algorithm>
 #include <array>
 #include <set>
-#include <algorithm>
+#include <vector>
+
+#include <CcpMath.h>
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
+
 #include "log.h"
 
 #define PI 3.14159265358979323846f // pi

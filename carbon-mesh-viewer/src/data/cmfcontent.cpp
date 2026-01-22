@@ -1,4 +1,5 @@
 #include "cmfcontent.h"
+
 #include <cmf/utils.h>
 
 #ifndef _WIN32
@@ -87,18 +88,6 @@ CmfContent::CmfContent( std::vector<uint8_t> fileContent, std::string filePath )
 
 		m_cmfData = reinterpret_cast<cmf::Data*>( data + m_cmfHeader->sections[0].offset );
 		cmf::OffsetsToPointers( *m_cmfData );
-	}
-}
-
-CmfContent::~CmfContent()
-{
-	if( m_cmfHeader )
-	{
-		delete m_cmfHeader;
-	}
-	if( m_cmfData )
-	{
-		delete m_cmfData;
 	}
 }
 

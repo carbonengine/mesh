@@ -1,5 +1,5 @@
-
 #include <iostream>
+
 #include "application.h"
 
 void SetVulkanEnvironmentVariables(){

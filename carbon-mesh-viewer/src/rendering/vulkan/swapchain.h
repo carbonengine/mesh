@@ -1,4 +1,5 @@
 #pragma once
+
 #include "device.h"
 #include "texture.h"
 
@@ -17,12 +18,14 @@ public:
 	VkFramebuffer GetFrameBuffer( size_t index ) const;
 	VkExtent2D GetExtent() const;
 
-	size_t GetImageCount() const;
+	uint32_t GetImageCount() const;
+	uint32_t GetMinImageCount() const;
 
 private:
 	VkSwapchainKHR m_swapchain;
 	VkFormat m_swapchainImageFormat;
 	VkExtent2D m_swapchainExtent;
+	uint32_t m_minImageCount;
 	std::vector<Texture*> m_swapchainFrames;
 	std::vector<VkFramebuffer> m_swapchainFramebuffers;
 

@@ -1,33 +1,30 @@
 #pragma once
 
-#include "rendering/renderer.h"
+#include "appState.h"
+#include "camera.h"
 #include "data/cmfcontent.h"
+#include "rendering/renderer.h"
 #include "vulkan/buffer.h"
 #include "vulkan/shadercache.h"
-#include "input/mousestate.h"
-#include "camera.h"
 
 // Handles rendering a cmf model
 class ModelRenderer
 {
 public:
-	ModelRenderer();
-	~ModelRenderer();
+	ModelRenderer( std::shared_ptr<const Renderer> renderer );
 
-	void Initialize( const Renderer* renderer );
+	void Initialize( AppState& state );
 
-	VkResult SetPerFrameData( const Renderer* renderer );
-	VkResult RenderMesh( const Renderer* renderer, size_t meshIndex, size_t lodIndex );
-	void Update( float deltaTime, const MouseState& mouseState );
-	void Resize( uint32_t width, uint32_t height );
+	VkResult SetPerFrameData();
+	VkResult RenderMesh( const AppState& state, const Camera& camera );
 
-	void Release( const Renderer* m_renderer );
-	void SetData( const CmfContent* data, const Renderer* renderer );
-	void SetShader( std::string shaderName, const Renderer* renderer );
-	void SetPolygonMode( VkPolygonMode mode, const Renderer* renderer );
+	void Release();
+	void SetData( const CmfContent* data );
+	void SetShader( std::string shaderName );
+	void SetPolygonMode( VkPolygonMode mode );
 
 private:
-	void ReleaseMeshes( const Renderer* renderer );
+	void ReleaseMeshes();
 
 	struct ModelArea
 	{
@@ -77,5 +74,5 @@ private:
 	std::array<UniformBuffer, RenderUtils::MAX_FRAMES_IN_FLIGHT> m_perFrameBuffers;
 	uint32_t m_currentFrame{ 0 };
 
-	Camera m_camera{};
+	std::shared_ptr<const Renderer> m_renderer{ nullptr };
 };

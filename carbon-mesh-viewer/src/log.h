@@ -1,6 +1,5 @@
 #pragma once
 
-
 namespace Log {
 
 void Error( const char* message, ... );

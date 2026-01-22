@@ -1,18 +1,19 @@
 #pragma once
-#include <optional>
-#include <vulkan/vulkan.h>
+
 #include <map>
+#include <optional>
 #include <tuple>
 #include <vector>
+
 #include "device.h"
 #include "../renderer.h"
+
 
 class Shader
 {
 public:
 	Shader();
 	Shader( std::vector<uint32_t> code );
-	~Shader() = default;
 
 	VkResult Initialize( const Renderer* renderer, VkShaderStageFlagBits shaderFlag );
 	VkResult Release( const Renderer* renderer );
@@ -30,7 +31,6 @@ class ShaderCache
 {
 public:
 	ShaderCache();
-	~ShaderCache() = default;
 
 	VkResult Release( const Renderer* renderer );
 	VkResult Initialize( const Renderer* renderer );
@@ -39,6 +39,8 @@ public:
 
 	VkPipelineLayout GetPipelineLayout() const;
 	VkDescriptorSetLayout GetDescriptorSetLayout() const;
+
+	static std::vector<std::string> GetAvailableShaderNames();
 
 private:
 	static std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> s_cache;

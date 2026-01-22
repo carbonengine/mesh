@@ -1,4 +1,5 @@
 #include "shadercache.h"
+
 #include "vulkanerrors.h"
 
 std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> ShaderCache::s_cache = {
@@ -8,7 +9,7 @@ std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> 
 Shader::Shader() :
 	m_module( VK_NULL_HANDLE )
 {
-    Log::Error( "Default Shader constructor called. This is likely an error." );
+	Log::Error( "Default Shader constructor called. This is likely an error." );
 }
 
 Shader::Shader( std::vector<uint32_t> code ) :
@@ -125,7 +126,7 @@ VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shad
 	auto it = s_cache.find( shaderName );
 	if( it == s_cache.end() )
 	{
-        Log::Error( "Shader %s not found in cache", shaderName.c_str() );
+		Log::Error( "Shader %s not found in cache", shaderName.c_str() );
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
@@ -244,4 +245,14 @@ VkPipelineLayout ShaderCache::GetPipelineLayout() const
 VkDescriptorSetLayout ShaderCache::GetDescriptorSetLayout() const
 {
 	return m_descriptorSetLayout;
+}
+
+std::vector<std::string> ShaderCache::GetAvailableShaderNames()
+{
+	std::vector<std::string> result;
+	result.reserve( s_cache.size() );
+	std::for_each( s_cache.begin(), s_cache.end(), [&result]( const auto& keyValue ) {
+		result.push_back( keyValue.first );
+	} );
+	return result;
 }

@@ -1,11 +1,12 @@
 #include "renderer.h"
 
-#include "vulkan/device.h"
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
-#include <algorithm>
-#include "vulkan/vulkanerrors.h"
+
 #include "vulkan/shadercache.h"
+#include "vulkan/vulkanerrors.h"
+
 
 namespace RenderUtils
 {
@@ -14,19 +15,19 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFl
 	switch( messageSeverity )
 	{
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-        Log::Info( "[vulkan] validation layer (verbose): %s", pCallbackData->pMessage );
+		Log::Info( "[vulkan] validation layer (verbose): %s", pCallbackData->pMessage );
 		break;
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        Log::Info( "[vulkan] validation layer: %s", pCallbackData->pMessage );
+		Log::Info( "[vulkan] validation layer: %s", pCallbackData->pMessage );
 		break;
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-        Log::Warning( "[vulkan] validation layer: %s", pCallbackData->pMessage );
+		Log::Warning( "[vulkan] validation layer: %s", pCallbackData->pMessage );
 		break;
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-        Log::Error( "[vulkan] validation layer: %s", pCallbackData->pMessage );
+		Log::Error( "[vulkan] validation layer: %s", pCallbackData->pMessage );
 		break;
 	default:
-        Log::Info( "[vulkan] validation layer: %s", pCallbackData->pMessage );
+		Log::Info( "[vulkan] validation layer: %s", pCallbackData->pMessage );
 		break;
 	}
 
@@ -34,7 +35,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFl
 }
 }
 
-Renderer::Renderer()
+Renderer::Renderer( AppState& appState )
 {
 }
 
@@ -98,12 +99,12 @@ VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 	extensions.push_back( VK_EXT_DEBUG_REPORT_EXTENSION_NAME );
 #endif
 
-    Log::Debug("Instance Extensions:");
-    
-    for( const auto extension : extensions )
-    {
-        Log::Debug("\t%s", extension);
-    }
+	Log::Debug( "Instance Extensions:" );
+
+	for( const auto extension : extensions )
+	{
+		Log::Debug( "\t%s", extension );
+	}
 
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -116,9 +117,9 @@ VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
-    createInfo.flags = 0;
+	createInfo.flags = 0;
 #ifdef APPLE
-    createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR; // mac support
+	createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR; // mac support
 #endif
 	createInfo.enabledExtensionCount = (uint32_t)extensions.size();
 	createInfo.ppEnabledExtensionNames = extensions.data();
@@ -133,15 +134,15 @@ VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = RenderUtils::validationCallback;
 	createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-    auto debugInstanceResult = vkCreateInstance( &createInfo, m_allocator, &m_instance );
-    if( debugInstanceResult == VK_SUCCESS )
-    {
-        return VK_SUCCESS;
-    }
-    
-    Log::Warning( "Could not create Vulkan instance with validation layer, VULKAN_SDK environment variable may be missing. Trying without validation layer." );
-    // fallback to try to create an instance wihtout validation layer
-    
+	auto debugInstanceResult = vkCreateInstance( &createInfo, m_allocator, &m_instance );
+	if( debugInstanceResult == VK_SUCCESS )
+	{
+		return VK_SUCCESS;
+	}
+
+	Log::Warning( "Could not create Vulkan instance with validation layer, VULKAN_SDK environment variable may be missing. Trying without validation layer." );
+	// fallback to try to create an instance wihtout validation layer
+
 #endif
 	createInfo.enabledLayerCount = 0;
 	createInfo.pNext = nullptr;
@@ -511,4 +512,9 @@ uint32_t Renderer::GetHeight() const
 VkSurfaceKHR* Renderer::GetSurface()
 {
 	return &m_surface;
+}
+
+const Swapchain* Renderer::GetSwapchain() const
+{
+	return m_swapchain;
 }

@@ -1,8 +1,10 @@
 #pragma once
-#include "device.h"
+
 #include <cmf/cmf.h>
-#include <vulkan/vulkan.h>
+
+#include "device.h"
 #include "rendering/renderer.h"
+
 
 enum BufferType
 {

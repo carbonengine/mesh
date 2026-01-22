@@ -1,21 +1,30 @@
 #pragma once
+
 #include <Matrix.h>
 #include <Sphere.h>
 
+#include "appState.h"
 
 class Camera
 {
 public:
 	Camera() = default;
 
-	Matrix GetProjection();
-	Matrix GetView();
+	void Initialize( AppState& state );
+
+	void HandleCameraTriggerChange( CameraTrigger& trigger );
+
+	void HandleMouseStateChanged( MouseState& newMouseState );
+
+	Matrix GetProjection() const;
+	Matrix GetView() const;
 
 	void SetFOV( float fov );
 
 	void SetScreenSize( uint32_t width, uint32_t height );
 
-	void LookAt( CcpMath::Sphere boundingSphere );
+	void Reset( CcpMath::Sphere boundingSphere );
+	void LookAt( Vector3 target, bool immediate = false );
 
 	void Orbit( Vector2 currentPos, Vector2 previousPos );
 	void Zoom( float deltaZoom );

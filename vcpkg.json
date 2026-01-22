@@ -27,7 +27,7 @@
     {
       "name": "imgui",
       "version>=": "1.91.9",
-      "features": [ "vulkan-binding" ]
+      "features": [ "vulkan-binding", "glfw-binding" ]
     },
     {
       "name": "gtest",
@@ -36,6 +36,10 @@
     {
       "name": "python3-prebuilt",
       "version>=": "3.12.3#3"
+    },
+    {
+      "name": "tinyfiledialogs",
+      "version>=": "3.19.1"
     }
   ]
 }

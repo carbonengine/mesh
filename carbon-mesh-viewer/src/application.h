@@ -1,12 +1,9 @@
 #pragma once
 
-#include "data/cmfcontent.h"
-#include "rendering/renderer.h"
+#include "appState.h"
 #include "rendering/modelRenderer.h"
-
-#include <vulkan/vulkan.h>
-#include <GLFW/glfw3.h>
-#include "input/mousestate.h"
+#include "rendering/renderer.h"
+#include "rendering/uiRenderer.h"
 
 class Application
 {
@@ -26,12 +23,11 @@ private:
 
 	void Resize( uint32_t width, uint32_t height );
 
-	ModelRenderer* m_modelRenderer{ nullptr };
-	Renderer* m_renderer{ nullptr };
-
+	std::unique_ptr<ModelRenderer> m_modelRenderer{ nullptr };
+	std::shared_ptr<Renderer> m_renderer{ nullptr };
+	std::unique_ptr<UIRenderer> m_uiRenderer{ nullptr };
 	GLFWwindow* m_window{ nullptr };
 
-	CmfContent* m_cmfContent{ nullptr };
-
-	MouseState m_mouseState = MouseState();
+	AppState m_appState{};
+	Camera m_camera{};
 };

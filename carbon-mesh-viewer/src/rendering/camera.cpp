@@ -1,6 +1,98 @@
 #include "camera.h"
 
-Matrix Camera::GetProjection()
+void Camera::Initialize( AppState& state )
+{
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> newSize ) {
+		SetScreenSize( newSize.first, newSize.second );
+	} );
+
+	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger ) {
+		HandleCameraTriggerChange( trigger );
+	} );
+
+	state.mouseState.RegisterCallback( [this]( MouseState newMouseState ) {
+		HandleMouseStateChanged( newMouseState );
+	} );
+
+	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent ) {
+		if( cmfContent != nullptr )
+		{
+			auto boundingSphere = cmfContent->GetBoundingSphere();
+			this->Reset( boundingSphere );
+		}
+	} );
+}
+
+void Camera::HandleCameraTriggerChange( CameraTrigger& trigger )
+{
+	if( trigger == CameraTrigger::CAMERA_TRIGGER_NONE )
+	{
+		return;
+	}
+	switch( trigger )
+	{
+	case CameraTrigger::CAMERA_TRIGGER_FOCUS:
+		this->LookAt( this->m_boundingSphere.center );
+		this->m_targetZoom = this->m_boundingSphere.radius * 2.0f;
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_UP:
+		this->m_targetRotation = RotationQuaternion( 0.0f, -PI / 2.0f, 0.0f );
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_DOWN:
+		this->m_targetRotation = RotationQuaternion( 0.0f, PI / 2.0f, 0.0f );
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_RIGHT:
+		this->m_targetRotation = RotationQuaternion( -PI / 2.0f, 0.0f, 0.0f );
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_LEFT:
+		this->m_targetRotation = RotationQuaternion( PI / 2.0f, 0.0f, 0.0f );
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_FRONT:
+		this->m_targetRotation = RotationQuaternion( PI, 0.0f, 0.0f );
+		break;
+	case CameraTrigger::CAMERA_TRIGGER_LOOK_BACK:
+		this->m_targetRotation = IdentityQuaternion();
+		break;
+	default:
+		break;
+	}
+}
+
+void Camera::HandleMouseStateChanged( MouseState& mouseState )
+{
+	if( mouseState.leftButton )
+	{
+		auto mousePos = mouseState.position;
+		auto lastMousePos = mouseState.previousPosition;
+		this->Orbit( mousePos, lastMousePos );
+	}
+	else if( mouseState.middleButton )
+	{
+		auto mousePercentageChange = ( mouseState.position - mouseState.previousPosition ) / m_screenSize;
+		auto absChange = Vector2( abs( mousePercentageChange.x ), abs( mousePercentageChange.y ) );
+
+		float zoom = mousePercentageChange.x;
+
+		if( absChange.y > absChange.x )
+		{
+			zoom = mousePercentageChange.y;
+		}
+
+		this->Zoom( -zoom * 10.0f );
+	}
+	else
+	{
+		this->Zoom( mouseState.wheelDelta );
+	}
+
+	if( mouseState.rightButton )
+	{
+		auto mousePercentageChange = ( mouseState.position - mouseState.previousPosition ) / m_screenSize;
+		this->Pan( mousePercentageChange );
+	}
+}
+
+Matrix Camera::GetProjection() const
 {
 	float distToModel = Length( m_at - m_boundingSphere.center );
 	return PerspectiveFovMatrix(
@@ -10,7 +102,7 @@ Matrix Camera::GetProjection()
 		distToModel + m_zoom + m_boundingSphere.radius );
 }
 
-Matrix Camera::GetView()
+Matrix Camera::GetView() const
 {
 	return TranslationMatrix( m_at ) * RotationMatrix( m_currentRotation ) * TranslationMatrix( Vector3( 0.0, 0.0, -m_zoom ) );
 }
@@ -25,16 +117,24 @@ void Camera::SetScreenSize( uint32_t width, uint32_t height )
 	m_screenSize = Vector2( (float)width, (float)height );
 }
 
-void Camera::LookAt( CcpMath::Sphere boundingSphere )
+void Camera::Reset( CcpMath::Sphere boundingSphere )
 {
 	m_currentRotation = RotationQuaternion( 0.0f, 0.0f, 0.0f );
 	m_boundingSphere = boundingSphere;
 	m_zoom = boundingSphere.radius * 2.0f;
 	m_targetZoom = m_zoom;
-	m_at = boundingSphere.center;
 	m_closestZoom = boundingSphere.radius / 100.0f;
 	m_targetRotation = m_currentRotation;
-	m_targetAt = m_at;
+	LookAt( boundingSphere.center, true );
+}
+
+void Camera::LookAt( Vector3 target, bool immediate )
+{
+	m_targetAt = target;
+	if( immediate )
+	{
+		m_at = target;
+	}
 }
 
 Vector3 Camera::CalcEye()

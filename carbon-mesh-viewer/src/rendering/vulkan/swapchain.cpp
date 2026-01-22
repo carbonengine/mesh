@@ -1,10 +1,12 @@
 #include "swapchain.h"
+
 #include "vulkanerrors.h"
 
 Swapchain::Swapchain() :
 	m_swapchain( VK_NULL_HANDLE ),
 	m_swapchainExtent( { 0, 0 } ),
-	m_swapchainImageFormat( VK_FORMAT_UNDEFINED )
+	m_swapchainImageFormat( VK_FORMAT_UNDEFINED ),
+	m_minImageCount( 0 )
 {
 }
 
@@ -51,17 +53,17 @@ VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface,
 	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat( swapChainSupport.formats );
 	VkPresentModeKHR presentMode = ChooseSwapPresentMode( swapChainSupport.presentModes );
 
-	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-	if( swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount )
+	m_minImageCount = swapChainSupport.capabilities.minImageCount + 1;
+	if( swapChainSupport.capabilities.maxImageCount > 0 && m_minImageCount > swapChainSupport.capabilities.maxImageCount )
 	{
-		imageCount = swapChainSupport.capabilities.maxImageCount;
+		m_minImageCount = swapChainSupport.capabilities.maxImageCount;
 	}
 
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	createInfo.surface = surface;
 
-	createInfo.minImageCount = imageCount;
+	createInfo.minImageCount = m_minImageCount;
 	createInfo.imageFormat = surfaceFormat.format;
 	createInfo.imageColorSpace = surfaceFormat.colorSpace;
 	createInfo.imageExtent = m_swapchainExtent;
@@ -92,6 +94,7 @@ VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface,
 	RETURN_LOG_ERROR( vkCreateSwapchainKHR( logicalDevice, &createInfo, allocator, &m_swapchain ), "Failed to create swapchain" );
 
 	std::vector<VkImage> swapchainImages;
+	uint32_t imageCount = m_minImageCount;
 	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, nullptr ) ) );
 	swapchainImages.resize( imageCount );
 	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, swapchainImages.data() ) ) );
@@ -184,7 +187,12 @@ VkResult Swapchain::CreateFrameBuffers( Device* device, VkRenderPass renderPass,
 }
 
 
-size_t Swapchain::GetImageCount() const
+uint32_t Swapchain::GetImageCount() const
 {
-	return m_swapchainFrames.size();
+	return static_cast<uint32_t>( m_swapchainFrames.size() );
+}
+
+uint32_t Swapchain::GetMinImageCount() const
+{
+	return m_minImageCount;
 }

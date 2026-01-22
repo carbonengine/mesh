@@ -1,13 +1,16 @@
 #include "device.h"
-#include "vulkanerrors.h"
+
 #include <stdexcept>
+
+#include "vulkanerrors.h"
+
 
 const std::vector<const char*> DEVICE_EXTENSIONS = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_MAINTENANCE1_EXTENSION_NAME
 #ifdef APPLE
-    ,
-    VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
+	,
+	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
 #endif
 };
 
@@ -60,7 +63,7 @@ VkResult Device::pickPhysicalDevice( VkInstance instance, const VkAllocationCall
 	}
 	if( m_physicalDevice == VK_NULL_HANDLE )
 	{
-        Log::Error( "Failed to find a suitable GPU!" );
+		Log::Error( "Failed to find a suitable GPU!" );
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 	VkPhysicalDeviceProperties properties = {};
@@ -120,7 +123,7 @@ bool Device::IsDeviceSuitable( VkPhysicalDevice device, VkSurfaceKHR surface )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( device, &properties );
-    Log::Info( "Checking GPU %s", properties.deviceName );
+	Log::Info( "Checking GPU %s", properties.deviceName );
 	QueueFamilyIndices indices = FindQueueFamilies( device, surface );
 
 	bool extensionsSupported = DeviceSupportsExtensions( device );

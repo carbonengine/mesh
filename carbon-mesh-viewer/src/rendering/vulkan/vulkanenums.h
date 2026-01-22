@@ -1,6 +1,7 @@
 #pragma once
-#include <vulkan/vulkan.h>
+
 #include <cmf/cmf.h>
+//#include <vulkan/vulkan.h>
 
 namespace VulkanEnums
 {

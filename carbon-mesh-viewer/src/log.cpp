@@ -1,8 +1,8 @@
 #include "log.h"
-#include <stdio.h>
+
 #include <ctime>
 #include <stdarg.h>
-
+#include <stdio.h>
 
 namespace Log {
 
