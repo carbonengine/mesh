@@ -20,9 +20,9 @@ void State<T>::Reset()
 }
 
 template <typename T>
-void State<T>::SetValue( T newValue, bool force )
+void State<T>::SetValue( T newValue )
 {
-	if( !force && m_value == newValue )
+	if( m_value == newValue )
 	{
 		return;
 	}
@@ -32,20 +32,33 @@ void State<T>::SetValue( T newValue, bool force )
 }
 
 template <typename T>
-void State<T>::CallCallbacks()
+void State<T>::ForceSetValue( T newValue )
+{
+	m_value = newValue;
+	m_fireCallbacks = true;
+}
+
+template <typename T>
+void State<T>::SetValueNoCallback( T newValue )
+{
+	m_value = newValue;
+}
+
+template <typename T>
+void State<T>::CallCallbacks( const AppState& appstate)
 {
 	if( m_fireCallbacks )
 	{
 		for( auto& callback : m_callbacks )
 		{
-			callback( m_value );
+			callback( m_value, appstate );
 		}
 		m_fireCallbacks = false;
 	}
 }
 
 template <typename T>
-void State<T>::RegisterCallback( std::function<void( T )> callback )
+void State<T>::RegisterCallback( std::function<void( T, const AppState& )> callback )
 {
 	m_callbacks.push_back( callback );
 }

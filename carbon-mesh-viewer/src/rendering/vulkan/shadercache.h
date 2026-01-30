@@ -8,6 +8,7 @@
 #include "device.h"
 #include "../renderer.h"
 
+class Renderer;
 
 class Shader
 {
@@ -30,12 +31,13 @@ private:
 class ShaderCache
 {
 public:
-	ShaderCache();
+	ShaderCache( std::shared_ptr<Renderer> renderer );
+	~ShaderCache();
 
-	VkResult Release( const Renderer* renderer );
-	VkResult Initialize( const Renderer* renderer );
-	VkResult CreatePipeline( const Renderer* renderer, std::string shaderName, VkPolygonMode mode, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline );
-	VkResult CreatePipelineLayout( const Renderer* renderer );
+	VkResult Initialize();
+	VkResult CreatePipeline( std::string shaderName, VkPrimitiveTopology topology, VkPolygonMode mode, float lineWidth, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const;
+
+	VkResult CreatePipelineLayout();
 
 	VkPipelineLayout GetPipelineLayout() const;
 	VkDescriptorSetLayout GetDescriptorSetLayout() const;
@@ -45,6 +47,7 @@ public:
 private:
 	static std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> s_cache;
 
+	std::shared_ptr<Renderer> m_renderer;
 	VkPipelineLayout m_pipelineLayout;
 	VkDescriptorSetLayout m_descriptorSetLayout;
 };

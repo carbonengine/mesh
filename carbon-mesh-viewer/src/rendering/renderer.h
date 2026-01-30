@@ -1,22 +1,20 @@
 #pragma once
 
 #include "appState.h"
+#include "renderingConsts.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
 #include "vulkan/texture.h"
 
-
-namespace RenderUtils
+namespace
 {
 static VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData );
-static const int MAX_FRAMES_IN_FLIGHT = 2;
 }
 
 // Handles the boilerplate vulkan setup and begin/end of rendering
 class Renderer
 {
 public:
-	Renderer( AppState& appState );
 	~Renderer();
 
 	VkResult CreateInstance( std::vector<const char*> extensions );
@@ -32,8 +30,12 @@ public:
 	bool IsValid() const;
 
 	VkInstance GetVulkanInstance() const;
-	VkRenderPass GetRenderPass() const;
-	VkCommandBuffer GetCurrentCommandBuffer() const;
+	VkCommandBuffer GetCurrentVkCommandBuffer() const;
+	const Texture* GetCurrentSwapchainFrameTexture() const;
+	const Texture* GetDepthTexture() const;
+	void CreateFrameFence() const;
+	void CreateDepthFence() const;
+
 	VkAllocationCallbacks* GetAllocator() const;
 	Device* GetDevice() const;
 	VkCommandPool GetCommandPool() const;
@@ -50,14 +52,14 @@ public:
 private:
 	uint32_t m_imageIndex;
 
-	VkResult CreateRenderPass();
-	VkResult CreateCommandBuffers();
+	void PresentFence() const;
+	VkResult CreateCommandPool();
 	VkResult CreateSyncObjects();
 	VkResult CreateDescriptorPool();
+	VkResult CreateCommandBuffers();
 
 	VkInstance m_instance{ VK_NULL_HANDLE };
 	VkSurfaceKHR m_surface{ VK_NULL_HANDLE };
-	VkRenderPass m_renderPass{ VK_NULL_HANDLE };
 	Swapchain* m_swapchain{ nullptr };
 	Device* m_device{ nullptr };
 	VkAllocationCallbacks* m_allocator{ nullptr };
@@ -67,8 +69,7 @@ private:
 
 	Texture* m_depthTarget{ nullptr };
 	VkCommandPool m_commandPool{ VK_NULL_HANDLE };
-
-	std::vector<VkCommandBuffer> m_commandBuffers;
+	std::array<VkCommandBuffer, RenderingConsts::MAX_FRAMES_IN_FLIGHT> m_commandBuffers{};
 
 	// fences and semaphores
 	std::vector<VkSemaphore> m_imageAvailableSemaphores;

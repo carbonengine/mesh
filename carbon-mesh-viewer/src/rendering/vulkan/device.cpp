@@ -7,7 +7,10 @@
 
 const std::vector<const char*> DEVICE_EXTENSIONS = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-	VK_KHR_MAINTENANCE1_EXTENSION_NAME
+	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+	VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
+	VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME
 #ifdef APPLE
 	,
 	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
@@ -110,6 +113,11 @@ VkResult Device::createLogicalDevice( const VkAllocationCallbacks* allocator )
 #else
 	createInfo.enabledLayerCount = 0;
 #endif
+	VkPhysicalDeviceDynamicRenderingFeaturesKHR enabledDynamicRenderingFeaturesKHR{};
+	enabledDynamicRenderingFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+	enabledDynamicRenderingFeaturesKHR.dynamicRendering = VK_TRUE;
+
+	createInfo.pNext = &enabledDynamicRenderingFeaturesKHR;
 
 	RETURN_LOG_ERROR( vkCreateDevice( m_physicalDevice, &createInfo, allocator, &m_logicalDevice ), "Failed to create logical device" );
 

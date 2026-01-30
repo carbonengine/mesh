@@ -16,10 +16,13 @@ public:
 
 	VkImage GetImage() const;
 	VkImageView GetImageView() const;
+	VkFormat GetFormat() const;
 
 private:
-	VkImage m_image;
-	VkDeviceMemory m_imageMemory;
-	VkImageView m_imageView;
+	VkImage m_image{ VK_NULL_HANDLE };
+	VkDeviceMemory m_imageMemory{ VK_NULL_HANDLE };
+	VkImageView m_imageView{ VK_NULL_HANDLE };
+	VkFormat m_format{ VK_FORMAT_UNDEFINED };
 	static uint32_t FindMemoryType( uint32_t typeFilter, VkPhysicalDevice physicalDevice );
+	bool m_needsImageClearing{ false };
 };

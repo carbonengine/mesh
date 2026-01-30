@@ -1,7 +1,9 @@
 #pragma once
 
 #include "appState.h"
-#include "rendering/modelRenderer.h"
+#include "rendering/camera.h"
+#include "rendering/orientationGizmoRenderer.h"
+#include "rendering/sceneRenderer.h"
 #include "rendering/renderer.h"
 #include "rendering/uiRenderer.h"
 
@@ -23,10 +25,15 @@ private:
 
 	void Resize( uint32_t width, uint32_t height );
 
-	std::unique_ptr<ModelRenderer> m_modelRenderer{ nullptr };
+	std::unique_ptr<SceneRenderer> m_sceneRenderer{ nullptr };
 	std::shared_ptr<Renderer> m_renderer{ nullptr };
+	std::shared_ptr<ShaderCache> m_shaderCache{ nullptr };
 	std::unique_ptr<UIRenderer> m_uiRenderer{ nullptr };
+	std::unique_ptr<OrientationGizmoRenderer> m_orientationGizmoRenderer{ nullptr };
+
 	GLFWwindow* m_window{ nullptr };
+
+	bool m_minimized{ false };
 
 	AppState m_appState{};
 	Camera m_camera{};

@@ -3,6 +3,7 @@
 
 #include "appState.h"
 #include "rendering/renderer.h"
+#include "vulkan/commandbuffer.h"
 
 // Handles rendering the UI
 class UIRenderer
@@ -21,7 +22,6 @@ public:
 	void UpdateInputs( AppState& state );
 
 private:
-
 	template <typename T>
 	struct CmfUiComboBox
 	{
@@ -29,7 +29,7 @@ private:
 		T selectedItemValue;
 		std::vector<std::pair<std::string, T>> items;
 
-        void SetSelectedItemByValue( T value );
+		void SetSelectedItemByValue( T value );
 	};
 
 	struct CmfUiState
@@ -53,9 +53,11 @@ private:
 	void UpdateUiState( AppState& appState );
 	void FileOpenDialog( AppState& appState );
 
-	VkDescriptorPool m_DescriptorPool{ VK_NULL_HANDLE };
+	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
 	std::shared_ptr<const Renderer> m_renderer;
+	CommandBuffer m_commandBuffer;
+
 	CmfUiState m_uiState{};
 	bool m_cmfFullReset{ false };
 	bool m_cmfAttributeChange{ false };

@@ -12,15 +12,15 @@ bool MouseState::operator==( const MouseState& other ) const
 
 void AppState::CallStateCallbacks()
 {
-	windowSize.CallCallbacks();
-	mouseState.CallCallbacks();
-	cameraTrigger.CallCallbacks();
+	windowSize.CallCallbacks( *this );
+	mouseState.CallCallbacks( *this );
+	cameraTrigger.CallCallbacks( *this );
 
-	cmfContent.CallCallbacks();
-	cmfPath.CallCallbacks();
+	cmfContent.CallCallbacks( *this );
+	cmfPath.CallCallbacks( *this );
 
-	selectedLod.CallCallbacks();
-	selectedMesh.CallCallbacks();
-	visualizationShader.CallCallbacks();
-	polygonMode.CallCallbacks();
+	selectedLod.CallCallbacks( *this );
+	selectedMesh.CallCallbacks( *this );
+	visualizationShader.CallCallbacks( *this );
+	polygonMode.CallCallbacks( *this );
 }

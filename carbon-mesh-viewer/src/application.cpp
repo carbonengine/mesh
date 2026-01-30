@@ -1,8 +1,6 @@
 #include "application.h"
 
 #include <algorithm>
-#include <GLFW/glfw3.h>
-#include <vulkan/vulkan.h>
 
 Application::Application()
 {
@@ -59,8 +57,11 @@ void Application::Initialize()
 	extensions.push_back( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME );
 #endif
 	// Initialize renderer
-	m_renderer = std::make_shared<Renderer>( m_appState );
+	m_renderer = std::make_shared<Renderer>();
 	m_renderer->Resize( width, height );
+
+	// if we set value regularly we will trigger a callback, which is not needed
+	m_appState.windowSize.SetValueNoCallback( std::make_pair( width, height ) );
 
 	if( m_renderer->CreateInstance( extensions ) )
 	{
@@ -83,20 +84,21 @@ void Application::Initialize()
 		return;
 	}
 
+	m_shaderCache = std::make_shared<ShaderCache>( m_renderer );
+	m_shaderCache->Initialize();
+
 	glfwSetWindowUserPointer( m_window, this );
 
-	m_modelRenderer = std::make_unique<ModelRenderer>( m_renderer );
-	m_modelRenderer->Initialize( m_appState );
+	m_sceneRenderer = std::make_unique<SceneRenderer>( m_renderer, m_shaderCache );
+	m_sceneRenderer->Initialize( m_appState );
 
-	m_modelRenderer->SetShader( m_appState.visualizationShader.GetValue() );
-	m_modelRenderer->SetPolygonMode( m_appState.polygonMode.GetValue() );
+	m_orientationGizmoRenderer = std::make_unique<OrientationGizmoRenderer>( m_renderer, m_shaderCache );
+	m_orientationGizmoRenderer->Initialize( m_appState );
 
 	m_uiRenderer = std::make_unique<UIRenderer>( m_renderer );
 	m_uiRenderer->Initialize( m_window, m_appState );
 
 	m_camera.Initialize( m_appState );
-
-	m_appState.windowSize.SetValue( std::make_pair( width, height ) );
 
 	// initialize input handler
 	glfwSetDropCallback( m_window, []( GLFWwindow* window, int count, const char** paths ) {
@@ -127,11 +129,20 @@ void Application::Initialize()
 	} );
 
 	// add a state callback for window change so it happens at the right time
-	m_appState.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size ) {
+	m_appState.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& ) {
+		auto [width, height] = size;
+
+		if( width * height == 0 )
+		{
+			m_minimized = true;
+			return;
+		}
+		m_minimized = false;
+
 		m_renderer->PreResize();
 		m_renderer->ReleaseSurface();
 		glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
-		this->m_renderer->Resize( size.first, size.second );
+		m_renderer->Resize( width, height );
 	} );
 }
 
@@ -151,33 +162,39 @@ void Application::Run()
 		glfwPollEvents();
 
 		float newTime = (float)glfwGetTime();
-
-		if( m_renderer->BeginRender() != VK_SUCCESS )
+		if( !m_minimized )
 		{
-			Log::Error( "Failed to begin render" );
-			break;
-		}
-		m_uiRenderer->BeginFrame();
+			if( m_renderer->BeginRender() != VK_SUCCESS )
+			{
+				Log::Error( "Failed to begin render" );
+				break;
+			}
+			m_uiRenderer->BeginFrame();
 
-		m_camera.Update( newTime - time );
+			m_camera.Update( newTime - time );
 
-		if( m_appState.cmfContent.GetValue() )
-		{
-			m_modelRenderer->SetPerFrameData();
-			m_modelRenderer->RenderMesh( m_appState, m_camera );
-		}
+			m_sceneRenderer->Render( m_appState, m_camera );
+			m_orientationGizmoRenderer->Render( m_appState, m_camera );
 
-		m_uiRenderer->UpdateInputs( m_appState );
-		m_uiRenderer->Render( m_appState );
+			m_uiRenderer->UpdateInputs( m_appState );
+			m_uiRenderer->Render( m_appState );
 
-		if( m_renderer->EndRender() != VK_SUCCESS )
-		{
-			Log::Error( "Failed to end  render" );
-			break;
+			if( m_renderer->EndRender() != VK_SUCCESS )
+			{
+				Log::Error( "Failed to end  render" );
+				break;
+			}
 		}
 
 		time = newTime;
 	}
+	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
+	vkDeviceWaitIdle( logicalDevice );
+	m_orientationGizmoRenderer.release();
+
+	m_sceneRenderer.release();
+	m_uiRenderer.release();
+	m_renderer.reset();
 
 	if( m_window )
 	{
@@ -199,16 +216,8 @@ void Application::SetData( CmfContent* data )
 
 void Application::Resize( uint32_t width, uint32_t height )
 {
-	if( width == 0 || height == 0 )
-	{
-		return;
-	}
-
 	if( m_renderer )
 	{
-		if( width != m_renderer->GetWidth() || height != m_renderer->GetHeight() )
-		{
-			m_appState.windowSize.SetValue( std::make_pair( width, height ) );
-		}
+		m_appState.windowSize.SetValue( std::make_pair( width, height ) );
 	}
 }

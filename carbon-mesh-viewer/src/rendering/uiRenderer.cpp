@@ -10,7 +10,8 @@
 
 
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
-	m_renderer( renderer )
+	m_renderer( renderer ),
+	m_commandBuffer( renderer.get() )
 {
 }
 
@@ -24,8 +25,8 @@ static void check_vk_result( VkResult err )
 {
 	if( err == VK_SUCCESS )
 	{
-		return;	
-    }
+		return;
+	}
 	Log::Error( "[vulkan] Error: VkResult = %d\n", err );
 	if( err < 0 )
 	{
@@ -64,7 +65,7 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 	pool_info.poolSizeCount = (uint32_t)1;
 	pool_info.pPoolSizes = pool_sizes;
 
-	CR( vkCreateDescriptorPool( device->GetLogicalDevice(), &pool_info, allocator, &m_DescriptorPool ) );
+	CR( vkCreateDescriptorPool( device->GetLogicalDevice(), &pool_info, allocator, &m_descriptorPool ) );
 
 	// Setup Platform/Renderer backends
 	ImGui_ImplGlfw_InitForVulkan( window, true );
@@ -74,19 +75,37 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 	init_info.Device = logicalDevice;
 	init_info.QueueFamily = device->GetQueueFamilyIndices().graphicsFamily.value();
 	init_info.Queue = device->GetGraphicsQueue();
-	init_info.DescriptorPool = m_DescriptorPool;
+	init_info.DescriptorPool = m_descriptorPool;
 	init_info.MinImageCount = swapchain->GetMinImageCount();
 	init_info.ImageCount = swapchain->GetImageCount();
 	init_info.Allocator = allocator;
-	init_info.RenderPass = m_renderer->GetRenderPass();
+	init_info.RenderPass = VK_NULL_HANDLE;
 	init_info.Subpass = 0;
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 	init_info.CheckVkResultFn = check_vk_result;
+	init_info.UseDynamicRendering = true;
+
+	//dynamic rendering parameters for imgui to use
+	auto swapchainFormat = swapchain->GetFormat();
+	init_info.PipelineRenderingCreateInfo = {};
+	init_info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainFormat;
+	init_info.PipelineRenderingCreateInfo.depthAttachmentFormat = m_renderer->GetDepthTexture()->GetFormat();
+	init_info.PipelineRenderingCreateInfo.stencilAttachmentFormat = m_renderer->GetDepthTexture()->GetFormat();
+
 	ImGui_ImplVulkan_Init( &init_info );
 
-	state.cmfContent.RegisterCallback( [this, &state]( CmfContent* content ) { m_cmfFullReset = true; } );
-	state.selectedMesh.RegisterCallback( [this, &state]( int32_t content ) { m_cmfAttributeChange = true; } );
-	state.selectedLod.RegisterCallback( [this, &state]( uint32_t content ) { m_cmfAttributeChange = true; } );
+	state.cmfContent.RegisterCallback( [this, &state]( CmfContent* content, const AppState& ) { m_cmfFullReset = true; } );
+	state.selectedMesh.RegisterCallback( [this, &state]( int32_t content, const AppState& ) { m_cmfAttributeChange = true; } );
+	state.selectedLod.RegisterCallback( [this, &state]( uint32_t content, const AppState& ) { m_cmfAttributeChange = true; } );
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& appstate ) {
+		auto [width, height] = size;
+		m_commandBuffer.SetRenderSize( width, height );
+	} );
+
+	auto [width, height] = state.windowSize.GetValue();
+	m_commandBuffer.SetRenderSize( width, height );
 }
 
 void UIRenderer::FileOpenDialog( AppState& appState )
@@ -122,10 +141,11 @@ void UIRenderer::Render( AppState& appState )
 	{
 		SetupUi( appState );
 	}
-
+	m_commandBuffer.Begin( m_renderer.get() );
 	ImGui::Render();
 
-	ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), m_renderer->GetCurrentCommandBuffer() );
+	ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), m_renderer->GetCurrentVkCommandBuffer() );
+	m_commandBuffer.End();
 }
 
 void UIRenderer::SetupUi( AppState& appState )
@@ -168,31 +188,31 @@ void UIRenderer::SetupMenubar( AppState& appState )
 			{
 				if( ImGui::MenuItem( "Focus", "Ctrl+F" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
 				}
 				if( ImGui::MenuItem( "Look Right (+X)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_RIGHT, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_RIGHT );
 				}
 				if( ImGui::MenuItem( "Look Left (-X)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_LEFT, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_LEFT );
 				}
 				if( ImGui::MenuItem( "Look Up (+Y)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_UP, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_UP );
 				}
 				if( ImGui::MenuItem( "Look Down (-Y)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_DOWN, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_DOWN );
 				}
 				if( ImGui::MenuItem( "Look Front (-Z)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_FRONT, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_FRONT );
 				}
 				if( ImGui::MenuItem( "Look Back (+Z)" ) )
 				{
-					appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_BACK, true );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_BACK );
 				}
 
 				ImGui::EndMenu();
@@ -229,7 +249,7 @@ void UIRenderer::UpdateInputs( AppState& appState )
 	}
 	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_F ) )
 	{
-		appState.cameraTrigger.SetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS, true );
+		appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
 	}
 }
 
@@ -241,11 +261,11 @@ void UIRenderer::UpdateUiState( AppState& appState )
 	}
 	if( m_cmfFullReset )
 	{
-		appState.selectedLod.SetValue(0);
-		appState.selectedMesh.SetValue(-1);
+		appState.selectedLod.SetValue( 0 );
+		appState.selectedMesh.SetValue( -1 );
 	}
 
-    int32_t selectedLod = appState.selectedLod.GetValue();
+	int32_t selectedLod = appState.selectedLod.GetValue();
 	uint32_t selectedMesh = appState.selectedMesh.GetValue();
 
 	m_uiState = CmfUiState{};

@@ -4,11 +4,11 @@
 #include <fstream>
 #include <stdexcept>
 
-#include "vulkan/shadercache.h"
+#include "renderingConsts.h"
 #include "vulkan/vulkanerrors.h"
 
 
-namespace RenderUtils
+namespace
 {
 VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData )
 {
@@ -35,19 +35,12 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback( VkDebugUtilsMessageSeverityFl
 }
 }
 
-Renderer::Renderer( AppState& appState )
-{
-}
-
 Renderer::~Renderer()
 {
 	if( m_instance != VK_NULL_HANDLE )
 	{
 		VkDevice logicalDevice = m_device->GetLogicalDevice();
-		if( m_renderPass != VK_NULL_HANDLE )
-		{
-			vkDestroyRenderPass( logicalDevice, m_renderPass, m_allocator );
-		}
+
 		if( m_descriptorPool != VK_NULL_HANDLE )
 		{
 			vkDestroyDescriptorPool( logicalDevice, m_descriptorPool, m_allocator );
@@ -75,12 +68,11 @@ Renderer::~Renderer()
 		{
 			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
 		}
-		for( uint32_t i = 0; i < RenderUtils::MAX_FRAMES_IN_FLIGHT; ++i )
+		for( uint32_t i = 0; i < RenderingConsts::MAX_FRAMES_IN_FLIGHT; ++i )
 		{
 			vkDestroyFence( logicalDevice, m_inFlightFences[i], m_allocator );
-			//vkDestroyBuffer( logicalDevice, m_perFrameBuffers[i].buffer, m_allocator );
-			//vkFreeMemory( logicalDevice, m_perFrameBuffers[i].memory, m_allocator );
 		}
+		vkDestroyDevice( logicalDevice, m_allocator );
 		vkDestroyInstance( m_instance, m_allocator );
 	}
 }
@@ -132,8 +124,9 @@ VkResult Renderer::CreateInstance( std::vector<const char*> extensions )
 	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
 	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	debugCreateInfo.pfnUserCallback = RenderUtils::validationCallback;
-	createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+	debugCreateInfo.pfnUserCallback = validationCallback;
+	debugCreateInfo.pNext = nullptr;
+	createInfo.pNext = &debugCreateInfo;
 	auto debugInstanceResult = vkCreateInstance( &createInfo, m_allocator, &m_instance );
 	if( debugInstanceResult == VK_SUCCESS )
 	{
@@ -161,15 +154,25 @@ void Renderer::Initialize()
 	m_swapchain = new Swapchain();
 
 	ON_ERROR_LOG_AND_RETURN( m_swapchain->Initialize( m_device, m_surface, m_allocator, m_width, m_height ), "Could not initialize swapchain" );
-	m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT );
+	m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT );
 
-	ON_ERROR_LOG_AND_RETURN( CreateRenderPass(), "Could not create render pass" );
-	ON_ERROR_LOG_AND_RETURN( m_swapchain->CreateFrameBuffers( m_device, m_renderPass, m_depthTarget ), "Could not create frame buffers" );
-	ON_ERROR_LOG_AND_RETURN( CreateCommandBuffers(), "Could not create command buffers" );
+	ON_ERROR_LOG_AND_RETURN( CreateCommandPool(), "Could not create command pool" );
 	ON_ERROR_LOG_AND_RETURN( CreateSyncObjects(), "Could not create sync objects" );
 	ON_ERROR_LOG_AND_RETURN( CreateDescriptorPool(), "Could not cretae descriptor pool" );
+	ON_ERROR_LOG_AND_RETURN( CreateCommandBuffers(), "Could not create command buffers" );
 
 	m_valid = true;
+}
+
+VkResult Renderer::CreateCommandBuffers()
+{
+	VkCommandBufferAllocateInfo cmdBufAllocateInfo;
+	cmdBufAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+	cmdBufAllocateInfo.commandPool = m_commandPool;
+	cmdBufAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdBufAllocateInfo.pNext = nullptr;
+	cmdBufAllocateInfo.commandBufferCount = static_cast<uint32_t>( m_commandBuffers.size() );
+	return vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &cmdBufAllocateInfo, m_commandBuffers.data() );
 }
 
 void Renderer::PreResize()
@@ -207,12 +210,10 @@ VkResult Renderer::Resize( uint32_t width, uint32_t height )
 	{
 		return VK_SUCCESS;
 	}
-	m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT );
+	m_depthTarget = Texture::Create( m_device, m_width, m_height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT );
 
 	m_swapchain = new Swapchain();
 	RETURN_ERROR( m_swapchain->Initialize( m_device, m_surface, m_allocator, m_width, m_height ) );
-	RETURN_ERROR( CreateRenderPass() );
-	RETURN_ERROR( m_swapchain->CreateFrameBuffers( m_device, m_renderPass, m_depthTarget ) );
 
 	return VK_SUCCESS;
 }
@@ -232,69 +233,33 @@ VkResult Renderer::BeginRender()
 											 VK_NULL_HANDLE,
 											 &m_imageIndex );
 
-	if( result == VK_ERROR_OUT_OF_DATE_KHR )
-	{
-		Resize( m_width, m_height );
-		return result;
-	}
-	else if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR )
+
+	VkCommandBuffer cmdBuffer = GetCurrentVkCommandBuffer();
+
+	VkCommandBufferBeginInfo cmdBufInfo{};
+	cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	CR_RETURN( vkBeginCommandBuffer( cmdBuffer, &cmdBufInfo ) );
+
+	// With dynamic rendering there are no subpass dependencies, so we need to take care of proper layout transitions by using barriers
+	CreateFrameFence();
+	CreateDepthFence();
+
+	if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR )
 	{
 		throw std::runtime_error( "failed to acquire swap chain image!" );
 	}
-
-	auto commandBuffer = m_commandBuffers[m_currentFrame];
-
-	CR_RETURN( vkResetCommandBuffer( commandBuffer, /*VkCommandBufferResetFlagBits*/ 0 ) );
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-	CR_RETURN( vkBeginCommandBuffer( commandBuffer, &beginInfo ) );
-
-	VkRenderPassBeginInfo renderPassInfo{};
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassInfo.renderPass = m_renderPass;
-	renderPassInfo.framebuffer = m_swapchain->GetFrameBuffer( m_imageIndex );
-	renderPassInfo.renderArea.offset = { 0, 0 };
-	renderPassInfo.renderArea.extent = m_swapchain->GetExtent();
-
-	std::array<VkClearValue, 2> clearValues{};
-
-	clearValues[0].color = { { 0.1f, 0.1f, 0.1f, 1.0f } };
-	clearValues[1].depthStencil = { 1.0f, 0 };
-
-	renderPassInfo.clearValueCount = static_cast<uint32_t>( clearValues.size() );
-	renderPassInfo.pClearValues = clearValues.data();
-
-	vkCmdBeginRenderPass( commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE );
-
-	VkViewport viewport{};
-	viewport.width = (float)m_width;
-	viewport.height = -(float)m_height;
-	viewport.x = 0;
-	viewport.y = (float)m_height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport( commandBuffer, 0, 1, &viewport );
-
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent.width = m_width;
-	scissor.extent.height = m_height;
-
-	vkCmdSetScissor( commandBuffer, 0, 1, &scissor );
 
 	return VK_SUCCESS;
 }
 
 VkResult Renderer::EndRender()
 {
-	auto commandBuffer = m_commandBuffers[m_currentFrame];
+	auto cmdBuffer = GetCurrentVkCommandBuffer();
+	// This set of barriers prepares the color image for presentation, we don't need to care for the depth image
+	PresentFence();
 
-	vkCmdEndRenderPass( commandBuffer );
-
-	CR_RETURN( vkEndCommandBuffer( commandBuffer ) );
-
+	CR_RETURN( vkEndCommandBuffer( cmdBuffer ) );
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -304,7 +269,7 @@ VkResult Renderer::EndRender()
 	submitInfo.pWaitDstStageMask = waitStages;
 
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &m_commandBuffers[m_currentFrame];
+	submitInfo.pCommandBuffers = &cmdBuffer;
 
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &m_renderFinishedSemaphores[m_currentSemaphore];
@@ -325,81 +290,18 @@ VkResult Renderer::EndRender()
 
 	auto result = vkQueuePresentKHR( m_device->GetPresentQueue(), &presentInfo );
 
-	if( result == VK_ERROR_OUT_OF_DATE_KHR )
-	{
-		PreResize();
-		Resize( m_width, m_height );
-		return VK_SUCCESS;
-	}
-	else if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR )
+	m_currentFrame = ( m_currentFrame + 1 ) % RenderingConsts::MAX_FRAMES_IN_FLIGHT;
+	m_currentSemaphore = ( m_currentSemaphore + 1 ) % m_swapchain->GetImageCount();
+
+	if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR )
 	{
 		throw std::runtime_error( "failed to present swap chain image!" );
 	}
 
-	m_currentFrame = ( m_currentFrame + 1 ) % RenderUtils::MAX_FRAMES_IN_FLIGHT;
-	m_currentSemaphore = ( m_currentSemaphore + 1 ) % m_swapchain->GetImageCount();
 	return VK_SUCCESS;
 }
 
-VkResult Renderer::CreateRenderPass()
-{
-	VkAttachmentDescription colorAttachment{};
-	colorAttachment.format = m_swapchain->GetFormat();
-	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-	VkAttachmentDescription depthAttachment{};
-	depthAttachment.format = VK_FORMAT_D32_SFLOAT; // todo - find a format that works
-	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-	VkAttachmentReference colorAttachmentRef{};
-	colorAttachmentRef.attachment = 0;
-	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	VkAttachmentReference depthAttachmentRef{};
-	depthAttachmentRef.attachment = 1;
-	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-	VkSubpassDescription subpass{};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorAttachmentRef;
-	subpass.pDepthStencilAttachment = &depthAttachmentRef;
-
-	VkSubpassDependency dependency{};
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-	std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
-	VkRenderPassCreateInfo renderPassInfo{};
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = static_cast<uint32_t>( attachments.size() );
-	renderPassInfo.pAttachments = attachments.data();
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.dependencyCount = 1;
-	renderPassInfo.pDependencies = &dependency;
-
-	RETURN_LOG_ERROR( vkCreateRenderPass( m_device->GetLogicalDevice(), &renderPassInfo, nullptr, &m_renderPass ), "Failed to create render pass" );
-	return VK_SUCCESS;
-}
-
-VkResult Renderer::CreateCommandBuffers()
+VkResult Renderer::CreateCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = m_device->GetQueueFamilyIndices();
 	VkCommandPoolCreateInfo poolInfo{};
@@ -409,13 +311,6 @@ VkResult Renderer::CreateCommandBuffers()
 
 	CR_RETURN( vkCreateCommandPool( m_device->GetLogicalDevice(), &poolInfo, nullptr, &m_commandPool ) );
 
-	m_commandBuffers = std::vector<VkCommandBuffer>( RenderUtils::MAX_FRAMES_IN_FLIGHT );
-	VkCommandBufferAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = m_commandPool;
-	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = (uint32_t)m_commandBuffers.size();
-	RETURN_LOG_ERROR( vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &allocInfo, m_commandBuffers.data() ), "Failed to allocate command buffers" );
 	return VK_SUCCESS;
 }
 
@@ -423,7 +318,7 @@ VkResult Renderer::CreateDescriptorPool()
 {
 	VkDescriptorPoolSize descriptorTypeCounts[1]{};
 	descriptorTypeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	descriptorTypeCounts[0].descriptorCount = RenderUtils::MAX_FRAMES_IN_FLIGHT;
+	descriptorTypeCounts[0].descriptorCount = RenderingConsts::MAX_FRAMES_IN_FLIGHT;
 
 	// Create the global descriptor pool
 	// All descriptors used in this example are allocated from this pool
@@ -434,7 +329,7 @@ VkResult Renderer::CreateDescriptorPool()
 	descriptorPoolCI.pPoolSizes = descriptorTypeCounts;
 
 	// Set the max. number of descriptor sets that can be requested from this pool (requesting beyond this limit will result in an error)
-	descriptorPoolCI.maxSets = RenderUtils::MAX_FRAMES_IN_FLIGHT;
+	descriptorPoolCI.maxSets = RenderingConsts::MAX_FRAMES_IN_FLIGHT;
 	CR_RETURN( vkCreateDescriptorPool( m_device->GetLogicalDevice(), &descriptorPoolCI, nullptr, &m_descriptorPool ) );
 	return VK_SUCCESS;
 }
@@ -459,6 +354,86 @@ VkResult Renderer::CreateSyncObjects()
 	return VK_SUCCESS;
 }
 
+void Renderer::CreateFrameFence() const
+{
+	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+	const Texture* swapchainFrameTexture = m_swapchain->GetFrameTexture( m_imageIndex );
+
+	VkImageMemoryBarrier imageMemoryBarrier{};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageMemoryBarrier.srcAccessMask = 0;
+	imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	imageMemoryBarrier.image = swapchainFrameTexture->GetImage();
+	imageMemoryBarrier.subresourceRange = VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		0,
+		0,
+		nullptr,
+		0,
+		nullptr,
+		1,
+		&imageMemoryBarrier );
+}
+
+void Renderer::PresentFence() const
+{
+	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+	const Texture* swapchainFrameTexture = m_swapchain->GetFrameTexture( m_imageIndex );
+
+	VkImageMemoryBarrier imageMemoryBarrier{};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	imageMemoryBarrier.dstAccessMask = 0;
+	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	imageMemoryBarrier.image = swapchainFrameTexture->GetImage();
+	imageMemoryBarrier.subresourceRange = VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		0,
+		0,
+		nullptr,
+		0,
+		nullptr,
+		1,
+		&imageMemoryBarrier );
+}
+
+void Renderer::CreateDepthFence() const
+{
+	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+
+	VkImageMemoryBarrier imageMemoryBarrier{};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageMemoryBarrier.srcAccessMask = 0;
+	imageMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	imageMemoryBarrier.image = m_depthTarget->GetImage();
+	imageMemoryBarrier.subresourceRange = VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1 };
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		0,
+		0,
+		nullptr,
+		0,
+		nullptr,
+		1,
+		&imageMemoryBarrier );
+}
+
 Device* Renderer::GetDevice() const
 {
 	return m_device;
@@ -474,19 +449,24 @@ VkInstance Renderer::GetVulkanInstance() const
 	return m_instance;
 }
 
-VkCommandBuffer Renderer::GetCurrentCommandBuffer() const
-{
-	return m_commandBuffers[m_currentFrame];
-}
-
 VkCommandPool Renderer::GetCommandPool() const
 {
 	return m_commandPool;
 }
 
-VkRenderPass Renderer::GetRenderPass() const
+VkCommandBuffer Renderer::GetCurrentVkCommandBuffer() const
 {
-	return m_renderPass;
+	return m_commandBuffers[m_currentFrame];
+}
+
+const Texture* Renderer::GetCurrentSwapchainFrameTexture() const
+{
+	return m_swapchain->GetFrameTexture( m_imageIndex );
+}
+
+const Texture* Renderer::GetDepthTexture() const
+{
+	return m_depthTarget;
 }
 
 uint32_t Renderer::GetCurrentFrame() const

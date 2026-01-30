@@ -1,6 +1,7 @@
 #include "swapchain.h"
 
 #include "vulkanerrors.h"
+#include "rendering/renderer.h"
 
 Swapchain::Swapchain() :
 	m_swapchain( VK_NULL_HANDLE ),
@@ -93,15 +94,14 @@ VkResult Swapchain::CreateVulkanSwapchain( Device* device, VkSurfaceKHR surface,
 
 	RETURN_LOG_ERROR( vkCreateSwapchainKHR( logicalDevice, &createInfo, allocator, &m_swapchain ), "Failed to create swapchain" );
 
-	std::vector<VkImage> swapchainImages;
 	uint32_t imageCount = m_minImageCount;
 	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, nullptr ) ) );
-	swapchainImages.resize( imageCount );
-	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, swapchainImages.data() ) ) );
+	m_swapchainImages.resize( imageCount );
+	RETURN_ERROR( CR( vkGetSwapchainImagesKHR( logicalDevice, m_swapchain, &imageCount, m_swapchainImages.data() ) ) );
 
 	m_swapchainImageFormat = surfaceFormat.format;
 
-	for( auto image : swapchainImages )
+	for( auto image : m_swapchainImages )
 	{
 		Texture* swapchainTexture = Texture::CreateFromImage( device, image, m_swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT );
 		if( !swapchainTexture )
@@ -160,32 +160,10 @@ VkExtent2D Swapchain::GetExtent() const
 	return m_swapchainExtent;
 }
 
-VkResult Swapchain::CreateFrameBuffers( Device* device, VkRenderPass renderPass, Texture* depth )
+const Texture* Swapchain::GetFrameTexture( size_t index ) const
 {
-	m_swapchainFramebuffers.resize( m_swapchainFrames.size() );
-
-	for( size_t i = 0; i < m_swapchainFramebuffers.size(); i++ )
-	{
-		std::array<VkImageView, 2> attachments = {
-			m_swapchainFrames[i]->GetImageView(),
-			depth->GetImageView()
-		};
-
-		VkFramebufferCreateInfo framebufferInfo{};
-		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass = renderPass;
-		framebufferInfo.attachmentCount = static_cast<uint32_t>( attachments.size() );
-		framebufferInfo.pAttachments = attachments.data();
-		framebufferInfo.width = m_swapchainExtent.width;
-		framebufferInfo.height = m_swapchainExtent.height;
-		framebufferInfo.layers = 1;
-
-		RETURN_ERROR( CR( vkCreateFramebuffer( device->GetLogicalDevice(), &framebufferInfo, nullptr, &m_swapchainFramebuffers[i] ) ) )
-	}
-
-	return VK_SUCCESS;
+	return m_swapchainFrames[index];
 }
-
 
 uint32_t Swapchain::GetImageCount() const
 {

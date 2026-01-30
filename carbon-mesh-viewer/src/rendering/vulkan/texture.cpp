@@ -22,6 +22,7 @@ Texture::~Texture()
 Texture* Texture::Create( Device* device, uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspectFlags )
 {
 	Texture* texture = new Texture();
+	texture->m_format = format;
 
 	VkDevice logicalDevice = device->GetLogicalDevice();
 	VkImageCreateInfo imageInfo{};
@@ -43,6 +44,8 @@ Texture* Texture::Create( Device* device, uint32_t width, uint32_t height, VkFor
 	{
 		return nullptr;
 	}
+
+	texture->m_needsImageClearing = true;
 
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements( logicalDevice, texture->m_image, &memRequirements );
@@ -87,7 +90,8 @@ Texture* Texture::Create( Device* device, uint32_t width, uint32_t height, VkFor
 Texture* Texture::CreateFromImage( Device* device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags )
 {
 	Texture* texture = new Texture();
-	//texture->m_image = image;
+	texture->m_image = image;
+	texture->m_format = format;
 
 	auto logicalDevice = device->GetLogicalDevice();
 	VkImageViewCreateInfo viewInfo{};
@@ -134,7 +138,7 @@ void Texture::Release( Device* device )
 		vkDestroyImageView( logicalDevice, m_imageView, nullptr );
 		m_imageView = VK_NULL_HANDLE;
 	}
-	if( m_image != VK_NULL_HANDLE )
+	if( m_image != VK_NULL_HANDLE && m_needsImageClearing )
 	{
 		vkDestroyImage( logicalDevice, m_image, nullptr );
 		m_image = VK_NULL_HANDLE;
@@ -150,7 +154,13 @@ VkImage Texture::GetImage() const
 {
 	return m_image;
 }
+
 VkImageView Texture::GetImageView() const
 {
 	return m_imageView;
+}
+
+VkFormat Texture::GetFormat() const
+{
+	return m_format;
 }

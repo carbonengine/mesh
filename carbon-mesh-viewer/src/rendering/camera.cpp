@@ -2,25 +2,28 @@
 
 void Camera::Initialize( AppState& state )
 {
-	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> newSize ) {
-		SetScreenSize( newSize.first, newSize.second );
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> newSize, const AppState& ) {
+		auto [width, height] = newSize;
+		SetScreenSize( width, height );
 	} );
 
-	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger ) {
+	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger, const AppState& ) {
 		HandleCameraTriggerChange( trigger );
 	} );
 
-	state.mouseState.RegisterCallback( [this]( MouseState newMouseState ) {
+	state.mouseState.RegisterCallback( [this]( MouseState newMouseState, const AppState& ) {
 		HandleMouseStateChanged( newMouseState );
 	} );
 
-	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent ) {
+	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent, const AppState& ) {
 		if( cmfContent != nullptr )
 		{
 			auto boundingSphere = cmfContent->GetBoundingSphere();
 			this->Reset( boundingSphere );
 		}
 	} );
+	auto [width, height] = state.windowSize.GetValue();
+	SetScreenSize( width, height );
 }
 
 void Camera::HandleCameraTriggerChange( CameraTrigger& trigger )
@@ -102,14 +105,14 @@ Matrix Camera::GetProjection() const
 		distToModel + m_zoom + m_boundingSphere.radius );
 }
 
+Matrix Camera::GetRotation() const
+{
+	return RotationMatrix( m_currentRotation );
+}
+
 Matrix Camera::GetView() const
 {
 	return TranslationMatrix( m_at ) * RotationMatrix( m_currentRotation ) * TranslationMatrix( Vector3( 0.0, 0.0, -m_zoom ) );
-}
-
-void Camera::SetFOV( float fov )
-{
-	m_fov = fov;
 }
 
 void Camera::SetScreenSize( uint32_t width, uint32_t height )

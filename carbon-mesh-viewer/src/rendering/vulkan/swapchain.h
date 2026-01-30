@@ -13,11 +13,11 @@ public:
 	VkResult Release( Device* device, const VkAllocationCallbacks* allocator );
 	VkResult Initialize( Device* device, VkSurfaceKHR surface, const VkAllocationCallbacks* allocator, uint32_t width, uint32_t height );
 	VkFormat GetFormat() const;
-	VkResult CreateFrameBuffers( Device* device, VkRenderPass renderPass, Texture* depth );
 	VkSwapchainKHR GetVulkanSwapchain() const;
 	VkFramebuffer GetFrameBuffer( size_t index ) const;
 	VkExtent2D GetExtent() const;
 
+	const Texture* GetFrameTexture( size_t index ) const;
 	uint32_t GetImageCount() const;
 	uint32_t GetMinImageCount() const;
 
@@ -26,6 +26,7 @@ private:
 	VkFormat m_swapchainImageFormat;
 	VkExtent2D m_swapchainExtent;
 	uint32_t m_minImageCount;
+	std::vector<VkImage> m_swapchainImages{};
 	std::vector<Texture*> m_swapchainFrames;
 	std::vector<VkFramebuffer> m_swapchainFramebuffers;
 

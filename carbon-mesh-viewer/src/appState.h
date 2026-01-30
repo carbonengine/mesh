@@ -4,6 +4,9 @@
 
 #include "data/cmfcontent.h"
 
+//forwards declaration
+struct AppState;
+
 struct MouseState
 {
 	Vector2 position = { 0.0f, 0.0f };
@@ -23,16 +26,18 @@ class State
 public:
 	State( T initialValue );
 	const T GetValue() const;
-	void SetValue( T newValue, bool force = false );
+	void SetValue( T newValue );
+	void ForceSetValue( T newValue );
+	void SetValueNoCallback( T newValue );
 	void Reset();
 
-	void RegisterCallback( std::function<void( T )> callback );
-	void CallCallbacks();
+	void RegisterCallback( std::function<void( T, const AppState& )> callback );
+	void CallCallbacks( const AppState& );
 
 private:
 	T m_value;
 	T m_initialValue;
-	std::vector<std::function<void( T )>> m_callbacks;
+	std::vector<std::function<void( T, const AppState& )>> m_callbacks;
 	bool m_fireCallbacks = false;
 };
 
