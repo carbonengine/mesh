@@ -87,6 +87,10 @@ struct MeshArea
 	String name;
 	CcpMath::AxisAlignedBox bounds = {};
 	Span<uint8_t> bones;
+	// Is the area affected by any non-root bones
+	bool affectedByBones = false;
+	// Is the area affected by any morph targets
+	bool affectedByMorphTargets = false;
 
 	static constexpr std::string_view TypeName = "MeshArea";
 
@@ -96,6 +100,8 @@ struct MeshArea
 		visitor( *this, name, "name" );
 		visitor( *this, bounds, "bounds" );
 		visitor( *this, bones, "bones" );
+		visitor( *this, affectedByBones, "affectedByBones" );
+		visitor( *this, affectedByMorphTargets, "affectedByMorphTargets" );
 	}
 };
 
@@ -133,9 +139,7 @@ struct BoneBinding
 struct MorphTarget
 {
 	String name;
-	Span<VertexElement> decl;
-	CcpMath::AxisAlignedBox bounds = {}; // bounds of non-zero morphed vertices
-	Span<Vector4> maxDisplacements; // max displacements for each element in decl
+	float maxDisplacement = 0.0f;
 
 	static constexpr std::string_view TypeName = "MorphTarget";
 
@@ -143,9 +147,22 @@ struct MorphTarget
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, name, "name" );
+		visitor( *this, maxDisplacement, "maxDisplacement" );
+	}
+};
+
+struct MorphTargets
+{
+	Span<VertexElement> decl;
+	Span<MorphTarget> targets;
+
+	static constexpr std::string_view TypeName = "MorphTargets";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
 		visitor( *this, decl, "decl" );
-		visitor( *this, bounds, "bounds" );
-		visitor( *this, maxDisplacements, "maxDisplacements" );
+		visitor( *this, targets, "targets" );
 	}
 };
 
@@ -203,7 +220,7 @@ struct Mesh
 	Span<MeshLod> lods;
 	Span<MeshArea> areas;
 	Span<BoneBinding> boneBindings;
-	Span<MorphTarget> morphTargets;
+	MorphTargets morphTargets;
 	Span<float> uvDensities;
 	CcpMath::AxisAlignedBox bounds;
 	MeshTopology topology = MeshTopology::TriangleList;

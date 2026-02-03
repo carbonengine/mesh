@@ -118,9 +118,9 @@ Optimizer::Optimizer( CmfContent* content ) :
 			optMesh.lods.push_back( std::move( optLod ) );
         }
 
-        for( MorphTarget& morphTarget : mesh.morphTargets )
+        for( MorphTarget& morphTarget : mesh.morphTargets.targets )
         {
-			optMesh.morphTargets.push_back( { std::vector( morphTarget.decl.begin(), morphTarget.decl.end() ) } );
+			optMesh.morphTargets.push_back( { std::vector( mesh.morphTargets.decl.begin(), mesh.morphTargets.decl.end() ) } );
         }
 
         meshes.push_back( std::move( optMesh ) );
@@ -1282,17 +1282,16 @@ std::vector<uint8_t> Optimizer::toCmf( bool compress )
 		newMesh.topology = oldMesh.topology;
 		newMesh.skeleton = oldMesh.skeleton;
 
-		newMesh.morphTargets = allocator.AllocateSpan<MorphTarget>( optMesh.morphTargets.size() );
+		newMesh.morphTargets.targets = allocator.AllocateSpan<MorphTarget>( optMesh.morphTargets.size() );
+		if( !optMesh.morphTargets.empty() )
+		{
+			newMesh.morphTargets.decl = convertToSpan( allocator, optMesh.morphTargets[0].vertexDeclaration );
+		}
 		for( uint32_t morphIndex = 0; morphIndex < optMesh.morphTargets.size(); morphIndex++ ) 
         {
-			MorphTarget oldMorph = oldMesh.morphTargets[morphIndex];
+			MorphTarget oldMorph = oldMesh.morphTargets.targets[morphIndex];
 			OptMorphTarget optMorph = optMesh.morphTargets[morphIndex];
-			newMesh.morphTargets[morphIndex] = {
-				oldMorph.name,
-				convertToSpan( allocator, optMorph.vertexDeclaration ),
-				oldMorph.bounds,
-				oldMorph.maxDisplacements
-            };
+			newMesh.morphTargets.targets[morphIndex] = oldMorph;
 	    }
 
 

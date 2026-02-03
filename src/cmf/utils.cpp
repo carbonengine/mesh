@@ -272,7 +272,7 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 		}
 
 		// Mesh morph target lists must match
-		if( lod.morphTargets.size() != mesh.morphTargets.size() )
+		if( lod.morphTargets.size() != mesh.morphTargets.targets.size() )
 		{
 			return false;
 		}
@@ -307,31 +307,40 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 		return false;
 	}
 
-	for( auto& morph : mesh.morphTargets )
-	{
-		if( !IsVertexDeclarationValid( morph.decl ) )
+    if ( !mesh.morphTargets.targets.empty() )
+    {
+		if( !IsVertexDeclarationValid( mesh.morphTargets.decl ) )
 		{
 			return false;
 		}
 		// Morph target decl must be a subset of the mesh decl
-		for( auto& element : morph.decl )
+		for( auto& element : mesh.morphTargets.decl )
 		{
 			if( std::find_if( mesh.decl.begin(), mesh.decl.end(), [&element]( const auto& x ) { return x.usage == element.usage && x.usageIndex == element.usageIndex; } ) == mesh.decl.end() )
 			{
 				return false;
 			}
 		}
-		if( morph.maxDisplacements.size() != morph.decl.size() )
+	}
+	for( auto& morph : mesh.morphTargets.targets )
+	{
+		if( morph.maxDisplacement < 0 )
 		{
 			return false;
 		}
 	}
 
-    // Mesh can have up to 255 bone bindings
-    if( mesh.boneBindings.size() > 255 )
+    if( auto boneIndicesElement = std::find_if( mesh.decl.begin(), mesh.decl.end(), []( const auto& x ) { return x.usage == cmf::Usage::BoneIndices; } ); boneIndicesElement != mesh.decl.end() )
     {
-        return false;
-	}
+        if ( boneIndicesElement->type == cmf::ElementType::UInt8 )
+        {
+			// Mesh can have up to 255 bone bindings
+			if( mesh.boneBindings.size() > 255 )
+			{
+				return false;
+			}
+		}
+    }
 
 	size_t uvCount = 0;
     for ( auto& element : mesh.decl )
