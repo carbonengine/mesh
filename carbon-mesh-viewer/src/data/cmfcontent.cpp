@@ -1,18 +1,19 @@
 #include "cmfcontent.h"
 
 #include <cmf/utils.h>
+#include <cmf/compression.h>
 
 #ifndef _WIN32
 // Special case for non windows builders
 inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
 {
-    *stream = fopen( fileName, mode );
-    if( !*stream )
-    {
-        auto error = errno;
-        return error ? error : -1;
-    }
-    return 0;
+	*stream = fopen( fileName, mode );
+	if( !*stream )
+	{
+		auto error = errno;
+		return error ? error : -1;
+	}
+	return 0;
 }
 #endif
 
@@ -31,7 +32,7 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 
 	if( !file )
 	{
-        Log::Error( "Failed to open file: %s", filename );
+		Log::Error( "Failed to open file: %s", filename );
 		return nullptr;
 	}
 
@@ -42,7 +43,7 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	size_t bytesRead = fread( fileData.data(), 1, fileSize, file );
 	if( bytesRead != fileSize )
 	{
-        Log::Error( "Failed to read file: %s", filename );
+		Log::Error( "Failed to read file: %s", filename );
 		fclose( file );
 		return nullptr;
 	}
@@ -51,17 +52,17 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	auto validationResult = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
 	if( !validationResult.first )
 	{
-        Log::Error( "File validation failed: %s", filename );
+		Log::Error( "File validation failed: %s", filename );
 		return nullptr;
 	}
 	if( !validationResult.second.validateHeader )
 	{
-        Log::Error( "File header validation failed: %s", filename );
+		Log::Error( "File header validation failed: %s", filename );
 		return nullptr;
 	}
 	if( !validationResult.second.validateMainData )
 	{
-        Log::Error( "File main data validation failed: %s", filename );
+		Log::Error( "File main data validation failed: %s", filename );
 		return nullptr;
 	}
 
@@ -101,4 +102,19 @@ CcpMath::Sphere CmfContent::GetBoundingSphere() const
 	}
 
 	return CcpMath::Sphere( accumulated );
+}
+
+const uint8_t* CmfContent::Index( size_t sectionIndex, size_t offset )
+{
+	if( m_decompressedSections.size() <= sectionIndex )
+	{
+		m_decompressedSections.resize( sectionIndex + 1 );
+	}
+	if( !m_decompressedSections[sectionIndex] )
+	{
+		auto& section = m_cmfHeader->sections[sectionIndex];
+		m_decompressedSections[sectionIndex] = std::make_unique<uint8_t[]>( section.uncompressedSize );
+		cmf::Decompress( m_decompressedSections[sectionIndex].get(), section, m_fileContent.data() + section.offset + offset );
+	}
+	return m_decompressedSections[sectionIndex].get();
 }

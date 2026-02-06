@@ -44,7 +44,7 @@ VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const ui
 	m_stride = stride;
 
 	VkBufferUsageFlags usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	if( type == BufferType::BufferTypeIndex )
+	if( type == BufferType::Index )
 	{
 		usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
@@ -112,11 +112,11 @@ VkResult Buffer::CreateBuffer( const Renderer* renderer, BufferType type, const 
 	vkUnmapMemory( logicalDevice, m_stagingMemory );
 	CR_RETURN( vkBindBufferMemory( logicalDevice, m_stagingBuffer, m_stagingMemory, 0 ) );
 
-	if( type == BufferType::BufferTypeVertex )
+	if( type == BufferType::Vertex )
 	{
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
-	else if( type == BufferType::BufferTypeIndex )
+	else if( type == BufferType::Index )
 	{
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
@@ -167,4 +167,9 @@ uint32_t Buffer::stride() const
 uint32_t Buffer::size() const
 {
 	return m_size;
+}
+
+VkBuffer Buffer::GetGpuBuffer() const
+{
+	return m_buffer;
 }

@@ -29,6 +29,11 @@ void CommandBuffer::SetRenderOffset( int32_t x, int32_t y )
 	m_offset = { x, y };
 }
 
+void CommandBuffer::SetLineWidth( float lineWidth )
+{
+	vkCmdSetLineWidth( m_activeCommandBuffer, lineWidth );
+}
+
 VkResult CommandBuffer::CreatePerFrameBuffers( const Renderer* renderer, const ShaderCache* shaderCache, size_t perFrameDataSize )
 {
 	if( perFrameDataSize == 0 )

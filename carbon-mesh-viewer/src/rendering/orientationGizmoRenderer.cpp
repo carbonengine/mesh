@@ -27,7 +27,7 @@ void OrientationGizmoRenderer::Initialize( AppState& state )
 	m_axis.Initialize();
 	m_axis.SetRenderingMode( m_shaderCache.get(), "orientationgizmo", VK_POLYGON_MODE_LINE );
 
-	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& appstate ) {
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		SetSize( width, height );
 	} );
@@ -42,7 +42,7 @@ void OrientationGizmoRenderer::SetSize( uint32_t width, uint32_t height )
 	auto minHeight = std::min( 100u, height );
 	auto gizmoSize = std::min( minWidth, minHeight );
 	this->m_commandBuffer.SetRenderSize( gizmoSize, gizmoSize );
-	this->m_commandBuffer.SetRenderOffset( m_renderer->GetWidth() - gizmoSize - 10, m_renderer->GetHeight() - gizmoSize - 10 );
+	this->m_commandBuffer.SetRenderOffset( width - gizmoSize - 10, height - gizmoSize - 10 );
 	m_size = (float)gizmoSize;
 }
 
@@ -55,7 +55,7 @@ VkResult OrientationGizmoRenderer::Render( const AppState& state, const Camera& 
 	perFrameData.view = camera.GetRotation() * TranslationMatrix( 0.0f, 0.0f, -10.0f );
 
 	m_commandBuffer.SetPerFrameData( perFrameData );
-	m_axis.RenderMesh( m_commandBuffer, 0 );
+	m_axis.Render( m_commandBuffer );
 
 	return m_commandBuffer.End();
 }

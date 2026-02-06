@@ -26,18 +26,18 @@ void UIRenderer::SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& com
 template <typename T>
 void UIRenderer::CmfUiComboBox<T>::SetSelectedItemByValue( T value )
 {
-    for( const auto& item : items )
-    {
-        if( item.second == value )
-        {
-            selectedItemName = item.first;
-            selectedItemValue = item.second;
-            return;
-        }
+	for( const auto& item : items )
+	{
+		if( item.second == value )
+		{
+			selectedItemName = item.first;
+			selectedItemValue = item.second;
+			return;
+		}
 	}
-    if( !items.empty() )
-    {
-        selectedItemName = items.front().first;
-        selectedItemValue = items.front().second;
+	if( !items.empty() )
+	{
+		selectedItemName = items.front().first;
+		selectedItemValue = items.front().second;
 	}
 }

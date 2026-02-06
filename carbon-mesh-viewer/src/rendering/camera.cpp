@@ -1,21 +1,23 @@
 #include "camera.h"
 
+const float DEFAULT_ZOOM_MULTIPLIER = 2.5f;
+
 void Camera::Initialize( AppState& state )
 {
-	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> newSize, const AppState& ) {
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> newSize, AppState& ) {
 		auto [width, height] = newSize;
 		SetScreenSize( width, height );
 	} );
 
-	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger, const AppState& ) {
+	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger, AppState& ) {
 		HandleCameraTriggerChange( trigger );
 	} );
 
-	state.mouseState.RegisterCallback( [this]( MouseState newMouseState, const AppState& ) {
+	state.mouseState.RegisterCallback( [this]( MouseState newMouseState, AppState& ) {
 		HandleMouseStateChanged( newMouseState );
 	} );
 
-	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent, const AppState& ) {
+	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent, AppState& ) {
 		if( cmfContent != nullptr )
 		{
 			auto boundingSphere = cmfContent->GetBoundingSphere();
@@ -36,7 +38,7 @@ void Camera::HandleCameraTriggerChange( CameraTrigger& trigger )
 	{
 	case CameraTrigger::CAMERA_TRIGGER_FOCUS:
 		this->LookAt( this->m_boundingSphere.center );
-		this->m_targetZoom = this->m_boundingSphere.radius * 2.0f;
+		m_targetZoom = this->m_boundingSphere.radius * DEFAULT_ZOOM_MULTIPLIER;
 		break;
 	case CameraTrigger::CAMERA_TRIGGER_LOOK_UP:
 		this->m_targetRotation = RotationQuaternion( 0.0f, -PI / 2.0f, 0.0f );
@@ -112,7 +114,7 @@ Matrix Camera::GetRotation() const
 
 Matrix Camera::GetView() const
 {
-	return TranslationMatrix( m_at ) * RotationMatrix( m_currentRotation ) * TranslationMatrix( Vector3( 0.0, 0.0, -m_zoom ) );
+	return TranslationMatrix( -m_at )  * RotationMatrix( m_currentRotation ) * TranslationMatrix( Vector3( 0.0, 0.0, -m_zoom ) );
 }
 
 void Camera::SetScreenSize( uint32_t width, uint32_t height )
@@ -124,7 +126,7 @@ void Camera::Reset( CcpMath::Sphere boundingSphere )
 {
 	m_currentRotation = RotationQuaternion( 0.0f, 0.0f, 0.0f );
 	m_boundingSphere = boundingSphere;
-	m_zoom = boundingSphere.radius * 2.0f;
+	m_zoom = boundingSphere.radius * DEFAULT_ZOOM_MULTIPLIER;
 	m_targetZoom = m_zoom;
 	m_closestZoom = boundingSphere.radius / 100.0f;
 	m_targetRotation = m_currentRotation;
@@ -138,11 +140,6 @@ void Camera::LookAt( Vector3 target, bool immediate )
 	{
 		m_at = target;
 	}
-}
-
-Vector3 Camera::CalcEye()
-{
-	return m_at + TransformCoord( Vector3( 0.0, 0.0, m_zoom ), RotationMatrix( m_currentRotation ) );
 }
 
 static Quaternion NdcToArc( const Vector2& ndc )
@@ -193,7 +190,7 @@ void Camera::Pan( Vector2 percentageChange )
 	Vector3 right = TransformCoord( Vector3( 1.0f, 0.0f, 0.0f ), RotationMatrix( Inverse( m_currentRotation ) ) );
 	Vector3 up = TransformCoord( Vector3( 0.0f, 1.0f, 0.0f ), RotationMatrix( Inverse( m_currentRotation ) ) );
 	float panSpeed = m_zoom * 0.5f;
-	m_targetAt += ( right * percentageChange.x - up * percentageChange.y ) * panSpeed;
+	m_targetAt += ( -right * percentageChange.x + up * percentageChange.y ) * panSpeed;
 }
 
 void Camera::Update( float deltaTime )

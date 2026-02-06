@@ -36,6 +36,9 @@ public:
 	void CreateFrameFence() const;
 	void CreateDepthFence() const;
 
+	VkResult CreateCopyCommandBuffer( VkCommandBuffer* commandBuffer ) const;
+	VkResult EndCopyCommandBuffer( VkCommandBuffer commandBuffer ) const;
+
 	VkAllocationCallbacks* GetAllocator() const;
 	Device* GetDevice() const;
 	VkCommandPool GetCommandPool() const;

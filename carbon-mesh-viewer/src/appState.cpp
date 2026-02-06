@@ -20,7 +20,9 @@ void AppState::CallStateCallbacks()
 	cmfPath.CallCallbacks( *this );
 
 	selectedLod.CallCallbacks( *this );
-	selectedMesh.CallCallbacks( *this );
 	visualizationShader.CallCallbacks( *this );
 	polygonMode.CallCallbacks( *this );
+	meshVisibilityStates.CallCallbacks( *this );
+	morphTargetWeight.CallCallbacks( *this );
+	morphTargetEnabled.CallCallbacks( *this );
 }

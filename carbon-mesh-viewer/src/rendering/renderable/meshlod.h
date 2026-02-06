@@ -3,6 +3,7 @@
 #include "../renderer.h"
 #include "../vulkan/buffer.h"
 #include "../vulkan/commandbuffer.h"
+#include <cmf/bufferstreams.h>
 
 class MeshLodRenderable
 {
@@ -12,24 +13,14 @@ public:
 		uint32_t firstElement = 0;
 		uint32_t elementCount = 0;
 	};
-	MeshLodRenderable( std::shared_ptr<const Renderer> renderer );
-	MeshLodRenderable( const CmfContent* data, cmf::MeshLod cmfLod, std::shared_ptr<const Renderer> renderer );
+	MeshLodRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, const cmf::MeshLod& cmfLod, std::shared_ptr<const Renderer> renderer );
 	~MeshLodRenderable();
 
-	void Initialize( VkCommandBuffer initializeCmd );
+	void Initialize( VkCommandBuffer initializeCmd, size_t morphTargetStateIndex );
 	void Finalize();
-	void Render( CommandBuffer& commandBuffer, int32_t areaIndex = -1 ) const;
-
-	void SetVertexData( const uint8_t* data, uint32_t size, uint32_t stride );
-	void SetIndexData( const uint8_t* data, uint32_t size, uint32_t stride );
-	void AddArea( uint32_t firstElement, uint32_t elementCount );
+	void Render( CommandBuffer& commandBuffer, const AppState& appState );
 
 private:
-	std::shared_ptr<const Renderer> m_renderer;
-
-	Buffer* m_vertexBuffer{ nullptr };
-	Buffer* m_indexBuffer{ nullptr };
-
 	struct BufferData
 	{
 		const uint8_t* data{ nullptr };
@@ -37,8 +28,28 @@ private:
 		uint32_t stride{ 0 };
 	};
 
+
+	void RenderBuffers( CommandBuffer& commandBuffer, Buffer* vertex, Buffer* index );
+
+	Buffer* Morph( const AppState& appState );
+	bool HasMorphs( const AppState& appState );
+	template <typename T>
+	void ApplyMorph( const AppState& appState, const cmf::VertexElement& element, BufferData& outputBuffer );
+
+	std::shared_ptr<const Renderer> m_renderer;
+
+	std::vector<Buffer*> m_modifiedVertexBuffer{};
+	Buffer* m_vertexBuffer{ nullptr };
+	Buffer* m_indexBuffer{ nullptr };
+
+	cmf::MeshLod m_cmfLod{};
+	cmf::Mesh m_cmfMesh{};
+	CmfContent* m_data{ nullptr };
+	size_t m_morphTargetStateIndex;
+
 	BufferData m_vertexData = {};
 	BufferData m_indexData = {};
 
-	std::vector<Area> m_areas;
+	std::vector<VkVertexInputAttributeDescription> m_morphAttributeDescriptions{};
+	std::vector<Area> m_areas{};
 };

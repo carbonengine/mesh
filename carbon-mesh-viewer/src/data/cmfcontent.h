@@ -11,6 +11,8 @@ public:
 	CmfContent();
 	CmfContent( std::vector<uint8_t> fileContent, std::string filePath );
 
+	const uint8_t* Index( size_t sectionIndex, size_t offset );
+
 	CcpMath::Sphere GetBoundingSphere() const;
 
 	cmf::Header* m_cmfHeader{ nullptr };
@@ -19,6 +21,9 @@ public:
 	std::vector<uint8_t> m_fileContent;
 
 	std::string m_filePath{ "" };
+
+private:
+	std::vector<std::unique_ptr<uint8_t[]>> m_decompressedSections;
 };
 
 namespace CmfContentLoader

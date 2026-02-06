@@ -17,6 +17,7 @@ public:
 
 	void SetRenderSize( uint32_t width, uint32_t height );
 	void SetRenderOffset( int32_t x, int32_t y );
+	void SetLineWidth( float lineWidth );
 
 	void Release( const Renderer* renderer );
 

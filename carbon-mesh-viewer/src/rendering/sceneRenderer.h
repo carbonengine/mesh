@@ -16,7 +16,7 @@ public:
 
 	VkResult Initialize( AppState& state );
 	VkResult Render( const AppState& state, const Camera& camera );
-	void SetData( const CmfContent* data, const AppState& appstate );
+	void SetData( CmfContent* data, AppState& appState );
 
 private:
 	void ReleaseModel();

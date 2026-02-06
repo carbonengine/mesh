@@ -434,6 +434,51 @@ void Renderer::CreateDepthFence() const
 		&imageMemoryBarrier );
 }
 
+VkResult Renderer::CreateCopyCommandBuffer( VkCommandBuffer* commandBuffer ) const
+{
+	auto logical = GetDevice()->GetLogicalDevice();
+	VkCommandBufferAllocateInfo cmdBufAllocateInfo{};
+	cmdBufAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdBufAllocateInfo.commandPool = GetCommandPool();
+	cmdBufAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdBufAllocateInfo.commandBufferCount = 1;
+	RETURN_LOG_ERROR( vkAllocateCommandBuffers( logical, &cmdBufAllocateInfo, commandBuffer ), "Failed to allocate command buffer for model buffer creation" );
+
+	VkCommandBufferBeginInfo cmdBufInfo{};
+	cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	RETURN_LOG_ERROR( vkBeginCommandBuffer( *commandBuffer, &cmdBufInfo ), "Failed to begin command buffer for model buffer creation" );
+	return VK_SUCCESS;
+}
+
+VkResult Renderer::EndCopyCommandBuffer( VkCommandBuffer commandBuffer ) const
+{
+	RETURN_LOG_ERROR( vkEndCommandBuffer( commandBuffer ), "Failed to end copy command" );
+	auto logical = GetDevice()->GetLogicalDevice();
+
+	// Submit the command buffer to the queue to finish the copy
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	// Create fence to ensure that the command buffer has finished executing
+	VkFenceCreateInfo fenceCI{};
+	fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCI.flags = 0;
+	VkFence fence;
+	RETURN_LOG_ERROR( vkCreateFence( logical, &fenceCI, nullptr, &fence ), "Failed to create fence for model buffer copy" );
+
+	// Submit to the queue
+	RETURN_LOG_ERROR( vkQueueSubmit( GetDevice()->GetGraphicsQueue(), 1, &submitInfo, fence ), "Failed to submit the copy queue" );
+	// Wait for the fence to signal that command buffer has finished executing
+	RETURN_LOG_ERROR( vkWaitForFences( logical, 1, &fence, VK_TRUE, 100000000000 ), "Failed to wait for fence" );
+
+	vkDestroyFence( logical, fence, nullptr );
+	vkFreeCommandBuffers( logical, GetCommandPool(), 1, &commandBuffer );
+	return VK_SUCCESS;
+}
+
+
 Device* Renderer::GetDevice() const
 {
 	return m_device;

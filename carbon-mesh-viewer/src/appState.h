@@ -7,6 +7,9 @@
 //forwards declaration
 struct AppState;
 
+template <typename T>
+class StateCollection;
+
 struct MouseState
 {
 	Vector2 position = { 0.0f, 0.0f };
@@ -31,14 +34,36 @@ public:
 	void SetValueNoCallback( T newValue );
 	void Reset();
 
-	void RegisterCallback( std::function<void( T, const AppState& )> callback );
-	void CallCallbacks( const AppState& );
+	void RegisterCallback( std::function<void( T, AppState& )> callback );
+	void CallCallbacks( AppState& );
 
 private:
 	T m_value;
 	T m_initialValue;
-	std::vector<std::function<void( T, const AppState& )>> m_callbacks;
+	std::vector<std::function<void( T, AppState& )>> m_callbacks;
 	bool m_fireCallbacks = false;
+	friend class StateCollection<T>;
+};
+
+template <typename T>
+class StateCollection
+{
+public:
+	StateCollection( T initialValue );
+	size_t AddState();
+	const T GetValue( size_t index ) const;
+
+	void SetValue( size_t index, T newValue );
+	void ForceSetValue( size_t index, T newValue );
+	void SetValueNoCallback( size_t index, T newValue );
+	void RegisterCallback( size_t index, std::function<void( T, AppState& )> callback );
+	void CallCallbacks( AppState& appState );
+
+    void Clear();
+
+private:
+	std::vector<State<T>> m_states;
+	T m_initialValue;
 };
 
 enum class CameraTrigger
@@ -70,9 +95,12 @@ struct AppState
 	State<std::string> cmfPath{ "" };
 	// ui
 	State<uint32_t> selectedLod{ 0 };
-	State<int32_t> selectedMesh{ -1 };
 	State<std::string> visualizationShader{ "facenormal" };
 	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
+
+	StateCollection<bool> meshVisibilityStates{ true };
+	StateCollection<float> morphTargetWeight{ 0.0 };
+	StateCollection<bool> morphTargetEnabled{ true };
 
 	void CallStateCallbacks();
 };

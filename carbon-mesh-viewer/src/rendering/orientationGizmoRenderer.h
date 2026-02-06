@@ -2,7 +2,7 @@
 
 #include "appState.h"
 #include "camera.h"
-#include "renderable/model.h"
+#include "renderable/primitive.h"
 #include "rendering/renderer.h"
 
 // Handles showing an orientation gizmo
@@ -27,7 +27,7 @@ private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
 	std::shared_ptr<const ShaderCache> m_shaderCache{ nullptr };
 
-    ModelRenderable m_axis;
+	PrimitiveRenderable m_axis;
 
 	CommandBuffer m_commandBuffer;
 	float m_size{ 0 };

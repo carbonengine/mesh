@@ -96,16 +96,14 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 
 	ImGui_ImplVulkan_Init( &init_info );
 
-	state.cmfContent.RegisterCallback( [this, &state]( CmfContent* content, const AppState& ) { m_cmfFullReset = true; } );
-	state.selectedMesh.RegisterCallback( [this, &state]( int32_t content, const AppState& ) { m_cmfAttributeChange = true; } );
-	state.selectedLod.RegisterCallback( [this, &state]( uint32_t content, const AppState& ) { m_cmfAttributeChange = true; } );
-	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& appstate ) {
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		m_commandBuffer.SetRenderSize( width, height );
 	} );
 
 	auto [width, height] = state.windowSize.GetValue();
 	m_commandBuffer.SetRenderSize( width, height );
+	UpdateUiState( state );
 }
 
 void UIRenderer::FileOpenDialog( AppState& appState )
@@ -137,10 +135,7 @@ void UIRenderer::BeginFrame()
 void UIRenderer::Render( AppState& appState )
 {
 	SetupMenubar( appState );
-	if( appState.cmfContent.GetValue() )
-	{
-		SetupUi( appState );
-	}
+	SetupUi( appState );
 	m_commandBuffer.Begin( m_renderer.get() );
 	ImGui::Render();
 
@@ -152,23 +147,175 @@ void UIRenderer::SetupUi( AppState& appState )
 {
 	UpdateUiState( appState );
 	auto cmfContent = appState.cmfContent.GetValue();
-	if( cmfContent != nullptr )
+	bool open = true;
+	if( ImGui::Begin( "CMF Info", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar ) )
 	{
-		if( ImGui::Begin( "CMF Info" ) )
-		{
-			ImGui::InputText( "Path", m_uiState.filePath.data(), m_uiState.filePath.size(), ImGuiInputTextFlags_ElideLeft | ImGuiInputTextFlags_ReadOnly );
+		ImGui::SetWindowPos( ImVec2( 0, 18 ), ImGuiCond_Always );
+		SetupGeneralView( appState );
 
-			SetupCombo( "Mesh", m_uiState.meshComboBox, appState.selectedMesh );
-			SetupCombo( "Lod", m_uiState.lodComboBox, appState.selectedLod );
-			SetupCombo( "Polygon Mode", m_uiState.polygonModeComboBox, appState.polygonMode );
-			SetupCombo( "Visualization", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
+		SetupMeshListView( m_uiState.modelStates, appState );
 
-			ImGui::LabelText( "Vertices", "%d", m_uiState.vertexCount );
-			ImGui::LabelText( "Indices", "%d", m_uiState.indexCount );
-		}
 		ImGui::End();
 	}
 }
+
+void UIRenderer::SetupGeneralView( AppState& appState )
+{
+	bool open = true;
+	ImGui::SeparatorText( "General" );
+	if( ImGui::BeginTable( "##table", 2 ) )
+	{
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Path" );
+		ImGui::TableNextColumn();
+		ImGui::InputText( "##label", m_uiState.filePath.data(), m_uiState.filePath.size(), ImGuiInputTextFlags_ReadOnly );
+		ImGui::SetItemTooltip( m_uiState.filePath.data() );
+
+		ImGui::TableNextRow();
+
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Vertices" );
+		ImGui::TableNextColumn();
+		ImGui::Text( "%d", m_uiState.modelStates.totalVertexCount );
+		ImGui::TableNextRow();
+
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Indices" );
+		ImGui::TableNextColumn();
+		ImGui::Text( "%d", m_uiState.modelStates.totalIndexCount );
+		ImGui::TableNextRow();
+
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Meshes" );
+		ImGui::TableNextColumn();
+		ImGui::Text( "%d", m_uiState.modelStates.meshes.size() );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Polygon Mode" );
+		ImGui::TableNextColumn();
+		SetupCombo( "##polygonmode", m_uiState.polygonModeComboBox, appState.polygonMode );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Visualization" );
+		ImGui::TableNextColumn();
+		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
+		ImGui::TableNextRow();
+
+		ImGui::EndTable();
+	}
+}
+
+void UIRenderer::SetupMeshListView( const ModelUiState& modelState, AppState& appState )
+{
+	bool open = true;
+
+	if( !modelState.meshes.empty() )
+	{
+	    std::string header = "Meshes (" + std::to_string( modelState.meshes.size() ) + ")";
+	    if( ImGui::CollapsingHeader( header.c_str(), &open, ImGuiTreeNodeFlags_DefaultOpen ) )
+	    {
+			for( const auto& mesh : modelState.meshes )
+			{
+				SetupMeshView( mesh, appState );
+			}
+	    }
+    }
+}
+
+
+void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
+{
+	if( ImGui::TreeNode( mesh.name.c_str() ) )
+	{
+		if( ImGui::BeginTable( "##table", 2 ) )
+		{
+			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
+			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableNextRow();
+
+			ImGui::TableNextColumn();
+			ImGui::Text( "LOD Count" );
+			ImGui::TableNextColumn();
+			ImGui::Text( "%d", mesh.lodCount );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Vertex Count" );
+			ImGui::TableNextColumn();
+			ImGui::Text( "%d", mesh.vertexCount );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Index Count" );
+			ImGui::TableNextColumn();
+			ImGui::Text( "%d", mesh.indexCount );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Display" );
+			ImGui::SetItemTooltip( "Toggles the \"%s\" mesh", mesh.name.c_str() );
+
+			ImGui::TableNextColumn();
+			bool display = mesh.display;
+			OnChange( ImGui::Checkbox( "##checkbox", &display ), [&appState, &mesh, &display]() {
+				appState.meshVisibilityStates.SetValue(mesh.meshIndex, display );
+			} );
+			ImGui::TableNextRow();
+			ImGui::EndTable();
+			if( !mesh.morphTargets.empty() )
+			{
+			    if( ImGui::CollapsingHeader( "Morph Targets" ) )
+			    { 
+				    uint32_t index = 0;
+				    for( const auto& morphTarget : mesh.morphTargets )
+				    {
+					    SetupMorphTarget( morphTarget, appState );
+				    } 
+			    }
+            }
+		}
+		ImGui::TreePop();
+	}
+}
+
+void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppState& appState )
+{
+	ImGui::SeparatorText( morphTarget.name.c_str() );
+
+	if( ImGui::BeginTable( "##table", 3 ) )
+	{
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, 30.0 );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Weight" );
+		ImGui::TableNextColumn();
+		float weight = morphTarget.weight;
+		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight]() {
+			appState.morphTargetWeight.SetValue( morphTarget.index, weight );
+		} );
+		ImGui::TableNextColumn();
+		bool enabled = morphTarget.enabled;
+
+		OnChange( ImGui::Checkbox( "##checkbox", &enabled ), [&appState, &morphTarget, &enabled]() {
+			appState.morphTargetEnabled.SetValue( morphTarget.index, enabled );
+		} );
+		ImGui::SetItemTooltip( "Toggles the \"%s\" morph target", morphTarget.name.c_str() );
+		ImGui::EndTable();
+	}
+}
+
 
 void UIRenderer::SetupMenubar( AppState& appState )
 {
@@ -255,28 +402,18 @@ void UIRenderer::UpdateInputs( AppState& appState )
 
 void UIRenderer::UpdateUiState( AppState& appState )
 {
-	if( !m_cmfFullReset && !m_cmfAttributeChange || !appState.cmfContent.GetValue() )
-	{
-		return;
-	}
+
 	if( m_cmfFullReset )
 	{
+		// reset all appStae items related to cmf
 		appState.selectedLod.SetValue( 0 );
-		appState.selectedMesh.SetValue( -1 );
 	}
 
-	int32_t selectedLod = appState.selectedLod.GetValue();
-	uint32_t selectedMesh = appState.selectedMesh.GetValue();
-
-	m_uiState = CmfUiState{};
-
+	m_uiState = UiState{};
 	auto cmfContent = appState.cmfContent.GetValue();
 	if( cmfContent != nullptr )
 	{
 		m_uiState.filePath = appState.cmfPath.GetValue();
-		m_uiState.selectedMesh = appState.selectedMesh.GetValue();
-		m_uiState.vertexCount = 0;
-		m_uiState.indexCount = 0;
 
 		// polygon mode selection
 		m_uiState.polygonModeComboBox.items = {
@@ -293,35 +430,48 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		}
 		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.visualizationShader.GetValue() );
 
-		int32_t meshIndex = 0;
-		uint32_t maxLod = 0;
-		uint32_t currentLod = appState.selectedLod.GetValue();
-		int32_t currentMesh = appState.selectedMesh.GetValue();
-
-		// add a "All Meshes" option
-		m_uiState.meshComboBox.items.push_back( { "All", -1 } );
-
+		size_t meshIndex = 0;
+		size_t morphIndex = 0;
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			auto lod = mesh.lods[std::min( currentLod, (uint32_t)mesh.lods.size() - 1 )];
-			if( currentMesh == -1 || currentMesh == meshIndex )
+			MeshUiState meshState{};
+			meshState.meshIndex = meshIndex;
+			meshState.name = mesh.name.data();
+			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
+			meshState.display = appState.meshVisibilityStates.GetValue( meshIndex );
+
+			for( const auto& lod : mesh.lods )
 			{
-				m_uiState.indexCount += lod.ib.size / lod.ib.stride;
-				m_uiState.vertexCount += lod.vb.size / lod.vb.stride;
-
-				maxLod = std::max( maxLod, (uint32_t)mesh.lods.size() );
+				meshState.vertexCount += lod.vb.size / lod.vb.stride;
+				meshState.indexCount += lod.ib.size / lod.ib.stride;
 			}
-			m_uiState.meshComboBox.items.push_back( { mesh.name.data(), meshIndex++ } );
-		}
-		m_uiState.meshComboBox.SetSelectedItemByValue( currentMesh );
 
-		for( uint32_t i = 0; i < maxLod; i++ )
-		{
-			m_uiState.lodComboBox.items.push_back( { "Lod " + std::to_string( i ), i } );
+			m_uiState.modelStates.totalVertexCount += meshState.vertexCount;
+			m_uiState.modelStates.totalIndexCount += meshState.indexCount;
+            		
+			for( const auto& morphTarget : mesh.morphTargets.targets )
+			{
+				MorphTargetUiState morphTargetState{};
+				morphTargetState.name = morphTarget.name.data();
+				morphTargetState.weight = appState.morphTargetWeight.GetValue( morphIndex );
+				morphTargetState.enabled = appState.morphTargetEnabled.GetValue( morphIndex );
+				morphTargetState.index = morphIndex++;
+				meshState.morphTargets.push_back( morphTargetState );
+			}
+
+			m_uiState.modelStates.meshes.push_back( meshState );
+			meshIndex++;
 		}
-		m_uiState.lodComboBox.SetSelectedItemByValue( currentLod );
+		m_uiState.modelStates.selectedLod = appState.selectedLod.GetValue();
 	}
 
-	m_cmfAttributeChange = false;
 	m_cmfFullReset = false;
+}
+
+void UIRenderer::OnChange( bool changed, std::function<void()> callback )
+{
+	if( changed )
+	{
+		callback();
+	}
 }

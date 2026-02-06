@@ -2,19 +2,20 @@
 
 #include "application.h"
 
-void SetVulkanEnvironmentVariables(){
+void SetVulkanEnvironmentVariables()
+{
 #ifdef APPLE
-    setenv("VK_DRIVER_FILES", "MoltenVK_icd.json", 0);
-    setenv("VULKAN_LAYER_PATH", "explicit_layer.d", 0);
-    
-    Log::Info("VK_DRIVER_FILES points is %s", getenv("VK_DRIVER_FILES"));
-    Log::Info("VULKAN_LAYER_PATH points is %s", getenv("VULKAN_LAYER_PATH"));
+	setenv( "VK_DRIVER_FILES", "MoltenVK_icd.json", 0 );
+	setenv( "VULKAN_LAYER_PATH", "explicit_layer.d", 0 );
+
+	Log::Info( "VK_DRIVER_FILES points is %s", getenv( "VK_DRIVER_FILES" ) );
+	Log::Info( "VULKAN_LAYER_PATH points is %s", getenv( "VULKAN_LAYER_PATH" ) );
 #endif
 }
 
 int main()
 {
-    SetVulkanEnvironmentVariables();
+	SetVulkanEnvironmentVariables();
 	Application app;
 
 	app.Initialize();
@@ -22,4 +23,3 @@ int main()
 
 	return EXIT_SUCCESS;
 }
-

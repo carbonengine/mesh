@@ -4,13 +4,10 @@
 #include "../vulkan/vulkanenums.h"
 #include "../vulkan/vulkanerrors.h"
 
-MeshRenderable::MeshRenderable( std::shared_ptr<const Renderer> renderer ) :
-	m_renderer( renderer )
-{
-}
-
-MeshRenderable::MeshRenderable( const CmfContent* data, const cmf::Mesh cmfMesh, std::shared_ptr<const Renderer> renderer ) :
-	m_renderer( renderer )
+MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
+	m_renderer( renderer ),
+	m_data( data ),
+	m_cmfMesh( cmfMesh )
 {
 	for( const auto& decl : cmfMesh.decl )
 	{
@@ -25,10 +22,9 @@ MeshRenderable::MeshRenderable( const CmfContent* data, const cmf::Mesh cmfMesh,
 		m_vertexDescriptions.push_back( attrDesc );
 	}
 
-	// Implementation for constructing Mesh from cmf::Mesh goes here
 	for( const auto& cmfLod : cmfMesh.lods )
 	{
-		m_lods.push_back( { data, cmfLod, renderer } );
+		m_lods.push_back( { data, cmfMesh, cmfLod, renderer } );
 		m_stride = std::max( m_stride, cmfLod.vb.stride );
 	}
 }
@@ -38,17 +34,29 @@ MeshRenderable::~MeshRenderable()
 	vkDestroyPipeline( m_renderer->GetDevice()->GetLogicalDevice(), m_pipeline, m_renderer->GetAllocator() );
 }
 
-void MeshRenderable::SetStride( uint32_t stride )
+void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeCmd )
 {
-	m_stride = stride;
-}
+	// Register mesh visibility state
+	size_t meshIndex = appState.meshVisibilityStates.AddState();
+	appState.meshVisibilityStates.RegisterCallback( meshIndex, [this]( bool visible, AppState& appState ) {
+		m_display = visible;
+	} );
 
-void MeshRenderable::Initialize( VkCommandBuffer initializeCmd )
-{
-	// initialize the pipeline
+	size_t morphTargetStateIndex = 0;
+	// go through the morph targets so we can register to the morph weight and display flags
+	for( size_t i = 0; i < m_cmfMesh.morphTargets.targets.size(); i++ )
+	{
+		auto index = appState.morphTargetEnabled.AddState();
+		if( i == 0 )
+		{
+			morphTargetStateIndex = index;
+		}
+		appState.morphTargetWeight.AddState();
+	}
+
 	for( auto& lod : m_lods )
 	{
-		lod.Initialize( initializeCmd );
+		lod.Initialize( initializeCmd, morphTargetStateIndex );
 	}
 }
 
@@ -60,8 +68,12 @@ void MeshRenderable::Finalize()
 	}
 }
 
-void MeshRenderable::Render( CommandBuffer& commandBuffer, uint32_t lodIndex, int32_t areaIndex ) const
+void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appState, uint32_t lodIndex )
 {
+	if( !m_display )
+	{
+		return;
+	}
 	if( lodIndex >= m_lods.size() )
 	{
 		// maybe this is not an error, we should just skip rendering. But for now, log an error.
@@ -71,7 +83,7 @@ void MeshRenderable::Render( CommandBuffer& commandBuffer, uint32_t lodIndex, in
 
 	commandBuffer.BindPipeline( m_pipeline );
 
-	m_lods[lodIndex].Render( commandBuffer, areaIndex );
+	m_lods[lodIndex].Render( commandBuffer, appState );
 }
 
 VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode )
@@ -83,27 +95,7 @@ VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::
 		vkDestroyPipeline( logicalDevice, m_pipeline, m_renderer->GetAllocator() );
 		m_pipeline = VK_NULL_HANDLE;
 	}
-	CR_RETURN( shaderCache->CreatePipeline( shaderName, m_topology, polygonMode, m_lineWidth, m_stride, m_vertexDescriptions, &m_pipeline ) );
+	CR_RETURN( shaderCache->CreatePipeline( shaderName, m_topology, polygonMode, 1.0f, m_stride, m_vertexDescriptions, &m_pipeline ) );
 
 	return VK_SUCCESS;
-}
-
-void MeshRenderable::SetVertexDescriptions( const std::vector<VkVertexInputAttributeDescription>& vertexDescriptions )
-{
-	m_vertexDescriptions = vertexDescriptions;
-}
-
-void MeshRenderable::AddLodRenderable( MeshLodRenderable&& lodRenderable )
-{
-	m_lods.push_back( lodRenderable );
-}
-
-void MeshRenderable::SetTopology( VkPrimitiveTopology topology )
-{
-	m_topology = topology;
-}
-
-void MeshRenderable::SetLineWidth( float lineWidth )
-{
-	m_lineWidth = lineWidth;
 }

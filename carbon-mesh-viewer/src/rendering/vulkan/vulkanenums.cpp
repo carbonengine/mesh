@@ -192,4 +192,19 @@ VkFormat ElementTypeToVkFormat( cmf::ElementType element, uint8_t count )
 	}
 	return VK_FORMAT_UNDEFINED;
 }
+
+void AsVertexInputAttributeDescriptions( const cmf::Span<cmf::VertexElement>& vertexDescriptions, std::vector<VkVertexInputAttributeDescription>& result )
+{
+	result.clear();
+	result.reserve( vertexDescriptions.size() );
+	for( const auto& decl : vertexDescriptions )
+	{
+		VkVertexInputAttributeDescription attrDesc{};
+		attrDesc.binding = 0;
+		attrDesc.location = (uint32_t)decl.usage;
+		attrDesc.offset = decl.offset;
+		attrDesc.format = VulkanEnums::ElementTypeToVkFormat( decl.type, decl.elementCount );
+		result.push_back( attrDesc );
+	}
+}
 }

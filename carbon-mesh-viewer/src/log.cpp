@@ -4,7 +4,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-namespace Log {
+namespace Log
+{
 
 void Error( const char* message, ... )
 {

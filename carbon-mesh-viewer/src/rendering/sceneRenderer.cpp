@@ -20,19 +20,19 @@ SceneRenderer::~SceneRenderer()
 
 VkResult SceneRenderer::Initialize( AppState& state )
 {
-	state.cmfContent.RegisterCallback( [this]( CmfContent* content, const AppState& appstate ) {
-		this->SetData( content, appstate );
+	state.cmfContent.RegisterCallback( [this]( CmfContent* content, AppState& appState ) {
+		this->SetData( content, appState );
 	} );
 
-	state.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, const AppState& appstate ) {
-		m_model->SetRenderingMode( m_shaderCache.get(), appstate.visualizationShader.GetValue(), mode );
+	state.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
+		m_model->SetRenderingMode( m_shaderCache.get(), appState.visualizationShader.GetValue(), mode );
 	} );
 
-	state.visualizationShader.RegisterCallback( [this]( std::string shaderName, const AppState& appstate ) {
-		m_model->SetRenderingMode( m_shaderCache.get(), shaderName, appstate.polygonMode.GetValue() );
+	state.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
+		m_model->SetRenderingMode( m_shaderCache.get(), shaderName, appState.polygonMode.GetValue() );
 	} );
 
-	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& appstate ) {
+	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		this->m_commandBuffer.SetRenderSize( width, height );
 	} );
@@ -62,6 +62,7 @@ void SceneRenderer::ReleaseModel()
 VkResult SceneRenderer::Render( const AppState& state, const Camera& camera )
 {
 	CR_RETURN( m_commandBuffer.Begin( m_renderer.get() ) );
+	m_commandBuffer.SetLineWidth( 1.0f );
 
 	// Update the perframe data
 	PerFrameData perframe{};
@@ -72,7 +73,7 @@ VkResult SceneRenderer::Render( const AppState& state, const Camera& camera )
 
 	if( m_model != nullptr )
 	{
-		m_model->RenderMesh( m_commandBuffer, state.selectedLod.GetValue(), state.selectedMesh.GetValue() );
+		m_model->RenderMesh( m_commandBuffer, state );
 	}
 
 	CR_RETURN( m_commandBuffer.End() );
@@ -80,7 +81,7 @@ VkResult SceneRenderer::Render( const AppState& state, const Camera& camera )
 	return VK_SUCCESS;
 }
 
-void SceneRenderer::SetData( const CmfContent* data, const AppState& appstate )
+void SceneRenderer::SetData( CmfContent* data, AppState& appState )
 {
 	ReleaseModel();
 
@@ -91,6 +92,6 @@ void SceneRenderer::SetData( const CmfContent* data, const AppState& appstate )
 	}
 
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
-	m_model->Initialize();
-	m_model->SetRenderingMode( m_shaderCache.get(), appstate.visualizationShader.GetValue(), appstate.polygonMode.GetValue() );
+	m_model->Initialize( appState );
+	m_model->SetRenderingMode( m_shaderCache.get(), appState.visualizationShader.GetValue(), appState.polygonMode.GetValue() );
 }

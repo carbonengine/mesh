@@ -6,10 +6,10 @@
 #include "rendering/renderer.h"
 
 
-enum BufferType
+enum class BufferType
 {
-	BufferTypeVertex,
-	BufferTypeIndex
+	Vertex,
+	Index
 };
 
 
@@ -24,10 +24,7 @@ public:
 	void Release( const Renderer* renderer );
 	VkResult Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride );
 
-	VkBuffer GetGpuBuffer() const
-	{
-		return m_buffer;
-	}
+	VkBuffer GetGpuBuffer() const;
 
 	bool IsValid() const;
 

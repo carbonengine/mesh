@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Log {
+namespace Log
+{
 
 void Error( const char* message, ... );
 void Warning( const char* message, ... );

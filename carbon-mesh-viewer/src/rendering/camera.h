@@ -32,8 +32,6 @@ public:
 	void Update( float deltaTime );
 
 private:
-	Vector3 CalcEye();
-
 	float m_fov{ PI / 4.0f };
 	CcpMath::Sphere m_boundingSphere{ { 0.0f, 0.0f, 0.0f }, 0.0f };
 	Vector2 m_screenSize{ 0.0f, 0.0f };

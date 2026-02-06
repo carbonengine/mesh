@@ -129,7 +129,7 @@ void Application::Initialize()
 	} );
 
 	// add a state callback for window change so it happens at the right time
-	m_appState.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, const AppState& ) {
+	m_appState.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& ) {
 		auto [width, height] = size;
 
 		if( width * height == 0 )
