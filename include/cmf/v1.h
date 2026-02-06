@@ -261,6 +261,33 @@ struct Transform
 	}
 };
 
+struct BoneWeight
+{
+	uint32_t index = 0;
+	float weight = 1;
+	static constexpr std::string_view TypeName = "BoneWeight";
+	template <typename T>
+    constexpr void EnumerateMembers( T&& visitor )
+    {
+        visitor( *this, index, "index" );
+        visitor( *this, weight, "weight" );
+	}
+};
+
+struct BoneMask
+{
+    String name;
+	Span<BoneWeight> weights;
+
+    static constexpr std::string_view TypeName = "BoneMask";
+    template <typename T>
+    constexpr void EnumerateMembers( T&& visitor )
+    {
+        visitor( *this, name, "name" );
+        visitor( *this, weights, "weights" );
+    }
+};
+
 struct Skeleton
 {
 	String name;
@@ -268,6 +295,7 @@ struct Skeleton
 	Span<uint32_t> parents;
 	Span<Transform> restTransforms;
 	Span<Matrix> invBindTransforms;
+	Span<BoneMask> boneMasks;
 
 	static constexpr std::string_view TypeName = "Skeleton";
 
@@ -279,6 +307,7 @@ struct Skeleton
 		visitor( *this, parents, "parents" );
 		visitor( *this, restTransforms, "restTransforms" );
 		visitor( *this, invBindTransforms, "invBindTransforms" );
+		visitor( *this, boneMasks, "boneMasks" );
 	}
 };
 
