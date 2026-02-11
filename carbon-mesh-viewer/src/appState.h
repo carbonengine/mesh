@@ -49,17 +49,30 @@ template <typename T>
 class StateCollection
 {
 public:
+	using iterator = typename std::vector<State<T>>::iterator;
+	using const_iterator = typename std::vector<State<T>>::const_iterator;
+
 	StateCollection( T initialValue );
 	size_t AddState();
-	const T GetValue( size_t index ) const;
 
-	void SetValue( size_t index, T newValue );
-	void ForceSetValue( size_t index, T newValue );
-	void SetValueNoCallback( size_t index, T newValue );
-	void RegisterCallback( size_t index, std::function<void( T, AppState& )> callback );
+	void Clear();
 	void CallCallbacks( AppState& appState );
 
-    void Clear();
+	size_t size() const;
+
+	// Non-const iterators
+	iterator begin();
+	iterator end();
+
+	// Const iterators
+	const_iterator begin() const;
+	const_iterator end() const;
+	const_iterator cbegin() const;
+	const_iterator cend() const;
+
+	// Indexing operators
+	State<T>& operator[]( size_t index );
+	const State<T>& operator[]( size_t index ) const;
 
 private:
 	std::vector<State<T>> m_states;
@@ -101,6 +114,7 @@ struct AppState
 	StateCollection<bool> meshVisibilityStates{ true };
 	StateCollection<float> morphTargetWeight{ 0.0 };
 	StateCollection<bool> morphTargetEnabled{ true };
+	StateCollection<bool> meshWireframeOverlay{ false };
 
 	void CallStateCallbacks();
 };

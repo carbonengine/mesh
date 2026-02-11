@@ -173,7 +173,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "Path" );
 		ImGui::TableNextColumn();
 		ImGui::InputText( "##label", m_uiState.filePath.data(), m_uiState.filePath.size(), ImGuiInputTextFlags_ReadOnly );
-		ImGui::SetItemTooltip( m_uiState.filePath.data() );
+		ImGui::SetItemTooltip( "%s", m_uiState.filePath.data() );
 
 		ImGui::TableNextRow();
 
@@ -195,7 +195,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Meshes" );
 		ImGui::TableNextColumn();
-		ImGui::Text( "%d", m_uiState.modelStates.meshes.size() );
+		ImGui::Text( "%zu", m_uiState.modelStates.meshes.size() );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
@@ -208,6 +208,19 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "Visualization" );
 		ImGui::TableNextColumn();
 		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
+		ImGui::TableNextRow();
+
+        ImGui::TableNextColumn();
+		ImGui::Text( "Wireframe Overlay" );
+		ImGui::TableNextColumn();
+		bool wireframeOverlay = std::all_of( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
+            return state.GetValue();
+		} ) && appState.meshWireframeOverlay.size() > 0;
+		OnChange( ImGui::Checkbox( "##checkbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
+			std::for_each(appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
+                state.SetValue( wireframeOverlay );
+            });
+		} );
 		ImGui::TableNextRow();
 
 		ImGui::EndTable();
@@ -266,8 +279,18 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 
 			ImGui::TableNextColumn();
 			bool display = mesh.display;
-			OnChange( ImGui::Checkbox( "##checkbox", &display ), [&appState, &mesh, &display]() {
-				appState.meshVisibilityStates.SetValue(mesh.meshIndex, display );
+			OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &mesh, &display]() {
+				appState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
+			} ); 
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Wireframe Overlay" );
+			ImGui::SetItemTooltip( "Toggles the wireframe overlay for the \"%s\" mesh", mesh.name.c_str() );
+
+			ImGui::TableNextColumn();
+			bool wireframeOverlay = mesh.wireframeOverlay;
+			OnChange( ImGui::Checkbox( "##wireframeoverlaycheckbox", &wireframeOverlay ), [&appState, &mesh, &wireframeOverlay]() {
+				appState.meshWireframeOverlay[mesh.meshIndex].SetValue( wireframeOverlay );
 			} );
 			ImGui::TableNextRow();
 			ImGui::EndTable();
@@ -303,13 +326,13 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 		ImGui::TableNextColumn();
 		float weight = morphTarget.weight;
 		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight]() {
-			appState.morphTargetWeight.SetValue( morphTarget.index, weight );
+			appState.morphTargetWeight[morphTarget.index].SetValue( weight );
 		} );
 		ImGui::TableNextColumn();
 		bool enabled = morphTarget.enabled;
 
 		OnChange( ImGui::Checkbox( "##checkbox", &enabled ), [&appState, &morphTarget, &enabled]() {
-			appState.morphTargetEnabled.SetValue( morphTarget.index, enabled );
+			appState.morphTargetEnabled[morphTarget.index].SetValue( enabled );
 		} );
 		ImGui::SetItemTooltip( "Toggles the \"%s\" morph target", morphTarget.name.c_str() );
 		ImGui::EndTable();
@@ -434,11 +457,16 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		size_t morphIndex = 0;
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
+			if( meshIndex >= appState.meshVisibilityStates.size() )
+            {
+				break;
+			}
 			MeshUiState meshState{};
 			meshState.meshIndex = meshIndex;
 			meshState.name = mesh.name.data();
 			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
-			meshState.display = appState.meshVisibilityStates.GetValue( meshIndex );
+			meshState.display = appState.meshVisibilityStates[meshIndex].GetValue();
+			meshState.wireframeOverlay = appState.meshWireframeOverlay[meshIndex].GetValue();
 
 			for( const auto& lod : mesh.lods )
 			{
@@ -451,10 +479,14 @@ void UIRenderer::UpdateUiState( AppState& appState )
             		
 			for( const auto& morphTarget : mesh.morphTargets.targets )
 			{
+				if( morphIndex >= appState.morphTargetWeight.size() )
+				{
+					break;
+				}
 				MorphTargetUiState morphTargetState{};
 				morphTargetState.name = morphTarget.name.data();
-				morphTargetState.weight = appState.morphTargetWeight.GetValue( morphIndex );
-				morphTargetState.enabled = appState.morphTargetEnabled.GetValue( morphIndex );
+				morphTargetState.weight = appState.morphTargetWeight[morphIndex].GetValue();
+				morphTargetState.enabled = appState.morphTargetEnabled[morphIndex].GetValue();
 				morphTargetState.index = morphIndex++;
 				meshState.morphTargets.push_back( morphTargetState );
 			}

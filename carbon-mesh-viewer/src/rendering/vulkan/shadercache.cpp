@@ -6,6 +6,8 @@ std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> 
 #include "generatedShaderCache.h"
 };
 
+#include "commandbuffer.h"
+
 Shader::Shader() :
 	m_module( VK_NULL_HANDLE )
 {
@@ -121,7 +123,7 @@ VkResult ShaderCache::CreatePipelineLayout()
 	return VK_SUCCESS;
 }
 
-VkResult ShaderCache::CreatePipeline( std::string shaderName, VkPrimitiveTopology topology, VkPolygonMode mode, float lineWidth, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const
+VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig config, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const
 {
 	auto it = s_cache.find( shaderName );
 	if( it == s_cache.end() )
@@ -138,19 +140,27 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, VkPrimitiveTopolog
 	inputAssemblyState.primitiveRestartEnable = VK_FALSE;
 	inputAssemblyState.flags = 0;
 	inputAssemblyState.pNext = nullptr;
-	inputAssemblyState.topology = topology;
+	inputAssemblyState.topology = config.topology;
 
 	VkPipelineRasterizationStateCreateInfo rasterizationState{};
 	rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterizationState.polygonMode = mode;
-	rasterizationState.cullMode = mode == VK_POLYGON_MODE_FILL ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	rasterizationState.polygonMode = config.polygonMode;
+	rasterizationState.cullMode = config.cullMode;
 	rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterizationState.depthClampEnable = VK_FALSE;
-	rasterizationState.lineWidth = lineWidth;
+	rasterizationState.lineWidth = config.lineWidth;
 
 	VkPipelineColorBlendAttachmentState blendAttachmentState{};
 	blendAttachmentState.colorWriteMask = 0xf;
-	blendAttachmentState.blendEnable = VK_FALSE;
+	blendAttachmentState.blendEnable = config.blend;
+	if( config.blend )
+    {
+        blendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        blendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        blendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
+        blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
 
 	VkPipelineColorBlendStateCreateInfo colorBlendState{};
 	colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -161,7 +171,7 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, VkPrimitiveTopolog
 	depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthStencilState.depthTestEnable = VK_TRUE;
 	depthStencilState.depthWriteEnable = VK_TRUE;
-	depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilState.depthCompareOp = config.depthCompareOp;
 	depthStencilState.back.compareOp = VK_COMPARE_OP_ALWAYS;
 
 	VkPipelineViewportStateCreateInfo viewportState{};

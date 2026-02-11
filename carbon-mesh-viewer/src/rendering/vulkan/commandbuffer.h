@@ -61,9 +61,6 @@ private:
 	VkExtent2D m_size{ 0, 0 };
 	VkOffset2D m_offset{ 0, 0 };
 
-	VkViewport m_viewport{};
-	VkRect2D m_scissor{};
-
 	std::optional<Vector3> m_clearColor{ std::nullopt };
 	std::optional<float> m_clearDepth{ std::nullopt };
 

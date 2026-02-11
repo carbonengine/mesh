@@ -18,7 +18,8 @@ public:
 
 	void Initialize( VkCommandBuffer initializeCmd, size_t morphTargetStateIndex );
 	void Finalize();
-	void Render( CommandBuffer& commandBuffer, const AppState& appState );
+	void UpdateGeo( const AppState& appState );
+	void Render( CommandBuffer& commandBuffer );
 
 private:
 	struct BufferData
@@ -27,7 +28,6 @@ private:
 		uint32_t size{ 0 };
 		uint32_t stride{ 0 };
 	};
-
 
 	void RenderBuffers( CommandBuffer& commandBuffer, Buffer* vertex, Buffer* index );
 
@@ -39,6 +39,8 @@ private:
 	std::shared_ptr<const Renderer> m_renderer;
 
 	std::vector<Buffer*> m_modifiedVertexBuffer{};
+	Buffer* m_currentVertexBuffer{ nullptr };
+
 	Buffer* m_vertexBuffer{ nullptr };
 	Buffer* m_indexBuffer{ nullptr };
 

@@ -103,7 +103,7 @@ Matrix Camera::GetProjection() const
 	return PerspectiveFovMatrix(
 		m_fov,
 		m_screenSize.x / m_screenSize.y,
-		std::max( 0.1f, m_zoom - distToModel - m_boundingSphere.radius ),
+		std::max( 0.01f, m_zoom - distToModel - m_boundingSphere.radius ),
 		distToModel + m_zoom + m_boundingSphere.radius );
 }
 

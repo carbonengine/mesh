@@ -16,6 +16,7 @@ public:
 	void Finalize();
 
 	void Render( CommandBuffer& commandBuffer, const AppState& appState, uint32_t lodIndex );
+
 	VkResult SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode );
 
 private:
@@ -25,9 +26,11 @@ private:
 
 	uint32_t m_stride{ 0 };
 	VkPipeline m_pipeline{ VK_NULL_HANDLE };
+	VkPipeline m_wireframePipeline{ VK_NULL_HANDLE };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
 	bool m_display{ true };
+	bool m_wireframe{ false };
+	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 
 	cmf::Mesh m_cmfMesh{};
-	CmfContent* m_data{ nullptr };
 };

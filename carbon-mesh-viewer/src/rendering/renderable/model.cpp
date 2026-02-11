@@ -3,8 +3,7 @@
 #include "../vulkan/vulkanerrors.h"
 
 ModelRenderable::ModelRenderable( CmfContent* data, std::shared_ptr<const Renderer> renderer ) :
-	m_renderer( renderer ),
-	m_data( data )
+	m_renderer( renderer )
 {
 	for( const auto& cmfMesh : data->m_cmfData->meshes )
 	{
@@ -25,6 +24,7 @@ VkResult ModelRenderable::Initialize( AppState& appState )
     appState.meshVisibilityStates.Clear();
 	appState.morphTargetEnabled.Clear();
 	appState.morphTargetWeight.Clear();
+	appState.meshWireframeOverlay.Clear();
 
 	m_renderer->CreateCopyCommandBuffer( &copyCmd );
 	for( auto& mesh : m_meshes )

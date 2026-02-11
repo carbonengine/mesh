@@ -10,7 +10,8 @@ const std::vector<const char*> DEVICE_EXTENSIONS = {
 	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 	VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 	VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
-	VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME
+	VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+	VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME
 #ifdef APPLE
 	,
 	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
@@ -117,6 +118,11 @@ VkResult Device::createLogicalDevice( const VkAllocationCallbacks* allocator )
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR enabledDynamicRenderingFeaturesKHR{};
 	enabledDynamicRenderingFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
 	enabledDynamicRenderingFeaturesKHR.dynamicRendering = VK_TRUE;
+
+    VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR enabledFragmentShaderBarycentricFeaturesKHR{};
+	enabledFragmentShaderBarycentricFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR;
+	enabledFragmentShaderBarycentricFeaturesKHR.fragmentShaderBarycentric = VK_TRUE;
+	enabledDynamicRenderingFeaturesKHR.pNext = &enabledFragmentShaderBarycentricFeaturesKHR;
 
 	createInfo.pNext = &enabledDynamicRenderingFeaturesKHR;
 

@@ -19,5 +19,4 @@ public:
 private:
 	std::vector<MeshRenderable> m_meshes{};
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
-	CmfContent* m_data{ nullptr };
 };

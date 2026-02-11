@@ -78,40 +78,6 @@ size_t StateCollection<T>::AddState()
 }
 
 template <typename T>
-const T StateCollection<T>::GetValue( size_t index ) const
-{
-	if( index >= m_states.size() )
-	{
-		return m_initialValue;
-	}
-	return m_states[index].GetValue();
-}
-
-template <typename T>
-void StateCollection<T>::SetValue( size_t index, T newValue )
-{
-	m_states[index].SetValue( newValue );
-}
-
-template <typename T>
-void StateCollection<T>::ForceSetValue( size_t index, T newValue )
-{
-	m_states[index].ForceSetValue( newValue );
-}
-
-template <typename T>
-void StateCollection<T>::SetValueNoCallback( size_t index, T newValue )
-{
-	m_states[index].SetValueNoCallback( newValue );
-}
-
-template <typename T>
-void StateCollection<T>::RegisterCallback( size_t index, std::function<void( T, AppState& )> callback )
-{
-	m_states[index].RegisterCallback( callback );
-}
-
-template <typename T>
 void StateCollection<T>::CallCallbacks( AppState& appState )
 {
 	for( auto& state : m_states )
@@ -124,4 +90,61 @@ template <typename T>
 void StateCollection<T>::Clear()
 {
     m_states.clear();
+}
+
+template <typename T>
+size_t StateCollection<T>::size() const
+{
+	return m_states.size();
+}
+
+// Non-const iterators
+template <typename T>
+typename StateCollection<T>::iterator StateCollection<T>::begin()
+{
+	return m_states.begin();
+}
+
+template <typename T>
+typename StateCollection<T>::iterator StateCollection<T>::end()
+{
+	return m_states.end();
+}
+
+// Const iterators
+template <typename T>
+typename StateCollection<T>::const_iterator StateCollection<T>::begin() const
+{
+	return m_states.begin();
+}
+
+template <typename T>
+typename StateCollection<T>::const_iterator StateCollection<T>::end() const
+{
+	return m_states.end();
+}
+
+template <typename T>
+typename StateCollection<T>::const_iterator StateCollection<T>::cbegin() const
+{
+	return m_states.cbegin();
+}
+
+template <typename T>
+typename StateCollection<T>::const_iterator StateCollection<T>::cend() const
+{
+	return m_states.cend();
+}
+
+// Indexing operators
+template <typename T>
+State<T>& StateCollection<T>::operator[]( size_t index )
+{
+	return m_states[index];
+}
+
+template <typename T>
+const State<T>& StateCollection<T>::operator[]( size_t index ) const
+{
+	return m_states[index];
 }

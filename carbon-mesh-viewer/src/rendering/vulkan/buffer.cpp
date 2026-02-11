@@ -43,11 +43,6 @@ VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const ui
 	m_size = size;
 	m_stride = stride;
 
-	VkBufferUsageFlags usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	if( type == BufferType::Index )
-	{
-		usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	}
 	auto result = CreateBuffer( renderer, type, data );
 	if( result != VK_SUCCESS )
 	{

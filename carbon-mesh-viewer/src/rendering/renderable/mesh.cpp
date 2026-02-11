@@ -6,7 +6,6 @@
 
 MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_data( data ),
 	m_cmfMesh( cmfMesh )
 {
 	for( const auto& decl : cmfMesh.decl )
@@ -32,14 +31,20 @@ MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std:
 MeshRenderable::~MeshRenderable()
 {
 	vkDestroyPipeline( m_renderer->GetDevice()->GetLogicalDevice(), m_pipeline, m_renderer->GetAllocator() );
+	vkDestroyPipeline( m_renderer->GetDevice()->GetLogicalDevice(), m_wireframePipeline, m_renderer->GetAllocator() );
 }
 
 void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeCmd )
 {
 	// Register mesh visibility state
-	size_t meshIndex = appState.meshVisibilityStates.AddState();
-	appState.meshVisibilityStates.RegisterCallback( meshIndex, [this]( bool visible, AppState& appState ) {
+	size_t stateIndex = appState.meshVisibilityStates.AddState();
+	appState.meshVisibilityStates[stateIndex].RegisterCallback( [this]( bool visible, AppState& appState ) {
 		m_display = visible;
+	} );
+
+	stateIndex = appState.meshWireframeOverlay.AddState();
+	appState.meshWireframeOverlay[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+		m_wireframe = enabled;
 	} );
 
 	size_t morphTargetStateIndex = 0;
@@ -81,9 +86,15 @@ void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appSt
 		return;
 	}
 
-	commandBuffer.BindPipeline( m_pipeline );
+	m_lods[lodIndex].UpdateGeo( appState );
 
-	m_lods[lodIndex].Render( commandBuffer, appState );
+	commandBuffer.BindPipeline( m_pipeline );
+	m_lods[lodIndex].Render( commandBuffer );
+	if( m_polygonMode != VK_POLYGON_MODE_LINE && m_wireframePipeline != VK_NULL_HANDLE && m_wireframe )
+	{
+		commandBuffer.BindPipeline( m_wireframePipeline );
+		m_lods[lodIndex].Render( commandBuffer );
+	}
 }
 
 VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode )
@@ -95,7 +106,29 @@ VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::
 		vkDestroyPipeline( logicalDevice, m_pipeline, m_renderer->GetAllocator() );
 		m_pipeline = VK_NULL_HANDLE;
 	}
-	CR_RETURN( shaderCache->CreatePipeline( shaderName, m_topology, polygonMode, 1.0f, m_stride, m_vertexDescriptions, &m_pipeline ) );
 
+	auto config = ShaderCache::PipelineConfig();
+	config.topology = m_topology;
+	config.polygonMode = polygonMode;
+	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	CR_RETURN( shaderCache->CreatePipeline( shaderName, config, m_stride, m_vertexDescriptions, &m_pipeline ) );
+
+	m_polygonMode = polygonMode;
+
+	if( m_wireframePipeline == VK_NULL_HANDLE )
+	{
+		auto wireframeConfig = ShaderCache::PipelineConfig();
+		wireframeConfig.topology = m_topology;
+		// use fill mode even though we are rendering wireframe
+		// The reason is when we rasterize the lines we will get issues with the depth buffer where some lines
+		// will fail the depth test and not get rendered.
+		// We use barycentric coordinates in the shader to discard pixels that are not on the wireframe edges.
+		wireframeConfig.polygonMode = VK_POLYGON_MODE_FILL;
+		wireframeConfig.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+		wireframeConfig.cullMode = VK_CULL_MODE_NONE;
+		wireframeConfig.blend = true;
+
+		CR_RETURN( shaderCache->CreatePipeline( "wireframeoverlay", wireframeConfig, m_stride, m_vertexDescriptions, &m_wireframePipeline ) );
+	}
 	return VK_SUCCESS;
 }

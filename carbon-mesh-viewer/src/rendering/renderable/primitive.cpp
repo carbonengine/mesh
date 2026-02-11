@@ -67,7 +67,11 @@ VkResult PrimitiveRenderable::SetRenderingMode( const ShaderCache* shaderCache, 
 		vkDestroyPipeline( logicalDevice, m_pipeline, m_renderer->GetAllocator() );
 		m_pipeline = VK_NULL_HANDLE;
 	}
-	CR_RETURN( shaderCache->CreatePipeline( shaderName, m_topology, polygonMode, m_lineWidth, m_stride, m_vertexDescriptions, &m_pipeline ) );
+	auto config = ShaderCache::PipelineConfig();
+	config.topology = m_topology;
+	config.polygonMode = polygonMode;
+	config.lineWidth = m_lineWidth;
+	CR_RETURN( shaderCache->CreatePipeline( shaderName, config, m_stride, m_vertexDescriptions, &m_pipeline ) );
 
 	return VK_SUCCESS;
 }

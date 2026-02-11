@@ -31,11 +31,21 @@ private:
 class ShaderCache
 {
 public:
+	struct PipelineConfig
+	{
+		VkPrimitiveTopology topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
+		VkPolygonMode polygonMode{ VK_POLYGON_MODE_FILL };
+		float lineWidth{ 1.0f };
+		VkCompareOp depthCompareOp{ VK_COMPARE_OP_LESS };
+		VkCullModeFlags cullMode{ VK_CULL_MODE_BACK_BIT };
+ 		bool blend{ false };
+	};
+
 	ShaderCache( std::shared_ptr<Renderer> renderer );
 	~ShaderCache();
 
 	VkResult Initialize();
-	VkResult CreatePipeline( std::string shaderName, VkPrimitiveTopology topology, VkPolygonMode mode, float lineWidth, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const;
+	VkResult CreatePipeline( std::string shaderName, PipelineConfig config, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const;
 
 	VkResult CreatePipelineLayout();
 

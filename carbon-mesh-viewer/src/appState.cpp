@@ -25,4 +25,5 @@ void AppState::CallStateCallbacks()
 	meshVisibilityStates.CallCallbacks( *this );
 	morphTargetWeight.CallCallbacks( *this );
 	morphTargetEnabled.CallCallbacks( *this );
+	meshWireframeOverlay.CallCallbacks( *this );
 }

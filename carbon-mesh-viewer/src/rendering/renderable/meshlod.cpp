@@ -77,15 +77,15 @@ void MeshLodRenderable::Finalize()
 	}
 }
 
-void MeshLodRenderable::Render( CommandBuffer& commandBuffer, const AppState& appState )
+void MeshLodRenderable::Render( CommandBuffer& commandBuffer )
 {
-	if( m_vertexBuffer == nullptr )
+	if( m_currentVertexBuffer == nullptr )
 	{
 		Log::Error( "No vertex buffer set for mesh lod" );
 		return;
 	}
 
-	if( !m_vertexBuffer->IsValid() )
+	if( !m_currentVertexBuffer->IsValid() )
 	{
 		Log::Error( "Vertex buffer is invalid for mesh lod" );
 		return;
@@ -97,7 +97,7 @@ void MeshLodRenderable::Render( CommandBuffer& commandBuffer, const AppState& ap
 		return;
 	}
 
-	RenderBuffers( commandBuffer, Morph( appState ), m_indexBuffer );
+	RenderBuffers( commandBuffer, m_currentVertexBuffer, m_indexBuffer );
 }
 
 void MeshLodRenderable::RenderBuffers( CommandBuffer& commandBuffer, Buffer* vb, Buffer* ib )
@@ -110,9 +110,13 @@ void MeshLodRenderable::RenderBuffers( CommandBuffer& commandBuffer, Buffer* vb,
 	}
 }
 
+void MeshLodRenderable::UpdateGeo( const AppState& appState )
+{
+	m_currentVertexBuffer = Morph( appState );
+}
+
 Buffer* MeshLodRenderable::Morph( const AppState& appState )
 {
-
 	if( !HasMorphs( appState ) )
 	{
 		return m_vertexBuffer;
@@ -171,8 +175,8 @@ bool MeshLodRenderable::HasMorphs( const AppState& appState )
 {
 	for( size_t i = 0; i < m_cmfLod.morphTargets.size(); ++i )
 	{
-		bool enabled = appState.morphTargetEnabled.GetValue( m_morphTargetStateIndex + i );
-		float weight = appState.morphTargetWeight.GetValue( m_morphTargetStateIndex + i );
+		bool enabled = appState.morphTargetEnabled[m_morphTargetStateIndex + i].GetValue();
+		float weight = appState.morphTargetWeight[m_morphTargetStateIndex + i].GetValue();
 
 		if( enabled && weight != 0.0f )
 		{
@@ -197,8 +201,8 @@ void MeshLodRenderable::ApplyMorph( const AppState& appState, const cmf::VertexE
 
 	for( size_t i = 0; i < m_cmfLod.morphTargets.size(); ++i )
 	{
-		bool enabled = appState.morphTargetEnabled.GetValue( m_morphTargetStateIndex + i );
-		float weight = appState.morphTargetWeight.GetValue( m_morphTargetStateIndex + i );
+		bool enabled = appState.morphTargetEnabled[m_morphTargetStateIndex + i].GetValue();
+		float weight = appState.morphTargetWeight[m_morphTargetStateIndex + i].GetValue();
 
 		if( !enabled || weight == 0.0f )
 		{
