@@ -47,7 +47,7 @@ float CalculateUvDensity( const cmf::Mesh& mesh, const cmf::VertexElement& posDe
 			}
 			edges[i] = dx;
 			auto dy = 0.f;
-			for( uint32_t k = 0; k < 4; ++k )
+			for( int32_t k = 0; k < 4; ++k )
 			{
 				dy += ( uvs[i][k] - uvs[( i + 1 ) % 3][k] ) * ( uvs[i][k] - uvs[( i + 1 ) % 3][k] );
 			}

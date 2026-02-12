@@ -4,3 +4,6 @@
 [submodule "vendor/github.com/moltenVK"]
 	path = vendor/github.com/moltenVK
 	url = https://github.com/KhronosGroup/MoltenVK.git
+[submodule "vendor/github.com/ufbx/ufbx"]
+	path = vendor/github.com/ufbx/ufbx
+	url = https://github.com/ufbx/ufbx.git

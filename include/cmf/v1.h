@@ -86,7 +86,7 @@ struct MeshArea
 {
 	String name;
 	CcpMath::AxisAlignedBox bounds = {};
-	Span<uint8_t> bones;
+	Span<uint16_t> bones;
 	// Is the area affected by any non-root bones
 	bool affectedByBones = false;
 	// Is the area affected by any morph targets
@@ -386,12 +386,12 @@ struct AnimationCurve
 	}
 };
 
-struct MetadataKeyValue
+struct MetadataEntry
 {
 	String key;
 	String value;
 
-	static constexpr std::string_view TypeName = "MetadataKeyValue";
+	static constexpr std::string_view TypeName = "MetadataEntry";
 
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
@@ -403,14 +403,14 @@ struct MetadataKeyValue
 
 struct Metadata
 {
-	Span<MetadataKeyValue> values;
+	Span<MetadataEntry> entries;
 
 	static constexpr std::string_view TypeName = "Metadata";
 
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
 	{
-		visitor( *this, values, "values" );
+		visitor( *this, entries, "entries" );
 	}
 };
 

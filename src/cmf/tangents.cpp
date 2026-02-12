@@ -65,7 +65,7 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 			VertexElement newElement = element;
 			newElement.offset = offset;
 			Modify( newVertexDeclaration, allocator ).push_back( newElement );
-			offset += static_cast<uint32_t>( GetVertexElementSize( element ) );
+			offset += GetVertexElementSize( element );
 
 			if( element.usage == Usage::Normal && element.usageIndex == 0 )
 			{
@@ -73,11 +73,11 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 				newTangentElement = { Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
 				Modify( newVertexDeclaration, allocator ).push_back( newTangentElement );
-				offset += static_cast<uint32_t>( GetVertexElementSize( newTangentElement ) );
+				offset += GetVertexElementSize( newTangentElement );
 
 				newBitangentElement = { Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
 				Modify( newVertexDeclaration, allocator ).push_back( newBitangentElement );
-				offset += static_cast<uint32_t>( GetVertexElementSize( newBitangentElement ) );
+				offset += GetVertexElementSize( newBitangentElement );
 			}
 		}
 	}
@@ -110,7 +110,7 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 		interface.m_getNumFaces = []( const SMikkTSpaceContext* ctx ) -> int {
 			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-			return data->indexBuffer.size() / 3;
+			return static_cast<int>( data->indexBuffer.size() / 3 );
 		};
 
 		interface.m_getNumVerticesOfFace = []( const SMikkTSpaceContext* ctx, int ) -> int {
@@ -156,6 +156,11 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 		genTangSpaceDefault( &context );
 
         lod.vb = UnapplyIndexBuffer( lod.vb, lod.ib, allocator, bufferManager );
+		for( auto& morphTarget : lod.morphTargets )
+        {
+            morphTarget.vb = UnapplyIndexBuffer( morphTarget.vb, lod.ib, allocator, bufferManager );
+        }
+		// Replace the index buffer with a simple identity index buffer.
 		lod.ib = MakeIdentityIndexBuffer( lod.ib.size / lod.ib.stride, allocator, bufferManager );
 
         // Inject generated tangents and bitangents into the new vertex buffer.
@@ -168,38 +173,15 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 			auto normal = newNormals[i];
 			auto tangent = tangentData[i];
 			auto bitangent = -Cross( normal, tangent.GetXYZ() ) * tangentData[i].w;
-			newTangents.set( (uint32_t)i, tangent.GetXYZ() );
-			newBitangents.set( (uint32_t)i, bitangent );
+			newTangents.set( i, tangent.GetXYZ() );
+			newBitangents.set( i, bitangent );
         }
 
         // TODO: morph targets
 
 
 		//Re-index the data to avoid unnecessary work in the coming steps.
-
-		{
-			uint32_t* indexData = reinterpret_cast<uint32_t*>( bufferManager.GetData( lod.ib ) );
-			uint32_t indexCount = lod.ib.size / lod.ib.stride;
-
-			auto vertexData = bufferManager.GetData( newVb );
-			uint32_t vertexCount = newVb.size / newVb.stride;
-			uint32_t vertexStride = newVb.stride;
-
-			std::vector<unsigned> remap( vertexCount );
-			uint32_t newVertexCount = (uint32_t)meshopt_generateVertexRemap( remap.data(), indexData, indexCount, vertexData, vertexCount, vertexStride );
-
-            lod.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * vertexStride, vertexStride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
-
-			meshopt_remapVertexBuffer( bufferManager.GetData( lod.vb ), vertexData, vertexCount, vertexStride, remap.data() );
-			meshopt_remapIndexBuffer( indexData, indexData, indexCount, remap.data() );
-
-            for( auto& morph : lod.morphTargets )
-			{
-				auto morphData = bufferManager.GetData( morph.vb );
-				morph.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * morph.vb.stride, morph.vb.stride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
-				meshopt_remapVertexBuffer( bufferManager.GetData( morph.vb ), morphData, vertexCount, morph.vb.stride, remap.data() );
-			}
-		}
+		RemoveDuplicateVertices( lod, bufferManager );
 	}
 
 	mesh.decl = newVertexDeclaration;
@@ -348,10 +330,7 @@ Vector4 PackTangents( TangentCompression compression, Vector3 normal, Vector3 ta
     {
         return PackTangentsQuaternion( normal, tangent, bitangent );
     }
-    else
-    {
-        return PackTangentsLegacy( normal, tangent, bitangent );
-	}
+    return PackTangentsLegacy( normal, tangent, bitangent );
 }
 
 std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compression, Vector4 t )
@@ -360,17 +339,14 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compres
     {
         return UnpackTangentsQuaternion( t );
     }
-    else
-    {
-        return UnpackTangentsLegacy( t );
-	}
+    return UnpackTangentsLegacy( t );
 }
 
 void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, TangentCompression compression, CompressionErrorMetrics* metrics, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
 	// Check if tangents are already packed.
 	auto packedTangentElement = FindElement( mesh.decl, Usage::PackedTangent, usageIndex );
-	if( !packedTangentElement )
+	if( packedTangentElement )
 	{
 		return;
 	}

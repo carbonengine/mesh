@@ -1,3 +1,4 @@
+#include "cmf/bounds.h"
 #include "cmf/bufferstreams.h"
 
 namespace cmf

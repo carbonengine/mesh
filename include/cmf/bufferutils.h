@@ -15,4 +15,9 @@ CARBON_MESH_EXPORT BufferView MakeIdentityIndexBuffer( uint32_t indexCount, Memo
 // Changes the vertex declaration of a buffer view, copying existing elements and zeroing new ones.
 CARBON_MESH_EXPORT BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager );
 
+// Removes duplicate vertices from the given LOD vertex buffer and morph targets
+CARBON_MESH_EXPORT void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager );
+
+// Converts an index buffer to 16-bit format if possible, returning the new index buffer. If the index buffer contains indices that are too large to fit in 16 bits, the original buffer view is returned.
+CARBON_MESH_EXPORT BufferView ConvertTo16BitIndexBuffer( const BufferView& ib, MemoryAllocator& allocator, BufferManager& bufferManager );
 }

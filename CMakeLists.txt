@@ -129,6 +129,8 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
 endif()
 
 
+add_subdirectory (src/fbximport) 
+
 add_subdirectory (src/cmf/test) 
 enable_testing()
 add_test(NAME cmftest COMMAND cmftest)

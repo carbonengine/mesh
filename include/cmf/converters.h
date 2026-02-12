@@ -218,6 +218,48 @@ struct DeclTypeConverter<Vector4>
 	uint8_t m_count = 0;
 };
 
+template <typename T, size_t N>
+struct DeclTypeConverter<std::array<T, N>>
+{
+	DeclTypeConverter( ElementType type, uint8_t count ) :
+		m_func( GetScalarConversionFunction<T>( type ) ),
+		m_count( std::min( count, uint8_t( N ) ) )
+	{
+	}
+
+	std::array<T, N> operator()( const void* data ) const
+	{
+		std::array<T, N> result = {};
+		const uint8_t* src = static_cast<const uint8_t*>( data );
+		for( uint8_t i = 0; i < m_count; ++i )
+		{
+			result[i] = m_func.first.to( src );
+			src += m_func.second;
+		}
+		return result;
+	}
+
+	void set( void* data, const std::array<T, N>& value ) const
+	{
+		uint8_t* dest = static_cast<uint8_t*>( data );
+		for( uint8_t i = 0; i < m_count; ++i )
+		{
+			m_func.first.from( dest, value[i] );
+			dest += m_func.second;
+		}
+	}
+
+	operator bool() const
+	{
+		return m_func.first.to != nullptr;
+	}
+
+	std::pair<ConversionFunction<T>, size_t> m_func = {};
+	uint8_t m_count = 0;
+};
+
+
+
 struct IndexConverter
 {
 	IndexConverter( uint32_t stride )

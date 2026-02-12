@@ -370,7 +370,6 @@ namespace cmf
 {
 
 
-
 ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options )
 {
 	ValidationOptions result = {};

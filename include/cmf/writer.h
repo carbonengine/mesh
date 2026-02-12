@@ -73,8 +73,6 @@ struct FlattenVisitor
 	template <typename P, typename T>
 	void operator()( P&&, Span<T>& value, const char* )
 	{
-		auto size = value.byteSize / sizeof( T );
-
 		if constexpr( !ContainsSpans<T>() )
 		{
 			for( auto& chunk : m_chunks )

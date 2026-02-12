@@ -17,7 +17,7 @@ void RemapBufferIndices( T& obj, std::vector<uint32_t>& indices )
             indices.push_back( obj.index );
 			obj.index = uint32_t( indices.size() ); // +1 because 0 is the "data" segment
         }
-        else
+		else
         {
 			obj.index = uint32_t( distance( begin( indices ), found ) + 1 ); // +1 because 0 is the "data" segment
         }
@@ -62,9 +62,6 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
     // The compressed data of each buffer
     std::vector<std::vector<uint8_t>> compressedBufferDatas( bufferIndices.size() );
 
-    uint32_t totalCompressed = 0;
-	uint32_t totalUncompressed = 0;
-
 	for( size_t i = 0; i < bufferIndices.size(); i++ )
 	{
 		uint32_t bufferIndex = bufferIndices[i];
@@ -82,9 +79,6 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
 		section.uncompressedSize = buffer.size;
 		section.compression = buffer.compression;
 		section.gpuAlignment = buffer.compressionStride; //TODO: This is a hack! Needs to be fixed!
-
-        totalCompressed += section.compressedSize;
-		totalUncompressed += section.uncompressedSize;
 	}
 
     FlattenedBuffer flattenedMetadata;
@@ -104,7 +98,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
 	for( auto& section : reinterpret_cast<Header*>( flattenedHeader.data.get() )->sections )
     {
 		section.offset = offset;
-		offset += uint32_t( section.compressedSize );
+		offset += section.compressedSize;
     }
 	PointersToOffsets( *reinterpret_cast<Header*>( flattenedHeader.data.get() ) );
 	reinterpret_cast<Header*>( flattenedHeader.data.get() )->headerSize = uint32_t( flattenedHeader.size );
@@ -119,6 +113,8 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
         std::vector<uint8_t>& data = compressedBufferDatas[i];
 		result.insert( end( result ), begin( data ), end( data ) );
 	}
+
+	result.insert( end( result ), reinterpret_cast<uint8_t*>( flattenedMetadata.data.get() ), reinterpret_cast<uint8_t*>( flattenedMetadata.data.get() ) + flattenedMetadata.size );
 
     {
 		auto crcOffset = offsetof( Header, crc32 );
