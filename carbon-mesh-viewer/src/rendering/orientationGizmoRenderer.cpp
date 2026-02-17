@@ -7,14 +7,12 @@
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 
-OrientationGizmoRenderer::OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer, std::shared_ptr<const ShaderCache> shaderCache ) :
+OrientationGizmoRenderer::OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_shaderCache( shaderCache ),
 	m_commandBuffer( renderer.get() ),
 	m_axis( Axis::Create( renderer ) )
 {
 	m_commandBuffer.SetClearDepth( 1.0f );
-	m_commandBuffer.CreatePerFrameBuffers<PerFrameData>( m_renderer.get(), m_shaderCache.get() );
 }
 
 OrientationGizmoRenderer::~OrientationGizmoRenderer()
@@ -25,7 +23,6 @@ OrientationGizmoRenderer::~OrientationGizmoRenderer()
 void OrientationGizmoRenderer::Initialize( AppState& state )
 {
 	m_axis.Initialize();
-	m_axis.SetRenderingMode( m_shaderCache.get(), "orientationgizmo", VK_POLYGON_MODE_LINE );
 
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
@@ -54,7 +51,7 @@ VkResult OrientationGizmoRenderer::Render( const AppState& state, const Camera& 
 	perFrameData.proj = OrthoMatrix( 5.0f, 5.0f, 0.01f, 100.f );
 	perFrameData.view = camera.GetRotation() * TranslationMatrix( 0.0f, 0.0f, -10.0f );
 
-	m_commandBuffer.SetPerFrameData( perFrameData );
+	m_axis.SetUniformData( 0, perFrameData );
 	m_axis.Render( m_commandBuffer );
 
 	return m_commandBuffer.End();

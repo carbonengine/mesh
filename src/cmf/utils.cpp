@@ -7,6 +7,10 @@ bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 {
 	if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
 	{
+		if( value.size() == 0 )
+		{
+			return true;
+		}
 		// Total size must be multiple of element size
 		if( value.byteSize % sizeof( typename T::value_type ) != 0 )
 		{

@@ -1,6 +1,8 @@
 #include "application.h"
 
 #include <algorithm>
+#include "rendering/vulkan/shadercache.h"
+#include "rendering/vulkan/vulkanerrors.h"
 
 Application::Application()
 {
@@ -34,7 +36,6 @@ void Application::Initialize()
 		Log::Error( "Failed to create GLFW window" );
 		return;
 	}
-
 
 	// we may ask for a given size (see above) but it is not guaranteed to be the actual framebuffer size
 	int actualHeight, actualWidth;
@@ -84,15 +85,13 @@ void Application::Initialize()
 		return;
 	}
 
-	m_shaderCache = std::make_shared<ShaderCache>( m_renderer );
-	m_shaderCache->Initialize();
-
+	ON_ERROR_LOG_AND_RETURN( ShaderCache::InitializeShaders( m_renderer.get() ), "Failed to initialize shaders" );
 	glfwSetWindowUserPointer( m_window, this );
 
-	m_sceneRenderer = std::make_unique<SceneRenderer>( m_renderer, m_shaderCache );
-	m_sceneRenderer->Initialize( m_appState );
+	m_sceneRenderer = std::make_unique<SceneRenderer>( m_renderer );
+	ON_ERROR_LOG_AND_RETURN( m_sceneRenderer->Initialize( m_appState ), "Faied to initialize scene renderer" );
 
-	m_orientationGizmoRenderer = std::make_unique<OrientationGizmoRenderer>( m_renderer, m_shaderCache );
+	m_orientationGizmoRenderer = std::make_unique<OrientationGizmoRenderer>( m_renderer );
 	m_orientationGizmoRenderer->Initialize( m_appState );
 
 	m_uiRenderer = std::make_unique<UIRenderer>( m_renderer );
@@ -144,11 +143,13 @@ void Application::Initialize()
 		glfwCreateWindowSurface( m_renderer->GetVulkanInstance(), m_window, nullptr, m_renderer->GetSurface() );
 		m_renderer->Resize( width, height );
 	} );
+
+	m_valid = true;
 }
 
 void Application::Run()
 {
-	if( !m_renderer )
+	if( !m_renderer || !m_valid )
 	{
 		return;
 	}
@@ -194,6 +195,8 @@ void Application::Run()
 
 	m_sceneRenderer.release();
 	m_uiRenderer.release();
+
+	ShaderCache::ReleaseShaders( m_renderer.get() );
 	m_renderer.reset();
 
 	if( m_window )

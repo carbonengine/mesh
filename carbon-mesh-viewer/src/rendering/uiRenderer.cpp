@@ -210,13 +210,22 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
 		ImGui::TableNextRow();
 
+		ImGui::TableNextColumn();
+		ImGui::Text( "Bounding Box" );
+		ImGui::TableNextColumn();
+		bool boundingBox = m_uiState.modelStates.boundingBox;
+		OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &boundingBox]() {
+			appState.modelBoundingBox.SetValue( boundingBox );
+		} );
+		ImGui::TableNextRow();
+
         ImGui::TableNextColumn();
 		ImGui::Text( "Wireframe Overlay" );
 		ImGui::TableNextColumn();
 		bool wireframeOverlay = std::all_of( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
             return state.GetValue();
 		} ) && appState.meshWireframeOverlay.size() > 0;
-		OnChange( ImGui::Checkbox( "##checkbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
+		OnChange( ImGui::Checkbox( "##wireframecheckbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
 			std::for_each(appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
                 state.SetValue( wireframeOverlay );
             });
@@ -282,6 +291,17 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &mesh, &display]() {
 				appState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
 			} ); 
+
+            ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Bounding Box" );
+			ImGui::SetItemTooltip( "Toggles the bounding box for \"%s\" mesh", mesh.name.c_str() );
+
+			ImGui::TableNextColumn(); 
+		    bool boundingBox = mesh.boundingBox;
+			OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &mesh, &boundingBox]() {
+				appState.meshBoundingBox[mesh.meshIndex].SetValue( boundingBox );
+			} );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Wireframe Overlay" );
@@ -467,6 +487,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
 			meshState.display = appState.meshVisibilityStates[meshIndex].GetValue();
 			meshState.wireframeOverlay = appState.meshWireframeOverlay[meshIndex].GetValue();
+			meshState.boundingBox = appState.meshBoundingBox[meshIndex].GetValue();
 
 			for( const auto& lod : mesh.lods )
 			{
@@ -495,6 +516,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshIndex++;
 		}
 		m_uiState.modelStates.selectedLod = appState.selectedLod.GetValue();
+		m_uiState.modelStates.boundingBox = appState.modelBoundingBox.GetValue();
 	}
 
 	m_cmfFullReset = false;

@@ -1,12 +1,16 @@
 #include "mesh.h"
 
+#include "../models/boundingBox.h"
 #include "../renderer.h"
 #include "../vulkan/vulkanenums.h"
 #include "../vulkan/vulkanerrors.h"
 
 MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_cmfMesh( cmfMesh )
+	m_cmfMesh( cmfMesh ),
+	m_modelEffect( renderer ),
+	m_wireframeEffect( renderer ),
+	m_boundingBox( BoundingBox::Create( renderer, Vector3( 0.5, 0.5, 0.0 ) ) )
 {
 	for( const auto& decl : cmfMesh.decl )
 	{
@@ -26,12 +30,12 @@ MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std:
 		m_lods.push_back( { data, cmfMesh, cmfLod, renderer } );
 		m_stride = std::max( m_stride, cmfLod.vb.stride );
 	}
+
+	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
 }
 
 MeshRenderable::~MeshRenderable()
 {
-	vkDestroyPipeline( m_renderer->GetDevice()->GetLogicalDevice(), m_pipeline, m_renderer->GetAllocator() );
-	vkDestroyPipeline( m_renderer->GetDevice()->GetLogicalDevice(), m_wireframePipeline, m_renderer->GetAllocator() );
 }
 
 void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeCmd )
@@ -45,6 +49,11 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 	stateIndex = appState.meshWireframeOverlay.AddState();
 	appState.meshWireframeOverlay[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
 		m_wireframe = enabled;
+	} );
+
+	stateIndex = appState.meshBoundingBox.AddState();
+	appState.meshBoundingBox[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+		m_showBoundingBox = enabled;
 	} );
 
 	size_t morphTargetStateIndex = 0;
@@ -63,6 +72,7 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 	{
 		lod.Initialize( initializeCmd, morphTargetStateIndex );
 	}
+	m_boundingBox.Initialize();
 }
 
 void MeshRenderable::Finalize()
@@ -73,7 +83,7 @@ void MeshRenderable::Finalize()
 	}
 }
 
-void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appState, uint32_t lodIndex )
+void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera, uint32_t lodIndex )
 {
 	if( !m_display )
 	{
@@ -87,37 +97,53 @@ void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appSt
 	}
 
 	m_lods[lodIndex].UpdateGeo( appState );
+	auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
 
-	commandBuffer.BindPipeline( m_pipeline );
+	m_modelEffect.SetUniformData( 0, viewProj );
+
+	commandBuffer.BindEffect( m_modelEffect );
 	m_lods[lodIndex].Render( commandBuffer );
-	if( m_polygonMode != VK_POLYGON_MODE_LINE && m_wireframePipeline != VK_NULL_HANDLE && m_wireframe )
+	if( m_polygonMode != VK_POLYGON_MODE_LINE && m_wireframeEffect.IsInitialized() && m_wireframe )
 	{
-		commandBuffer.BindPipeline( m_wireframePipeline );
+		m_wireframeEffect.SetUniformData( 0, viewProj );
+
+		commandBuffer.BindEffect( m_wireframeEffect );
 		m_lods[lodIndex].Render( commandBuffer );
+	}
+
+	if( m_showBoundingBox )
+	{
+		auto vertexData = BoundingBox::VertexUBO{ camera.GetProjection(), camera.GetView(), m_boundingBoxTransform };
+		m_boundingBox.SetUniformData( 0, vertexData );
+		m_boundingBox.Render( commandBuffer );
 	}
 }
 
-VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode )
+VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode )
 {
 	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
-	CR_RETURN( vkDeviceWaitIdle( logicalDevice ) );
-	if( m_pipeline != VK_NULL_HANDLE )
-	{
-		vkDestroyPipeline( logicalDevice, m_pipeline, m_renderer->GetAllocator() );
-		m_pipeline = VK_NULL_HANDLE;
-	}
-
-	auto config = ShaderCache::PipelineConfig();
-	config.topology = m_topology;
-	config.polygonMode = polygonMode;
-	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
-	CR_RETURN( shaderCache->CreatePipeline( shaderName, config, m_stride, m_vertexDescriptions, &m_pipeline ) );
 
 	m_polygonMode = polygonMode;
 
-	if( m_wireframePipeline == VK_NULL_HANDLE )
+	CR_RETURN( vkDeviceWaitIdle( logicalDevice ) );
+
+	auto config = Effect::Config();
+	config.topology = m_topology;
+	config.polygonMode = polygonMode;
+	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	config.vertexStride = m_stride;
+	config.vertexDescriptions = m_vertexDescriptions;
+	m_modelEffect.SetShaderName( shaderName );
+	m_modelEffect.SetConfig( config );
+	if( !m_modelEffect.IsInitialized() )
 	{
-		auto wireframeConfig = ShaderCache::PipelineConfig();
+		m_modelEffect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+		m_modelEffect.Initialize();
+	}
+
+	if( !m_wireframeEffect.IsInitialized() )
+	{
+		auto wireframeConfig = Effect::Config();
 		wireframeConfig.topology = m_topology;
 		// use fill mode even though we are rendering wireframe
 		// The reason is when we rasterize the lines we will get issues with the depth buffer where some lines
@@ -127,8 +153,12 @@ VkResult MeshRenderable::SetRenderingMode( const ShaderCache* shaderCache, std::
 		wireframeConfig.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 		wireframeConfig.cullMode = VK_CULL_MODE_NONE;
 		wireframeConfig.blend = true;
-
-		CR_RETURN( shaderCache->CreatePipeline( "wireframeoverlay", wireframeConfig, m_stride, m_vertexDescriptions, &m_wireframePipeline ) );
+		wireframeConfig.vertexStride = m_stride;
+		wireframeConfig.vertexDescriptions = m_vertexDescriptions;
+		m_wireframeEffect.SetShaderName( "wireframeoverlay" );
+		m_wireframeEffect.SetConfig( wireframeConfig );
+		m_wireframeEffect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+		m_wireframeEffect.Initialize();
 	}
 	return VK_SUCCESS;
 }

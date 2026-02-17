@@ -5,7 +5,7 @@
 #include "../renderingConsts.h"
 #include "../renderer.h"
 #include "buffer.h"
-#include "shadercache.h"
+#include "effect.h"
 
 class CommandBuffer
 {
@@ -23,39 +23,14 @@ public:
 
 	VkResult Begin( const Renderer* renderer );
 
-	template <typename T>
-	VkResult SetPerFrameData( const T& data )
-	{
-		return SetPerFrameData( &data, sizeof( T ) );
-	}
-
-	template <typename T>
-	VkResult CreatePerFrameBuffers( const Renderer* renderer, const ShaderCache* shaderCache )
-	{
-		return CreatePerFrameBuffers( renderer, shaderCache, sizeof( T ) );
-	}
-
-	void BindPipeline( VkPipeline pipeline );
+	void BindEffect( Effect& effect );
 	void Render( Buffer* vertexBuffer, Buffer* indexBuffer, uint32_t firstElement, uint32_t elementCount );
 	VkResult End();
 
 private:
-	VkResult CreatePerFrameBuffers( const Renderer* renderer, const ShaderCache* shaderCache, size_t perFrameDataSize );
-	VkResult SetPerFrameData( const void* data, size_t size );
-
-	struct UniformBuffer
-	{
-		VkDeviceMemory memory{ VK_NULL_HANDLE };
-		VkBuffer buffer{ VK_NULL_HANDLE };
-		VkDescriptorSet descriptorSet{ VK_NULL_HANDLE };
-		uint8_t* mapped{ nullptr };
-	};
-
-	std::array<UniformBuffer, RenderingConsts::MAX_FRAMES_IN_FLIGHT> m_perFrameBuffers{};
 	VkPipelineLayout m_pipelineLayout{ VK_NULL_HANDLE };
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
-	size_t m_perFrameDataSize{ 0 };
 	uint32_t m_currentIndex{ 0 };
 
 	VkExtent2D m_size{ 0, 0 };

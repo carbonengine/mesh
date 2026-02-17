@@ -1,4 +1,5 @@
 #include "axis.h"
+#include "../vulkan/effect.h"
 
 namespace Axis
 {
@@ -19,15 +20,23 @@ const AxisVertex AXIS_MESH[6] = {
 
 PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer )
 {
-	auto model = PrimitiveRenderable( renderer );
+	Effect::Config config{};
+	config.vertexDescriptions = {
+		{ 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 }, // position
+		{ 1, 0, VK_FORMAT_R32G32B32_SFLOAT, sizeof( Vector3 ) }, // color
+	};
+	config.lineWidth = 2.0f;
+	config.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	config.vertexStride = sizeof( AxisVertex );
 
-    model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH ), sizeof( AXIS_MESH ), sizeof( AxisVertex ) );
-    model.SetVertexDescriptions( {
-        { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 }, // position
-        { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, 3 * sizeof( float ) }, // color
-	} );
-	model.SetLineWidth( 2.0f );
-	model.SetTopology( VK_PRIMITIVE_TOPOLOGY_LINE_LIST );
+	auto effect = Effect( renderer );
+	effect.RegisterUniformData( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0, nullptr, sizeof( Matrix ) * 2 );
+	effect.SetConfig( config );
+	effect.SetShaderName( "orientationgizmo" );
+
+	auto model = PrimitiveRenderable( renderer, effect );
+	model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH ), sizeof( AXIS_MESH ), sizeof( AxisVertex ) );
+
 	return model;
 }
 }

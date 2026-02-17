@@ -5,8 +5,7 @@
 std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> ShaderCache::s_cache = {
 #include "generatedShaderCache.h"
 };
-
-#include "commandbuffer.h"
+bool ShaderCache::s_initialized = false;
 
 Shader::Shader() :
 	m_module( VK_NULL_HANDLE )
@@ -18,16 +17,6 @@ Shader::Shader( std::vector<uint32_t> code ) :
 	m_module( VK_NULL_HANDLE )
 {
 	m_code = code;
-}
-
-VkResult Shader::Release( const Renderer* renderer )
-{
-	if( m_module != VK_NULL_HANDLE )
-	{
-		vkDestroyShaderModule( renderer->GetDevice()->GetLogicalDevice(), m_module, renderer->GetAllocator() );
-		m_module = VK_NULL_HANDLE;
-	}
-	return VK_SUCCESS;
 }
 
 VkResult Shader::Initialize( const Renderer* renderer, VkShaderStageFlagBits shaderFlag )
@@ -51,80 +40,50 @@ VkResult Shader::Initialize( const Renderer* renderer, VkShaderStageFlagBits sha
 	return VK_SUCCESS;
 }
 
-ShaderCache::ShaderCache( std::shared_ptr<Renderer> renderer ) :
-	m_renderer( renderer )
+VkResult ShaderCache::InitializeShaders( const Renderer* renderer )
 {
-}
-
-ShaderCache::~ShaderCache()
-{
+	assert( !s_initialized );
 	for( auto& [key, shaderTuple] : s_cache )
 	{
 		auto& [vertexOpt, fragmentOpt] = shaderTuple;
 		if( vertexOpt.has_value() )
 		{
-			vertexOpt.value().Release( m_renderer.get() );
+			CR_RETURN( vertexOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
 		}
 		if( fragmentOpt.has_value() )
 		{
-			fragmentOpt.value().Release( m_renderer.get() );
+			CR_RETURN( fragmentOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
 		}
 	}
-	auto logical = m_renderer->GetDevice()->GetLogicalDevice();
-	auto allocator = m_renderer->GetAllocator();
-	vkDestroyDescriptorSetLayout( logical, m_descriptorSetLayout, allocator );
-	vkDestroyPipelineLayout( logical, m_pipelineLayout, allocator );
+	s_initialized = true;
+	return VK_SUCCESS;
 }
 
-VkResult ShaderCache::Initialize()
+void ShaderCache::ReleaseShaders( const Renderer* renderer )
 {
+	assert( s_initialized );
+	auto allocator = renderer->GetAllocator();
+	auto logicalDevice = renderer->GetDevice()->GetLogicalDevice();
+
 	for( auto& [key, shaderTuple] : s_cache )
 	{
 		auto& [vertexOpt, fragmentOpt] = shaderTuple;
-		if( vertexOpt.has_value() )
+		if( vertexOpt.has_value() && vertexOpt->m_module != VK_NULL_HANDLE )
 		{
-			CR_RETURN( vertexOpt.value().Initialize( m_renderer.get(), VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
+			vkDestroyShaderModule( logicalDevice, vertexOpt->m_module, allocator );
 		}
-		if( fragmentOpt.has_value() )
+		if( fragmentOpt.has_value() && fragmentOpt->m_module != VK_NULL_HANDLE )
 		{
-			CR_RETURN( fragmentOpt.value().Initialize( m_renderer.get(), VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
+			vkDestroyShaderModule( logicalDevice, fragmentOpt->m_module, allocator );
 		}
 	}
-	CreatePipelineLayout();
-	return VK_SUCCESS;
+	s_initialized = false;
 }
 
-VkResult ShaderCache::CreatePipelineLayout()
+VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shaderName, Effect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
 {
-	auto device = m_renderer->GetDevice()->GetLogicalDevice();
+	assert( s_initialized );
 
-	// Binding 0: Uniform buffer (Vertex shader)
-	VkDescriptorSetLayoutBinding layoutBinding{};
-	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBinding.descriptorCount = 1;
-	layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	layoutBinding.pImmutableSamplers = nullptr;
-
-	VkDescriptorSetLayoutCreateInfo descriptorLayoutCI{};
-	descriptorLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	descriptorLayoutCI.pNext = nullptr;
-	descriptorLayoutCI.bindingCount = 1;
-	descriptorLayoutCI.pBindings = &layoutBinding;
-	RETURN_LOG_ERROR( vkCreateDescriptorSetLayout( device, &descriptorLayoutCI, nullptr, &m_descriptorSetLayout ), "Failed to create descriptor set layout" );
-
-	std::vector<VkDescriptorSetLayout> setLayouts = { m_descriptorSetLayout };
-	VkPipelineLayoutCreateInfo pipelineLayoutCI{};
-	pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>( setLayouts.size() );
-	pipelineLayoutCI.pSetLayouts = setLayouts.data();
-	pipelineLayoutCI.pushConstantRangeCount = 0;
-	pipelineLayoutCI.pPushConstantRanges = nullptr;
-	RETURN_LOG_ERROR( vkCreatePipelineLayout( device, &pipelineLayoutCI, nullptr, &m_pipelineLayout ), "Failed to create pipeline layout" );
-	return VK_SUCCESS;
-}
-
-VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig config, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const
-{
 	auto it = s_cache.find( shaderName );
 	if( it == s_cache.end() )
 	{
@@ -153,13 +112,13 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig con
 	blendAttachmentState.colorWriteMask = 0xf;
 	blendAttachmentState.blendEnable = config.blend;
 	if( config.blend )
-    {
-        blendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        blendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        blendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
-        blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+	{
+		blendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		blendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		blendAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
+		blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
 	}
 
 	VkPipelineColorBlendStateCreateInfo colorBlendState{};
@@ -195,15 +154,15 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig con
 
 	VkVertexInputBindingDescription vertexInputBinding{};
 	vertexInputBinding.binding = 0;
-	vertexInputBinding.stride = stride;
+	vertexInputBinding.stride = config.vertexStride;
 	vertexInputBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState{};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputState.vertexBindingDescriptionCount = 1;
 	vertexInputState.pVertexBindingDescriptions = &vertexInputBinding;
-	vertexInputState.vertexAttributeDescriptionCount = (uint32_t)vertexDescriptions.size();
-	vertexInputState.pVertexAttributeDescriptions = vertexDescriptions.data();
+	vertexInputState.vertexAttributeDescriptionCount = (uint32_t)config.vertexDescriptions.size();
+	vertexInputState.pVertexAttributeDescriptions = config.vertexDescriptions.data();
 
 	VkPipelineShaderStageCreateInfo shaderStages[2] = {
 		vertexOpt.value().m_stageInfo, fragmentOpt.value().m_stageInfo
@@ -213,7 +172,7 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig con
 	pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineCI.basePipelineIndex = -1;
 	pipelineCI.basePipelineHandle = VK_NULL_HANDLE;
-	pipelineCI.layout = m_pipelineLayout;
+	pipelineCI.layout = pipelineLayout;
 	pipelineCI.pInputAssemblyState = &inputAssemblyState;
 	pipelineCI.pRasterizationState = &rasterizationState;
 	pipelineCI.pColorBlendState = &colorBlendState;
@@ -225,10 +184,9 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig con
 	pipelineCI.pStages = shaderStages;
 	pipelineCI.pVertexInputState = &vertexInputState;
 
-	VkFormat depthFormat = m_renderer->GetDepthTexture()->GetFormat();
-	VkFormat colorFormat = m_renderer->GetCurrentSwapchainFrameTexture()->GetFormat();
+	VkFormat depthFormat = renderer->GetDepthTexture()->GetFormat();
+	VkFormat colorFormat = renderer->GetCurrentSwapchainFrameTexture()->GetFormat();
 
-	// New create info to define color, depth and stencil attachments at pipeline create time
 	VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo{};
 	pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
 	pipelineRenderingCreateInfo.colorAttachmentCount = 1;
@@ -240,21 +198,11 @@ VkResult ShaderCache::CreatePipeline( std::string shaderName, PipelineConfig con
 	// Chain into the pipeline createinfo
 	pipelineCI.pNext = &pipelineRenderingCreateInfo;
 
-	auto device = m_renderer->GetDevice()->GetLogicalDevice();
-	auto allocator = m_renderer->GetAllocator();
+	auto device = renderer->GetDevice()->GetLogicalDevice();
+	auto allocator = renderer->GetAllocator();
 
 	CR_RETURN( vkCreateGraphicsPipelines( device, VK_NULL_HANDLE, 1, &pipelineCI, allocator, outPipeline ) );
 	return VK_SUCCESS;
-}
-
-VkPipelineLayout ShaderCache::GetPipelineLayout() const
-{
-	return m_pipelineLayout;
-}
-
-VkDescriptorSetLayout ShaderCache::GetDescriptorSetLayout() const
-{
-	return m_descriptorSetLayout;
 }
 
 std::vector<std::string> ShaderCache::GetAvailableShaderNames()

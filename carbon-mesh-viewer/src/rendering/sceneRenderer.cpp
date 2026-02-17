@@ -3,10 +3,8 @@
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 
-
-SceneRenderer::SceneRenderer( std::shared_ptr<const Renderer> renderer, std::shared_ptr<ShaderCache> shaderCache ) :
+SceneRenderer::SceneRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_shaderCache( shaderCache ),
 	m_commandBuffer( renderer.get() )
 {
 }
@@ -25,19 +23,17 @@ VkResult SceneRenderer::Initialize( AppState& state )
 	} );
 
 	state.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
-		m_model->SetRenderingMode( m_shaderCache.get(), appState.visualizationShader.GetValue(), mode );
+		m_model->SetRenderingMode( appState.visualizationShader.GetValue(), mode );
 	} );
 
 	state.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
-		m_model->SetRenderingMode( m_shaderCache.get(), shaderName, appState.polygonMode.GetValue() );
+		m_model->SetRenderingMode( shaderName, appState.polygonMode.GetValue() );
 	} );
 
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		this->m_commandBuffer.SetRenderSize( width, height );
 	} );
-
-	CR_RETURN( m_commandBuffer.CreatePerFrameBuffers<PerFrameData>( m_renderer.get(), m_shaderCache.get() ) );
 
 	auto [width, height] = state.windowSize.GetValue();
 	m_commandBuffer.SetRenderSize( width, height );
@@ -62,18 +58,10 @@ void SceneRenderer::ReleaseModel()
 VkResult SceneRenderer::Render( const AppState& state, const Camera& camera )
 {
 	CR_RETURN( m_commandBuffer.Begin( m_renderer.get() ) );
-	m_commandBuffer.SetLineWidth( 1.0f );
-
-	// Update the perframe data
-	PerFrameData perframe{};
-	perframe.proj = camera.GetProjection();
-	perframe.view = camera.GetView();
-
-	m_commandBuffer.SetPerFrameData( perframe );
 
 	if( m_model != nullptr )
 	{
-		m_model->RenderMesh( m_commandBuffer, state );
+		m_model->RenderMesh( m_commandBuffer, state, camera );
 	}
 
 	CR_RETURN( m_commandBuffer.End() );
@@ -93,5 +81,5 @@ void SceneRenderer::SetData( CmfContent* data, AppState& appState )
 
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
 	m_model->Initialize( appState );
-	m_model->SetRenderingMode( m_shaderCache.get(), appState.visualizationShader.GetValue(), appState.polygonMode.GetValue() );
+	m_model->SetRenderingMode( appState.visualizationShader.GetValue(), appState.polygonMode.GetValue() );
 }

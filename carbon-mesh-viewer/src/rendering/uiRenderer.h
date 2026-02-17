@@ -48,6 +48,7 @@ private:
 		uint32_t vertexCount{ 0 };
 		uint32_t indexCount{ 0 };
 		bool display{ true };
+        bool boundingBox{ false };
 		bool wireframeOverlay{ false };
 		std::vector<MorphTargetUiState> morphTargets;
 	};
@@ -58,6 +59,7 @@ private:
 		uint32_t selectedLod{ 0 };
 		uint32_t totalVertexCount{ 0 };
 		uint32_t totalIndexCount{ 0 };
+        bool boundingBox{ false };
 	};
 
 	struct UiState

@@ -2,34 +2,43 @@
 
 #include "../renderer.h"
 #include "../vulkan/commandbuffer.h"
-#include "../vulkan/shadercache.h"
+#include "../vulkan/effect.h"
 
 
 class PrimitiveRenderable
 {
 public:
-	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer );
+	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, Effect effect );
 	~PrimitiveRenderable();
 
 	void SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride );
-	void SetVertexDescriptions( const std::vector<VkVertexInputAttributeDescription>& vertexDescriptions );
-	void SetLineWidth( float lineWidth );
-	void SetTopology( VkPrimitiveTopology topology );
+	void SetIndexData( const uint8_t* data, uint32_t size, uint32_t stride );
+
+	template <typename T>
+	void SetUniformData( uint32_t layoutBindingIndex, const T& data )
+	{
+		m_effect.SetUniformData( layoutBindingIndex, data );
+	}
 
 	VkResult Initialize();
 	void Render( CommandBuffer& commandBuffer );
-	VkResult SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode );
 
 private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
-    
-    Buffer* m_vertexBuffer{ nullptr };
+
+	Buffer* m_vertexBuffer{ nullptr };
+	Buffer* m_indexBuffer{ nullptr };
 
 	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions{};
-	uint32_t m_stride{ 0 };
-	uint32_t m_size{ 0 };
+	uint32_t m_vertexStride{ 0 };
+	uint32_t m_vertexBufferSize{ 0 };
 	const uint8_t* m_data{ nullptr };
-	VkPipeline m_pipeline{ VK_NULL_HANDLE };
-	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
-	float m_lineWidth{ 1.0f };
+
+	uint32_t m_indexStride{ 0 };
+	uint32_t m_indexBufferSize{ 0 };
+	const uint8_t* m_indexData{ nullptr };
+
+	uint32_t m_elements{ 0 };
+
+	Effect m_effect;
 };

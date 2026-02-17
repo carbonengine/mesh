@@ -9,7 +9,7 @@
 class OrientationGizmoRenderer
 {
 public:
-	OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer, std::shared_ptr<const ShaderCache> shaderCache );
+	OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer );
 	~OrientationGizmoRenderer();
 
 	void Initialize( AppState& state );
@@ -25,7 +25,6 @@ private:
 	void SetSize( uint32_t width, uint32_t height );
 
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
-	std::shared_ptr<const ShaderCache> m_shaderCache{ nullptr };
 
 	PrimitiveRenderable m_axis;
 

@@ -2,7 +2,6 @@
 
 #include "../renderer.h"
 #include "../vulkan/commandbuffer.h"
-#include "../vulkan/shadercache.h"
 #include "mesh.h"
 
 
@@ -13,10 +12,14 @@ public:
 	~ModelRenderable();
 
 	VkResult Initialize( AppState& appState );
-	void RenderMesh( CommandBuffer& commandBuffer, const AppState& appState );
-	VkResult SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode );
+	void RenderMesh( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
+	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
 	std::vector<MeshRenderable> m_meshes{};
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
+
+	bool m_showBoundingBox{ false };
+	PrimitiveRenderable m_boundingBox;
+	Matrix m_boundingBoxTransform{};
 };

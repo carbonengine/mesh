@@ -7,6 +7,8 @@
 
 #include "device.h"
 #include "../renderer.h"
+#include "commandbuffer.h"
+#include "effect.h"
 
 class Renderer;
 
@@ -17,47 +19,25 @@ public:
 	Shader( std::vector<uint32_t> code );
 
 	VkResult Initialize( const Renderer* renderer, VkShaderStageFlagBits shaderFlag );
-	VkResult Release( const Renderer* renderer );
 
 private:
+	friend class ShaderCache;
 	VkShaderModule m_module;
 	VkPipelineShaderStageCreateInfo m_stageInfo;
 	std::vector<uint32_t> m_code;
-
-	friend class ShaderCache;
 };
 
 // Shader cache which holds on to shader modules and creates pipelines
 class ShaderCache
 {
 public:
-	struct PipelineConfig
-	{
-		VkPrimitiveTopology topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
-		VkPolygonMode polygonMode{ VK_POLYGON_MODE_FILL };
-		float lineWidth{ 1.0f };
-		VkCompareOp depthCompareOp{ VK_COMPARE_OP_LESS };
-		VkCullModeFlags cullMode{ VK_CULL_MODE_BACK_BIT };
- 		bool blend{ false };
-	};
+	static VkResult InitializeShaders( const Renderer* renderer );
+	static void ReleaseShaders( const Renderer* renderer );
 
-	ShaderCache( std::shared_ptr<Renderer> renderer );
-	~ShaderCache();
-
-	VkResult Initialize();
-	VkResult CreatePipeline( std::string shaderName, PipelineConfig config, uint32_t stride, std::vector<VkVertexInputAttributeDescription> vertexDescriptions, VkPipeline* outPipeline ) const;
-
-	VkResult CreatePipelineLayout();
-
-	VkPipelineLayout GetPipelineLayout() const;
-	VkDescriptorSetLayout GetDescriptorSetLayout() const;
-
+	static VkResult CreatePipeline( const Renderer* renderer, std::string shaderName, Effect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline );
 	static std::vector<std::string> GetAvailableShaderNames();
 
 private:
 	static std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> s_cache;
-
-	std::shared_ptr<Renderer> m_renderer;
-	VkPipelineLayout m_pipelineLayout;
-	VkDescriptorSetLayout m_descriptorSetLayout;
+	static bool s_initialized;
 };

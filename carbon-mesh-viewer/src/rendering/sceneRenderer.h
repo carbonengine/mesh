@@ -6,12 +6,11 @@
 #include "renderable/model.h"
 #include "renderer.h"
 #include "vulkan/commandbuffer.h"
-#include "vulkan/shadercache.h"
 
 class SceneRenderer
 {
 public:
-	SceneRenderer( std::shared_ptr<const Renderer> renderer, std::shared_ptr<ShaderCache> shaderCache );
+	SceneRenderer( std::shared_ptr<const Renderer> renderer );
 	~SceneRenderer();
 
 	VkResult Initialize( AppState& state );
@@ -21,15 +20,7 @@ public:
 private:
 	void ReleaseModel();
 
-	struct PerFrameData
-	{
-		Matrix proj;
-		Matrix view;
-	};
-
 	CommandBuffer m_commandBuffer;
-
 	std::unique_ptr<ModelRenderable> m_model{ nullptr };
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
-	std::shared_ptr<ShaderCache> m_shaderCache{ nullptr };
 };

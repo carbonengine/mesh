@@ -27,7 +27,6 @@ private:
 
 	std::unique_ptr<SceneRenderer> m_sceneRenderer{ nullptr };
 	std::shared_ptr<Renderer> m_renderer{ nullptr };
-	std::shared_ptr<ShaderCache> m_shaderCache{ nullptr };
 	std::unique_ptr<UIRenderer> m_uiRenderer{ nullptr };
 	std::unique_ptr<OrientationGizmoRenderer> m_orientationGizmoRenderer{ nullptr };
 
@@ -37,4 +36,6 @@ private:
 
 	AppState m_appState{};
 	Camera m_camera{};
+
+	bool m_valid{ false };
 };

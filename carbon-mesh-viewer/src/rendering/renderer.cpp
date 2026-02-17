@@ -158,7 +158,6 @@ void Renderer::Initialize()
 
 	ON_ERROR_LOG_AND_RETURN( CreateCommandPool(), "Could not create command pool" );
 	ON_ERROR_LOG_AND_RETURN( CreateSyncObjects(), "Could not create sync objects" );
-	ON_ERROR_LOG_AND_RETURN( CreateDescriptorPool(), "Could not cretae descriptor pool" );
 	ON_ERROR_LOG_AND_RETURN( CreateCommandBuffers(), "Could not create command buffers" );
 
 	m_valid = true;

@@ -2,9 +2,10 @@
 
 #include <vector>
 
+#include "../camera.h"
 #include "../vulkan/commandbuffer.h"
-#include "../vulkan/shadercache.h"
 #include "meshlod.h"
+#include "primitive.h"
 
 class MeshRenderable
 {
@@ -15,22 +16,33 @@ public:
 	void Initialize( AppState& appState, VkCommandBuffer initializeCmd );
 	void Finalize();
 
-	void Render( CommandBuffer& commandBuffer, const AppState& appState, uint32_t lodIndex );
+	void Render( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera, uint32_t lodIndex );
 
-	VkResult SetRenderingMode( const ShaderCache* shaderCache, std::string shaderName, VkPolygonMode polygonMode );
+	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
 	std::vector<MeshLodRenderable> m_lods;
 	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions;
 	std::shared_ptr<const Renderer> m_renderer;
 
+	struct VertexUboData
+	{
+		Matrix proj;
+		Matrix view;
+	};
+
 	uint32_t m_stride{ 0 };
-	VkPipeline m_pipeline{ VK_NULL_HANDLE };
-	VkPipeline m_wireframePipeline{ VK_NULL_HANDLE };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
 	bool m_display{ true };
 	bool m_wireframe{ false };
 	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
+
+	Effect m_modelEffect;
+	Effect m_wireframeEffect;
+
+	bool m_showBoundingBox{ false };
+	PrimitiveRenderable m_boundingBox;
+	Matrix m_boundingBoxTransform{};
 
 	cmf::Mesh m_cmfMesh{};
 };
