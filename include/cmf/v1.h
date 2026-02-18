@@ -12,12 +12,20 @@ namespace v1
 
 constexpr uint32_t FILE_VERSION = 1;
 
-
+/** @brief Struct defining a reference to a part of binary data contained in a different file section.
+* 
+* Mostly used for defining vertex and index buffers for meshes, but can be used for any type of data. 
+* 
+*/
 struct BufferView
 {
+	/// Index of the section containing the data
 	uint32_t index = 0;
+	/// Byte offset from the start of the section to the start of the data
 	uint32_t offset = 0;
+	/// Size of the data in bytes
 	uint32_t size = 0;
+	/// Stride in bytes between elements
 	uint32_t stride = 0;
 
 	static constexpr std::string_view TypeName = "BufferView";
@@ -32,7 +40,7 @@ struct BufferView
 	}
 };
 
-
+/** @brief Enum defining the usage of a vertex element. */
 enum class Usage : uint8_t
 {
 	Position,

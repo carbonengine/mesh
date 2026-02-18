@@ -29,7 +29,7 @@ set(PUBLIC_HEADER_FILES
     include/cmf/writer.h
 )
 
-add_library(CarbonMesh SHARED
+set(CARBON_MESH_SOURCE_FILES
     ${PUBLIC_HEADER_FILES}
     src/cmf/bounds.cpp
     src/cmf/bufferutils.cpp
@@ -40,6 +40,10 @@ add_library(CarbonMesh SHARED
     src/cmf/utils.cpp
     src/cmf/uvdensity.cpp
     src/cmf/writer.cpp
+)
+
+add_library(CarbonMesh SHARED
+    ${CARBON_MESH_SOURCE_FILES}
 )
 generate_export_header(CarbonMesh BASE_NAME CARBON_MESH)
 set_build_flavor(CarbonMesh)
@@ -90,7 +94,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
                 PYTHONPATH_ENV $ENV{PYTHONPATH}
                 SPHINX_SOURCE ${SPHINX_SOURCE}
                 SPHINX_BUILD ${SPHINX_BUILD}
-                DOXYGEN_SRC_FILES ${SRC_FILES}
+                DOXYGEN_SRC_FILES ${CARBON_MESH_SOURCE_FILES}
                 SPHINX_TARGET_NAME Sphinx
                 DOXYGEN_TARGET_NAME Doxygen
                 INSTALL_DESTINATION documentation

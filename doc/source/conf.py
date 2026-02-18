@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'project_name'
+project = 'carbon-mesh'
 copyright = '2024, CCP Games'
 author = 'CCP Games'
 release = '0.1'
