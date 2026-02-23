@@ -59,7 +59,7 @@ size_t GetFlattenedDataSizeEstimate( const T& value, size_t chunkAlignment )
 struct FlattenedBuffer
 {
 	std::unique_ptr<uint8_t[]> data;
-	size_t size;
+	size_t size = 0;
 };
 
 struct FlattenVisitor
