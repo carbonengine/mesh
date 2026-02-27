@@ -124,6 +124,121 @@ void to_json( nlohmann::json& j, const cmf::ElementType& p )
 	j = str;
 }
 
+void from_json( const nlohmann::json& j, SimplygonLodOptions& p )
+{
+	p = {};
+	if( j.contains( "maxLods" ) )
+	{
+		j.at( "maxLods" ).get_to( p.maxLods );
+	}
+	if( j.contains( "geometryImportance" ) )
+	{
+		j.at( "geometryImportance" ).get_to( p.geometryImportance );
+	}
+	if( j.contains( "areaImportance" ) )
+	{
+		j.at( "areaImportance" ).get_to( p.areaImportance );
+	}
+	if( j.contains( "normalImportance" ) )
+	{
+		j.at( "normalImportance" ).get_to( p.normalImportance );
+	}
+	if( j.contains( "uvImportance" ) )
+	{
+		j.at( "uvImportance" ).get_to( p.uvImportance );
+	}
+	if( j.contains( "skinningImportance" ) )
+	{
+		j.at( "skinningImportance" ).get_to( p.skinningImportance );
+	}
+	if( j.contains( "vertexColorImportance" ) )
+	{
+		j.at( "vertexColorImportance" ).get_to( p.vertexColorImportance );
+	}
+	if( j.contains( "screenSizeFactor" ) )
+	{
+		j.at( "screenSizeFactor" ).get_to( p.screenSizeFactor );
+	}
+    if( j.contains( "lockVertexChannel" ) )
+    {
+        j.at( "lockVertexChannel" ).get_to( p.lockVertexChannel );
+	}
+}
+
+void to_json( nlohmann::json& j, const SimplygonLodOptions& p )
+{
+	j = nlohmann::json{
+		{ "maxLods", p.maxLods },
+		{ "geometryImportance", p.geometryImportance },
+		{ "areaImportance", p.areaImportance },
+		{ "normalImportance", p.normalImportance },
+		{ "uvImportance", p.uvImportance },
+		{ "skinningImportance", p.skinningImportance },
+		{ "vertexColorImportance", p.vertexColorImportance },
+		{ "screenSizeFactor", p.screenSizeFactor },
+		{ "lockVertexChannel", p.lockVertexChannel }
+	};
+}
+
+void from_json( const nlohmann::json& j, LodGenerationMethod& p )
+{
+	p = LodGenerationMethod::Simplygon;
+	if( j.is_string() )
+	{
+		auto str = j.get<std::string>();
+		if( str == "Simplygon" )
+		{
+			p = LodGenerationMethod::Simplygon;
+		}
+		else
+		{
+			throw std::runtime_error( "invalid LodGenerationMethod: " + str );
+		}
+	}
+	else
+	{
+		throw std::runtime_error( "LodGenerationMethod must be a string" );
+	}
+}
+
+void to_json( nlohmann::json& j, const LodGenerationMethod& p )
+{
+	std::string str;
+	switch( p )
+	{
+	case LodGenerationMethod::Simplygon:
+		str = "Simplygon";
+		break;
+	}
+	j = str;
+}
+
+void from_json( const nlohmann::json& j, LodOptions& p )
+{
+	p = {};
+	if( j.contains( "generate" ) )
+	{
+		j.at( "generate" ).get_to( p.generate );
+	}
+	if( j.contains( "method" ) )
+	{
+		j.at( "method" ).get_to( p.method );
+	}
+	if( j.contains( "simplygon" ) )
+	{
+		j.at( "simplygon" ).get_to( p.simplygon );
+	}
+}
+
+void to_json( nlohmann::json& j, const LodOptions& p )
+{
+	j = nlohmann::json{
+		{ "generate", p.generate },
+		{ "method", p.method },
+		{ "simplygon", p.simplygon }
+	};
+}
+
 void from_json( const nlohmann::json& j, MeshImportOptions& p )
 {
 	p = {};
@@ -187,6 +302,10 @@ void from_json( const nlohmann::json& j, MeshImportOptions& p )
 	{
 		j.at( "morphTargets" ).get_to( p.morphTargets );
 	}
+	if( j.contains( "lods" ) )
+	{
+		j.at( "lods" ).get_to( p.lods );
+	}
 }
 
 void to_json( nlohmann::json& j, const MeshImportOptions& p )
@@ -206,7 +325,8 @@ void to_json( nlohmann::json& j, const MeshImportOptions& p )
 		{ "regenerateNormals", p.regenerateNormals },
 		{ "uvSets", p.uvSets },
 		{ "uvType", p.uvType },
-		{ "morphTargets", p.morphTargets }
+		{ "morphTargets", p.morphTargets },
+		{ "lods", p.lods }
 	};
 }
 

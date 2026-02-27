@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "lodsimplygon.h"
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/bounds.h"
@@ -42,11 +43,11 @@ struct SkinWeights
 				buffer.insert( buffer.end(), ptr, ptr + sizeof( index ) );
 			}
 		}
-        else
-        {
+		else
+		{
 			// This should never happen because ValidateOptions should have been called before, but we check it just in case.
-			throw std::runtime_error( "Unsupported bone index type" );  
-        }
+			throw std::runtime_error( "Unsupported bone index type" );
+		}
 	}
 
 	/** @brief Adds a bone to the vertex.
@@ -144,6 +145,9 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 	auto normals = geom.vertex_normal;
 	const auto& tangents = geom.vertex_tangent;
 	const auto& colors = geom.vertex_color;
+	auto lockedVertices = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [&options]( const ufbx_color_set& cs ) {
+		return ToString( cs.name ) == options.lods.simplygon.lockVertexChannel;
+	} );
 
 	uint32_t stride = std::accumulate( decl.begin(), decl.end(), 0u, []( uint32_t acc, const cmf::VertexElement& element ) {
 		return acc + cmf::GetVertexElementSize( element );
@@ -216,7 +220,15 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 				AddToVertex( bitan );
 				break;
 			case cmf::Usage::Color:
-				AddToVertex( ToVector4( colors[i] ) );
+				if( element.usageIndex == 0 )
+                {
+                    AddToVertex( ToVector4( colors[i] ) );
+                }
+                else 
+                {
+                    // locked vertex flags
+					AddToVertex( ToVector4( lockedVertices->vertex_color[i] ) );
+				}
 				break;
 			case cmf::Usage::TexCoord: {
 				auto& uvSet = geom.uv_sets[element.usageIndex].vertex_uv;
@@ -309,6 +321,18 @@ cmf::Span<cmf::VertexElement> CreateVertexDeclaration( const ufbx_mesh& geom, co
 		cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, 0, cmf::ElementType::Float32, 4, offset } );
 		offset += sizeof( Vector4 );
 	}
+    if ( !options.lods.simplygon.lockVertexChannel.empty() )
+    {
+        auto found = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [&options]( const ufbx_color_set& cs ) {
+            return ToString( cs.name ) == options.lods.simplygon.lockVertexChannel;
+		} );
+        if ( found == geom.color_sets.end() || !found->vertex_color.exists )
+        {
+			throw std::runtime_error( "mesh is missing simplygon lock vertex color set " + options.lods.simplygon.lockVertexChannel );
+        }
+		cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, LOCKED_VERTEX_USAGE_INDEX, cmf::ElementType::Float32, 4, offset } );
+		offset += sizeof( Vector4 );
+    }
 	for( uint32_t uvSet = 0; uvSet < options.uvSets; ++uvSet )
 	{
 		if( uvSet >= geom.uv_sets.count || !geom.uv_sets[uvSet].vertex_uv.exists )
@@ -936,6 +960,31 @@ void CreateBoneBindings( cmf::Mesh& outMesh, const MeshSkin& skin, const std::ve
 	}
 }
 
+void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator );
+
+/** @brief Generates LODs for a mesh based on the specified options.
+ *
+ * This function delegates LOD generation to the method specified in options (currently only Simplygon is supported).
+ *
+ * @param mesh The mesh for which to generate LODs.
+ * @param options The options for LOD generation, including the method and specific settings for each method.
+ * @param allocator The memory allocator used for allocating mesh data.
+ * @param bufferAllocator The buffer manager used for allocating vertex and index buffers.
+ */
+void GenerateLods( cmf::Mesh& mesh, const LodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
+{
+	if( !options.generate )
+	{
+		return;
+	}
+	switch( options.method )
+	{
+	case LodGenerationMethod::Simplygon:
+		SimplygonGenerateLods( mesh, options.simplygon, allocator, bufferAllocator );
+		break;
+	}
+}
+
 /** @brief Imports a mesh from an FBX node and constructs a corresponding cmf::Mesh structure.
  *
  * This function handles the entire process of importing a mesh, including vertex data, skinning information, blend shapes, topology creation, tangent generation, UV compression, and bone binding creation.
@@ -1002,6 +1051,29 @@ cmf::Mesh ImportMesh( const ufbx_node& meshNode, const MeshImportOptions& option
 	UpdateMeshAreaData( outMesh, allocator, bufferAllocator );
 	CreateBoneBindings( outMesh, skin, GetMeshToBoneTransforms( skin, meshTransform, systemTransform ), options, allocator, bufferAllocator );
 
+	GenerateLods( outMesh, options.lods, allocator, bufferAllocator );
+
+    // Remove vertex colors if they were added for LOD generation but are not desired in the final mesh
+	if( FindElement( outMesh.decl, cmf::Usage::Color, LOCKED_VERTEX_USAGE_INDEX ) )
+    {
+		cmf::Span<cmf::VertexElement> newDecl;
+		uint32_t offset = 0;
+        for( auto element : outMesh.decl )
+        {
+            if( element.usage != cmf::Usage::Color || element.usageIndex != LOCKED_VERTEX_USAGE_INDEX )
+            {
+				element.offset = offset;
+				offset += cmf::GetVertexElementSize( element );
+                cmf::Modify( newDecl, allocator ).push_back( element );
+            }
+		}
+		for( auto& lod : outMesh.lods )
+        {
+            lod.vb = cmf::ChangeBufferVertexDeclaration( lod.vb, outMesh.decl, newDecl, allocator, bufferAllocator );
+		}
+		outMesh.decl = newDecl;
+    }
+
 	if( options.compressTangents )
 	{
 		auto compression = options.legacyCompressedTangents ? cmf::TangentCompression::PackedTangentLegacy : cmf::TangentCompression::PackedTangent;
@@ -1055,7 +1127,7 @@ cmf::Span<cmf::Mesh> ImportMeshes( const ufbx_scene& scene, const MeshImportOpti
 	cmf::Span<cmf::Mesh> meshes;
 	if( options.importMeshes )
 	{
-		for( auto mesh: scene.nodes )
+		for( auto mesh : scene.nodes )
 		{
 			if( mesh->mesh == nullptr )
 			{

@@ -1,4 +1,17 @@
 cmake_minimum_required(VERSION 3.30)
+
+set(USE_SIMPLYGON_DEFAULT_FLAG OFF)
+if (WIN32)
+    set(USE_SIMPLYGON_DEFAULT_FLAG ON)
+endif()
+
+option(USE_SIMPLYGON "Use Simplygon for LOD generation" ${USE_SIMPLYGON_DEFAULT_FLAG})
+
+if(USE_SIMPLYGON)
+    message("Using Simplygon for LOD generation")
+    list(APPEND VCPKG_MANIFEST_FEATURES "simplygon")
+endif()
+
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)

@@ -27,6 +27,51 @@ void from_json( const nlohmann::json& j, cmf::ElementType& p );
 void to_json( nlohmann::json& j, const cmf::ElementType& p );
 
 
+struct SimplygonLodOptions
+{
+	// Maximum number of LODs for the mesh, including LOD0.
+	uint32_t maxLods = 6;
+	// Relative importance of vertex positions (silouette preservation)
+	float geometryImportance = 1.f;
+	// Relative importance of mesh area borders
+	float areaImportance = 1.f;
+	// Relative importance of shading (normals and tangents)
+	float normalImportance = 1.f;
+	// Relative importance of texture coordinates
+	float uvImportance = 1.f;
+	// Relative importance of bone weights (if more that one bone per vertex)
+	float skinningImportance = 1.f;
+	// Relative importance of vertex colors
+	float vertexColorImportance = 1.f;
+	// Multiplier for screen size thresholds for reported LOD threshold. The larger the number the more aggressive the LOD reduction will be.
+	float screenSizeFactor = 2.f;
+	// Name of the vertex color channel containing "locked" vertex flags. If specified, vertices with a non-zero red value in this channel will be 
+    // locked and not moved during LOD generation. 
+	std::string lockVertexChannel;
+};
+
+void from_json( const nlohmann::json& j, SimplygonLodOptions& p );
+void to_json( nlohmann::json& j, const SimplygonLodOptions& p );
+
+enum class LodGenerationMethod
+{
+	Simplygon,
+};
+
+void from_json( const nlohmann::json& j, LodGenerationMethod& p );
+void to_json( nlohmann::json& j, const LodGenerationMethod& p );
+
+struct LodOptions
+{
+	bool generate = true;
+	LodGenerationMethod method = LodGenerationMethod::Simplygon;
+	SimplygonLodOptions simplygon;
+};
+
+void from_json( const nlohmann::json& j, LodOptions& p );
+void to_json( nlohmann::json& j, const LodOptions& p );
+
+
 struct MeshImportOptions
 {
 	// Import meshes from the source file
@@ -63,6 +108,7 @@ struct MeshImportOptions
 	cmf::ElementType uvType = cmf::ElementType::Float16;
 
 	MorphTargetOptions morphTargets;
+	LodOptions lods;
 };
 
 void from_json( const nlohmann::json& j, MeshImportOptions& p );

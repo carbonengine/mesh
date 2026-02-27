@@ -53,5 +53,11 @@
       "name": "cli11",
       "version": "2.4.2"
     }
-  ]
+  ],
+  "features": {
+    "simplygon": {
+      "description": "Use Simplygon for LOD generation",
+      "dependencies": [ "simplygon" ]
+    }
+  }
 }

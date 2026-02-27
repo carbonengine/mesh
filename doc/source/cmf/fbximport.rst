@@ -91,8 +91,8 @@ Mesh settings
   that each vertex is affected by only one bone and weights are redundant.
 
 ``mesh.boneIndexType``
-  Type ``string``, default ``Uint8``. Number format for per-vertex bone indices. Allowed values are ``Uint8`` and ``Uint16``. With ``Uint8``, the mesh can only be affected by up to 256 bones, while with ``Uint16`` - up to 65536
-  at the expense of increased memory requirement.
+  Type ``string``, default ``Uint8``. Number format for per-vertex bone indices. Allowed values are ``Uint8`` and ``Uint16``. With ``Uint8`` the mesh can only be affected by up to 256 bones, while with ``Uint16`` - up to 65536
+  at the expense of increased memory requirements.
 
 ``mesh.regenerateNormals``
   Type ``boolean``, default ``false``. Recalculates vertex normals using mesh vertex positions and smoothing data, instead of using source vertex normals in the FBX file. If the source mesh is missing smoothing data, the mesh
@@ -109,6 +109,49 @@ Mesh settings
 ``mesh.morphTargets.useCustomNormals``
   Type ``boolean``, default ``false``. Use per-blend shape normal data stored in custom FBX properties instead of regenerating blend shape normals on import. See `Morph targets`_. This setting only has an effect if 
   ``mesh.morphTargets.importMorphTargets`` and ``mesh.normals`` are set to ``true``.
+
+``mesh.lods``
+  Type ``object``, default ``{}``. Settings related to LOD generation. See below.
+
+``mesh.lods.generate``
+  Type ``boolean``, default ``true``. Whether the program needs to generate LODs for meshes. Set to ``false`` to skip LOD generation.
+
+``mesh.lods.method``
+  Type ``string``, default ``Simplygon``. Method/library used to generate LODs. Currently, the only method supported is Simplygon.
+
+``mesh.lods.simplygon``
+  Type ``object``, default ``{}``. Options for Simplygon LOD generation.
+
+``mesh.lods.simplygon.maxLods``
+  Type ``number``, default ``6``. Maximum number of LODs (including LOD0) for the mesh.
+
+``mesh.lods.simplygon.geometryImportance``
+  Type ``number``, default ``1``. Relative importance of vertex positions when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.areaImportance``
+  Type ``number``, default ``1``. Relative importance of mesh area splits when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.normalImportance``
+  Type ``number``, default ``1``. Relative importance of vertex normals when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.uvImportance``
+  Type ``number``, default ``1``. Relative importance of texture UVs when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.skinningImportance``
+  Type ``number``, default ``1``. Relative importance of bone weights when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.vertexColorImportance``
+  Type ``number``, default ``1``. Relative importance of vertex colors when generating LODs, compared to other features. May not be less than zero.
+
+``mesh.lods.simplygon.screenSizeFactor``
+  Type ``number``, default ``2``. Factor to apply to the target screen size. For example, if the factor is 2, and Simplygon generates a LOD targeting
+  screen size 100px, the threshold for CMF mesh lod will be set to 200px. The factor is needed because Simplygon is very conservative when targeting
+  screen sizes, and the asset may get away with much more relaxed LODs.
+
+``mesh.lods.simplygon.lockVertexChannel``
+  Type ``string``, default ``""``. The name of the vertex color set used as a "locked" vertex mask. Locked vertices are preserved by Simplygon when generating LODs.
+  The program will set the locked flag based on the contents of the red channel in the vertex color: the vertex is locked if the red channel is not black.
+
 
 Skeleton settings
 ^^^^^^^^^^^^^^^^^
@@ -186,6 +229,22 @@ Alternatively, the importer can fetch per-blend shape face vertex normals from c
 for the mesh containing a blend shape. The name of the attribute should match the name of the blend shape with ``bsNormals_`` prepended to it. The attribute must be a string containing a base64-encoded array of per face vertex (not per vertex!) normal vectors 
 (three 32-bit numbers per normal). There must be a custom property for each blend shape. Generating such FBX file would require some scripting on the DCC side. It also makes source FBX file sizes significantly larger. This custom normals mode
 should only be used as a last resort if generating normals does not produce acceptable results.
+
+LOD Generation
+--------------
+
+The importer supports LOD generation for meshes. Currently, the only supported method of generating LODs is with Simplygon library. Simplygon SDK is not open-source or free, so Simplygon support is optional and under a feature flag. LOD generation can take a lot of time for larger models.
+
+LOD generation with Simplygon targets multiple screen sizes for the mesh with at least 10% polygon reduction between LODs and chooses a few resulting LODs with the biggest change in polygon count, so that the total number of LODs stays under the specified limit. There are a number of options
+to control the relative importance of different mesh features (vertex positions, normals, etc.) when removing vertices.
+
+Simplygon is very conservative when targeting specific screen sizes: it tries to create a LOD so that the LOD switch would be imperceptible at the specified screen size. For games, this may be too conservative, so there is an option 
+``mesh.lods.simplygonOptions.screenSizeFactor`` to scale the target screen size when saving CMF. 
+
+For certain models, there may be a need to preserve some vertices across LODs. For example, if a character model contains separate meshes for the head and body, those would be the vertices on the neck seam. It is possible to "lock" such vertices.
+For that, the mesh needs to contain a vertex color set, with the red color channel containing a "locked" flag: the vertex is considered locked if the channel is not fully black. This behavior is controlled by 
+``mesh.lods.simplygon.lockVertexChannel`` setting: it contains the name of the vertex color set. If the setting is not an empty string, the mesh must contain the specified color set. 
+
 
 Metadata
 --------

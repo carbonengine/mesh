@@ -134,6 +134,25 @@ struct SpanModifier
 		}
 		data = s;
 	}
+    void erase( T* where )
+	{
+        if( where >= end() || where < begin() )
+        {
+            return;
+        }
+        auto offset = size_t( where - begin() );
+        auto s = allocator.AllocateSpan<T>( data.size() - 1 );
+        auto dest = static_cast<T*>( s.ptr );
+        for( size_t i = 0; i < offset; ++i )
+        {
+            new( dest + i ) T{ std::move( data[i] ) };
+        }
+        for( size_t i = offset + 1; i < data.size(); ++i )
+        {
+            new( dest + ( i - 1 ) ) T{ std::move( data[i] ) };
+        }
+        data = s;
+	}
 	SpanModifier<T>& operator=( const std::vector<T>& other )
 	{
 		data = allocator.AllocateSpan<T>( other.size() );

@@ -2,6 +2,7 @@
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/bufferutils.h"
+#include <array>
 #include <meshoptimizer.h>
 #include <mikktspace.h>
 
@@ -277,6 +278,69 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsQuaternion( Vector4 t )
 inline float Remap( float x, float oldMin, float oldMax )
 {
 	return std::clamp( ( x - oldMin ) / ( oldMax - oldMin ), 0.0f, 1.0f );
+}
+
+void GenerateMorphTargetTangents( const Mesh& mesh, const MeshLod& srcLod, BufferManager& bufferManager )
+{
+	auto indices = ConstIndexBufferStream( srcLod.ib, bufferManager );
+
+    for( auto& morphTarget : srcLod.morphTargets )
+	{
+		auto positions = ConstBufferElementStream<Vector3>( *FindElement( mesh.morphTargets.decl, Usage::Position ), morphTarget.vb, bufferManager );
+
+		for( uint32_t usageIndex = 0; usageIndex < 255; ++usageIndex )
+		{
+			auto uvElement = FindElement( mesh.decl, Usage::TexCoord, usageIndex );
+			auto tangentElement = FindElement( mesh.morphTargets.decl, Usage::Tangent, usageIndex );
+			auto bitangentElement = FindElement( mesh.morphTargets.decl, Usage::Binormal, usageIndex );
+			if( !uvElement || !tangentElement || !bitangentElement )
+			{
+				continue;
+			}
+			auto uvs = ConstBufferElementStream<Vector2>( *uvElement, srcLod.vb, bufferManager );
+			auto tangents = BufferElementStream<Vector3>( *tangentElement, morphTarget.vb, bufferManager );
+			auto bitangents = BufferElementStream<Vector3>( *bitangentElement, morphTarget.vb, bufferManager );
+
+			for( uint32_t i = 0; i < tangents.size(); ++i )
+			{
+				tangents.set( i, Vector3( 0.0f, 0.0f, 0.0f ) );
+				bitangents.set( i, Vector3( 0.0f, 0.0f, 0.0f ) );
+			}
+
+			for( uint32_t i = 0; i < indices.size(); i += 3 )
+			{
+				std::array<uint32_t, 3> triangleIndices = { indices[i], indices[i + 1], indices[i + 2] };
+				std::array<Vector3, 3> trianglePositions = { positions[triangleIndices[0]], positions[triangleIndices[1]], positions[triangleIndices[2]] };
+				std::array<Vector2, 3> triangleUVs = { uvs[triangleIndices[0]], uvs[triangleIndices[1]], uvs[triangleIndices[2]] };
+
+				auto deltaPos1 = trianglePositions[1] - trianglePositions[0];
+				auto deltaPos2 = trianglePositions[2] - trianglePositions[0];
+				auto deltaUV1 = triangleUVs[1] - triangleUVs[0];
+				auto deltaUV2 = triangleUVs[2] - triangleUVs[0];
+				auto t = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+				if( t != 0.0f )
+				{
+					float r = 1.0f / t;
+					auto faceTangent = -( deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y ) * r;
+					auto faceBitangent = -( deltaPos2 * deltaUV1.x - deltaPos1 * deltaUV2.x ) * r;
+
+					tangents.set( indices[i], tangents[triangleIndices[0]] + faceTangent );
+					tangents.set( indices[i + 1], tangents[triangleIndices[1]] + faceTangent );
+					tangents.set( indices[i + 2], tangents[triangleIndices[2]] + faceTangent );
+
+					bitangents.set( indices[i], bitangents[triangleIndices[0]] + faceBitangent );
+					bitangents.set( indices[i + 1], bitangents[triangleIndices[1]] + faceBitangent );
+					bitangents.set( indices[i + 2], bitangents[triangleIndices[2]] + faceBitangent );
+				}
+			}
+
+			for( uint32_t i = 0; i < tangents.size(); ++i )
+			{
+				tangents.set( i, Normalize( tangents[i] ) );
+				bitangents.set( i, Normalize( bitangents[i] ) );
+			}
+		}
+	}
 }
 
 Vector4 PackTangentsLegacy( Vector3 normal, Vector3 tangent, Vector3 bitangent )
