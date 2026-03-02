@@ -55,6 +55,16 @@ set(CARBON_MESH_SOURCE_FILES
     src/cmf/writer.cpp
 )
 
+
+function(ccp_enable_vs_analizers target)
+    set_target_properties(${target} PROPERTIES
+        VS_GLOBAL_RunCodeAnalysis false
+        VS_GLOBAL_EnableMicrosoftCodeAnalysis false
+        VS_GLOBAL_EnableClangTidyCodeAnalysis true
+    )
+endfunction()
+
+
 add_library(CarbonMesh SHARED
     ${CARBON_MESH_SOURCE_FILES}
 )
@@ -79,6 +89,8 @@ target_include_directories(CarbonMesh PUBLIC
     $<INSTALL_INTERFACE:include>
     ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_property(TARGET CarbonMesh PROPERTY COMPILE_WARNING_AS_ERROR ON)
+ccp_enable_vs_analizers(CarbonMesh)
 
 # Provide an install target if this is the top level project only
 if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)

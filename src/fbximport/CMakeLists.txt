@@ -32,6 +32,8 @@ if(USE_SIMPLYGON)
 endif()
 target_include_directories(fbximport PRIVATE "../../vendor/github.com/ufbx/ufbx")
 source_group(UFBX FILES ${UFBX_SOURCES})
+set_property(TARGET fbximport PROPERTY COMPILE_WARNING_AS_ERROR ON)
+ccp_enable_vs_analizers(fbximport)
 
 if (INSTALL_TO_MONOLITH)
     install(

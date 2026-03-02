@@ -1,4 +1,7 @@
 #include "cmf/utils.h"
+#include "cmf/declutils.h"
+#include <numeric>
+
 
 namespace
 {
@@ -21,14 +24,9 @@ bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 		{
 			return false;
 		}
-		for( auto& element : value )
-		{
-			if( !AreSpanPointersValid( element, base, totalSize ) )
-			{
-				return false;
-			}
-		}
-		return true;
+		return std::all_of( value.begin(), value.end(), [base, totalSize]( const auto& element ) {
+			return AreSpanPointersValid( element, base, totalSize );
+		} );
 	}
 	else
 	{
@@ -87,66 +85,121 @@ bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& section
 	}
 }
 
+bool IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& header, uint32_t lastEnd, size_t fileSize )
+{
+	// Section must be within file bounds
+	if( section.offset + section.compressedSize > fileSize )
+	{
+		return false;
+	}
+	// Sections must not overlap
+	if( section.offset < lastEnd )
+	{
+		return false;
+	}
+	// The first section must be a data section
+	if( &section == header.sections.begin() && section.type != cmf::SectionType::Data )
+	{
+		return false;
+	}
+	// If not compressed, uncompressedSize must match size
+	if( section.compression == cmf::SectionCompression::None )
+	{
+		if( section.uncompressedSize != section.compressedSize )
+		{
+			return false;
+		}
+	}
+	switch( section.type )
+	{
+	case cmf::SectionType::Data:
+		// Only one data section allowed
+		if( &section != header.sections.begin() )
+		{
+			return false;
+		}
+		// Data section must not be compressed
+		if( section.compression != cmf::SectionCompression::None )
+		{
+			return false;
+		}
+		break;
+	case cmf::SectionType::Metadata:
+		// Metadata section must be last
+		if( &section != header.sections.end() - 1 )
+		{
+			return false;
+		}
+		// Metadata section must not be compressed
+		if( section.compression != cmf::SectionCompression::None )
+		{
+			return false;
+		}
+		break;
+	default:
+		break;
+	}
+	return true;
+}
+
 bool AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 {
 	if( header.sections.empty() )
 	{
 		return false;
 	}
+
 	uint32_t lastEnd = header.headerSize;
 	for( auto& section : header.sections )
 	{
-		// Section must be within file bounds
-		if( section.offset + section.compressedSize > fileSize )
+		if( !IsHeaderSectionValid( section, header, lastEnd, fileSize ) )
 		{
 			return false;
 		}
-		// Sections must not overlap
-		if( section.offset < lastEnd )
+		lastEnd = section.offset + section.compressedSize;
+	}
+	return true;
+}
+
+bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cmf::VertexElement>& decl )
+{
+	// Element count must be between 1 and 4
+	if( element.elementCount == 0 || element.elementCount > 4 )
+	{
+		return false;
+	}
+	// Each (usage, usageIndex) pair must be unique within the decl
+	for( auto other = &element + 1; other != decl.end(); ++other )
+	{
+		if( element.usage == other->usage && element.usageIndex == other->usageIndex )
 		{
 			return false;
 		}
-		// The first section must be a data section
-		if( &section == header.sections.begin() && section.type != cmf::SectionType::Data )
+	}
+	if( element.usage == cmf::Usage::PackedTangent )
+	{
+		// If the declaration contains a packed tangent, it must be the only tangent space element with the same usageIndex
+		if( FindElement( decl, cmf::Usage::Normal, element.usageIndex ) || FindElement( decl, cmf::Usage::Tangent, element.usageIndex ) || FindElement( decl, cmf::Usage::Binormal, element.usageIndex ) )
 		{
 			return false;
 		}
-		// If not compressed, uncompressedSize must match size
-		if( section.compression == cmf::SectionCompression::None )
+		// Packed tangent must be 4-component signed normalized integer
+		if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
 		{
-			if( section.uncompressedSize != section.compressedSize )
-			{
-				return false;
-			}
+			return false;
 		}
-		switch( section.type )
+	}
+	if( element.usage == cmf::Usage::PackedTangentLegacy )
+	{
+		// If the declaration contains a packed tangent, it must be the only tangent space element with the same usageIndex
+		if( FindElement( decl, cmf::Usage::Normal, element.usageIndex ) || FindElement( decl, cmf::Usage::Tangent, element.usageIndex ) || FindElement( decl, cmf::Usage::Binormal, element.usageIndex ) )
 		{
-		case cmf::SectionType::Data:
-			// Only one data section allowed
-			if( &section != header.sections.begin() )
-			{
-				return false;
-			}
-			// Data section must not be compressed
-			if( section.compression != cmf::SectionCompression::None )
-			{
-				return false;
-			}
-			break;
-		case cmf::SectionType::Metadata:
-			// Metadata section must be last
-			if( &section != header.sections.end() - 1 )
-			{
-				return false;
-			}
-			// Metadata section must not be compressed
-			if( section.compression != cmf::SectionCompression::None )
-			{
-				return false;
-			}
-			break;
-		default:
-			break;
+			return false;
+		}
+		// Packed tangent must be 4-component unsigned normalized integer
+		if( ( element.type != cmf::ElementType::UInt16Norm && element.type != cmf::ElementType::UInt8Norm ) || element.elementCount != 4 )
+		{
+			return false;
 		}
 	}
 	return true;
@@ -158,63 +211,85 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 	{
 		return false;
 	}
-	// Declaration must contain a position element (usage == Position or usage == 0)
-	if( std::find_if( decl.begin(), decl.end(), []( const auto& x ) { return x.usage == cmf::Usage::Position || x.usageIndex == 0; } ) == decl.end() )
-    {
+	// Declaration must contain a position element (usage == Position and usageIndex == 0)
+	if( !FindElement( decl, cmf::Usage::Position ) )
+	{
 		return false;
 	}
-	for( auto& element : decl )
+	return std::all_of( decl.begin(), decl.end(), [&decl]( const auto& element ) {
+		return IsVertexElementValid( element, decl );
+	} );
+}
+
+bool IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+{
+	// LOD must have a vertex buffer
+	if( lod.vb.size == 0 )
 	{
-		// Element count must be between 1 and 4
-		if( element.elementCount == 0 || element.elementCount > 4 )
+		return false;
+	}
+	// If not a point list, LOD must have an index buffer
+	if( mesh.topology != cmf::MeshTopology::PointList )
+	{
+		if( lod.ib.size == 0 )
 		{
 			return false;
 		}
-		// Each (usage, usageIndex) pair must be unique within the decl
-		for( auto other = &element + 1; other != decl.end(); ++other )
+	}
+	else
+	{
+		if( lod.ib.size != 0 )
 		{
-			if( element.usage == other->usage && element.usageIndex == other->usageIndex )
-			{
-				return false;
-			}
-		}
-		if( element.usage == cmf::Usage::PackedTangent )
-		{
-			// If the declaration contains a packed tangent, it must be the only tangent space element with the same usageIndex
-			if( std::find_if( decl.begin(), decl.end(), [&element]( const auto& x ) { return ( x.usage == cmf::Usage::Normal || x.usage == cmf::Usage::Tangent || x.usage == cmf::Usage::Binormal ) && x.usageIndex == element.usageIndex; } ) != decl.end() )
-			{
-				return false;
-			}
-			// Packed tangent must be 4-component signed normalized integer
-			if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
-			{
-				return false;
-			}
-		}
-		if( element.usage == cmf::Usage::PackedTangentLegacy )
-		{
-			// If the declaration contains a packed tangent, it must be the only tangent space element with the same usageIndex
-			if( std::find_if( decl.begin(), decl.end(), [&element]( const auto& x ) { return ( x.usage == cmf::Usage::Normal || x.usage == cmf::Usage::Tangent || x.usage == cmf::Usage::Binormal ) && x.usageIndex == element.usageIndex; } ) != decl.end() )
-			{
-				return false;
-			}
-			// Packed tangent must be 4-component unsigned normalized integer
-			if( ( element.type != cmf::ElementType::UInt16Norm && element.type != cmf::ElementType::UInt8Norm ) || element.elementCount != 4 )
-			{
-				return false;
-			}
+			return false;
 		}
 	}
-	return true;
-}
+	if( lod.ib.size > 0 )
+	{
+		// Mesh index buffer is either 2 or 4 bytes per index
+		if( lod.ib.stride != 2 && lod.ib.stride != 4 )
+		{
+			return false;
+		}
+	}
 
-bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
-{
-	// Mesh must have at least one LOD
-	if( mesh.lods.empty() )
+	// Mesh areas lists must match
+	if( lod.areas.size() != mesh.areas.size() )
 	{
 		return false;
 	}
+	for( auto& area : lod.areas )
+	{
+		// Area must be within the mesh index or vertex range
+		uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
+		uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
+		if( area.firstElement * verticesPerElement + area.elementCount * verticesPerElement > vertexCount )
+		{
+			return false;
+		}
+	}
+
+	// Mesh morph target lists must match
+	if( lod.morphTargets.size() != mesh.morphTargets.targets.size() )
+	{
+		return false;
+	}
+
+	return std::all_of( lod.morphTargets.begin(), lod.morphTargets.end(), [&lod]( const auto& morph ) {
+		if( morph.vb.size == 0 )
+		{
+			return true;
+		}
+		// Morph target vertex buffer must have the same number of vertices as the LOD
+		if( morph.vb.size / morph.vb.stride != lod.vb.size / lod.vb.stride )
+		{
+			return false;
+		}
+		return true;
+	} );
+}
+
+bool MeshHasValidLodThresholds( const cmf::Mesh& mesh )
+{
 	// First LOD must have threshold of 0xffffffff
 	if( mesh.lods[0].threshold != 0xffffffff )
 	{
@@ -228,70 +303,49 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 			return false;
 		}
 	}
+	return true;
+}
+
+bool AreMorphTargetsValid( const cmf::Mesh& mesh )
+{
+	if( mesh.morphTargets.targets.empty() )
+	{
+		return true;
+	}
+	if( !IsVertexDeclarationValid( mesh.morphTargets.decl ) )
+	{
+		return false;
+	}
+	// Morph target decl must be a subset of the mesh decl
+	for( auto& element : mesh.morphTargets.decl )
+	{
+		if( !FindElement( mesh.decl, element.usage, element.usageIndex ) )
+		{
+			return false;
+		}
+	}
+	return std::all_of( mesh.morphTargets.targets.begin(), mesh.morphTargets.targets.end(), []( const auto& morph ) {
+		return morph.maxDisplacement >= 0;
+	} );
+}
+
+
+bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
+{
+	// Mesh must have at least one LOD
+	if( mesh.lods.empty() )
+	{
+		return false;
+	}
+	if( !MeshHasValidLodThresholds( mesh ) )
+	{
+		return false;
+	}
 	for( auto& lod : mesh.lods )
 	{
-		// LOD must have a vertex buffer
-		if( lod.vb.size == 0 )
+		if( !IsMeshLodValid( mesh, lod ) )
 		{
 			return false;
-		}
-		// If not a point list, LOD must have an index buffer
-		if( mesh.topology != cmf::MeshTopology::PointList )
-		{
-			if( lod.ib.size == 0 )
-			{
-				return false;
-			}
-		}
-		else
-		{
-			if( lod.ib.size != 0 )
-			{
-				return false;
-			}
-		}
-		if( lod.ib.size > 0 )
-		{
-			// Mesh index buffer is either 2 or 4 bytes per index
-			if( lod.ib.stride != 2 && lod.ib.stride != 4 )
-			{
-				return false;
-			}
-		}
-
-		// Mesh areas lists must match
-		if( lod.areas.size() != mesh.areas.size() )
-		{
-			return false;
-		}
-		for( auto& area : lod.areas )
-		{
-			// Area must be within the mesh index or vertex range
-			uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
-			uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
-			if( area.firstElement * verticesPerElement + area.elementCount * verticesPerElement > vertexCount )
-			{
-				return false;
-			}
-		}
-
-		// Mesh morph target lists must match
-		if( lod.morphTargets.size() != mesh.morphTargets.targets.size() )
-		{
-			return false;
-		}
-		for( auto& morph : lod.morphTargets )
-		{
-			// Morph target can be empty for a given LOD
-			if( morph.vb.size == 0 )
-			{
-				continue;
-			}
-			// Morph target vertex buffer must have the same number of vertices as the LOD
-			if( morph.vb.size / morph.vb.stride != lod.vb.size / lod.vb.stride )
-			{
-				return false;
-			}
 		}
 	}
 
@@ -311,49 +365,30 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 		return false;
 	}
 
-    if ( !mesh.morphTargets.targets.empty() )
-    {
-		if( !IsVertexDeclarationValid( mesh.morphTargets.decl ) )
-		{
-			return false;
-		}
-		// Morph target decl must be a subset of the mesh decl
-		for( auto& element : mesh.morphTargets.decl )
-		{
-			if( std::find_if( mesh.decl.begin(), mesh.decl.end(), [&element]( const auto& x ) { return x.usage == element.usage && x.usageIndex == element.usageIndex; } ) == mesh.decl.end() )
-			{
-				return false;
-			}
-		}
-	}
-	for( auto& morph : mesh.morphTargets.targets )
+	if( !AreMorphTargetsValid( mesh ) )
 	{
-		if( morph.maxDisplacement < 0 )
-		{
-			return false;
-		}
+		return false;
 	}
 
-    if( auto boneIndicesElement = std::find_if( mesh.decl.begin(), mesh.decl.end(), []( const auto& x ) { return x.usage == cmf::Usage::BoneIndices; } ); boneIndicesElement != mesh.decl.end() )
-    {
-        if ( boneIndicesElement->type == cmf::ElementType::UInt8 )
-        {
+	if( auto boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
+	{
+		if( boneIndicesElement->type == cmf::ElementType::UInt8 )
+		{
 			// Mesh can have up to 255 bone bindings
 			if( mesh.boneBindings.size() > 255 )
 			{
 				return false;
 			}
 		}
-    }
+	}
 
-	size_t uvCount = 0;
-    for ( auto& element : mesh.decl )
-    {
-        if ( element.usage == cmf::Usage::TexCoord )
-        {
-			uvCount = std::max( uvCount, size_t( element.usageIndex + 1 ) );
-        }
-    }
+	size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
+		if( element.usage == cmf::Usage::TexCoord )
+		{
+			return std::max( count, size_t( element.usageIndex + 1 ) );
+		}
+		return count;
+	} );
 	if( mesh.uvDensities.size() != uvCount )
 	{
 		return false;
@@ -368,6 +403,84 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 	}
 	return true;
 }
+
+bool IsSkeletonValid( const cmf::Skeleton& skeleton )
+{
+	// Skeleton must have at least one bone
+	if( skeleton.bones.empty() )
+	{
+		return false;
+	}
+	// All skeleton arrays must have the same size
+	if( skeleton.bones.size() != skeleton.parents.size() || skeleton.bones.size() != skeleton.restTransforms.size() || skeleton.bones.size() != skeleton.invBindTransforms.size() )
+	{
+		return false;
+	}
+	for( auto& parent : skeleton.parents )
+	{
+		// Parent index must be either -1 (0xffffffff) or a valid bone index
+		if( parent != 0xffffffff && parent >= skeleton.bones.size() )
+		{
+			return false;
+		}
+		// Parent index must be less than the bone index (no cycles)
+		auto idx = &parent - skeleton.parents.data();
+		if( parent != 0xffffffff && parent >= idx )
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+bool IsAnimationValid( const cmf::Animation& animation, size_t curveCount )
+{
+	// Animation duration must be > 0
+	if( animation.duration <= 0 )
+	{
+		return false;
+	}
+	if( animation.channels.empty() )
+	{
+		return false;
+	}
+	return std::all_of( animation.channels.begin(), animation.channels.end(), [curveCount]( const auto& channel ) {
+		return channel.curveIndex < curveCount;
+	} );
+}
+
+bool IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
+{
+	if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
+	{
+		return false;
+	}
+	if( !AreBufferViewsValid( mainData, header.sections ) )
+	{
+		return false;
+	}
+
+	for( auto& mesh : mainData.meshes )
+	{
+		if( !IsMeshValid( mesh, mainData.skeletons.size() ) )
+		{
+			return false;
+		}
+	}
+
+	for( auto& skeleton : mainData.skeletons )
+	{
+		if( !IsSkeletonValid( skeleton ) )
+		{
+			return false;
+		}
+	}
+
+	return std::all_of( mainData.animations.begin(), mainData.animations.end(), [&mainData]( const auto& animation ) {
+		return IsAnimationValid( animation, mainData.curves.size() );
+	} );
+}
+
 }
 
 namespace cmf
@@ -429,69 +542,9 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	if( options.validateMainData )
 	{
 		auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
-		if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
+		if( !IsMainDataValid( mainData, header ) )
 		{
 			return { false, result };
-		}
-		if( !AreBufferViewsValid( mainData, header.sections ) )
-		{
-			return { false, result };
-		}
-
-		for( auto& mesh : mainData.meshes )
-		{
-			if( !IsMeshValid( mesh, mainData.skeletons.size() ) )
-			{
-				return { false, result };
-			}
-		}
-
-		for( auto& skeleton : mainData.skeletons )
-		{
-			// Skeleton must have at least one bone
-			if( skeleton.bones.empty() )
-			{
-				return { false, result };
-			}
-			// All skeleton arrays must have the same size
-			if( skeleton.bones.size() != skeleton.parents.size() || skeleton.bones.size() != skeleton.restTransforms.size() || skeleton.bones.size() != skeleton.invBindTransforms.size() )
-			{
-				return { false, result };
-			}
-			for( auto& parent : skeleton.parents )
-			{
-				// Parent index must be either -1 (0xffffffff) or a valid bone index
-				if( parent != 0xffffffff && parent >= skeleton.bones.size() )
-				{
-					return { false, result };
-				}
-				// Parent index must be less than the bone index (no cycles)
-				auto idx = &parent - skeleton.parents.data();
-				if( parent != 0xffffffff && parent >= idx )
-				{
-					return { false, result };
-				}
-			}
-		}
-
-		for( auto& animation : mainData.animations )
-		{
-			// Animation durarion must be > 0
-			if( animation.duration <= 0 )
-			{
-				return { false, result };
-			}
-			if( animation.channels.empty() )
-			{
-				return { false, result };
-			}
-			for( auto& channel : animation.channels )
-			{
-				if( channel.curveIndex >= mainData.curves.size() )
-				{
-					return { false, result };
-				}
-			}
 		}
 		result.validateMainData = true;
 	}

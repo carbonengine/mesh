@@ -24,7 +24,7 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 		return;
 	}
 
-    // TODO: check for already existing packed tangents
+	// TODO: check for already existing packed tangents
 
 	// Make sure that we have the required vertex attributes to generate tangents.
 	auto positionElement = FindElement( vertexDeclaration, Usage::Position );
@@ -36,14 +36,17 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 		printf( "Failed to generate tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
 
 		if( !positionElement )
+		{
 			printf( "    No Position%d attribute found.\n", 0 );
-
+		}
 		if( !normalElement )
+		{
 			printf( "    No Normal%d attribute found.\n", 0 );
-
+		}
 		if( !texCoordElement )
+		{
 			printf( "    No TexCoord%d attribute found.\n", usageIndex );
-
+		}
 		return;
 	}
 
@@ -100,9 +103,9 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 		MikkTSpaceData data = {
 			ConstIndexBufferStream( lod.ib, bufferManager ),
-		    ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
-		    ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
-		    ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
+			ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
+			ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
+			ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
 
 			tangentData
 		};
@@ -153,32 +156,32 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 		SMikkTSpaceContext context = { &interface, &data };
 
-        // TODO: expose tollerance as function argument
+		// TODO: expose tollerance as function argument
 		genTangSpaceDefault( &context );
 
-        lod.vb = UnapplyIndexBuffer( lod.vb, lod.ib, allocator, bufferManager );
+		lod.vb = UnapplyIndexBuffer( lod.vb, lod.ib, allocator, bufferManager );
 		for( auto& morphTarget : lod.morphTargets )
-        {
-            morphTarget.vb = UnapplyIndexBuffer( morphTarget.vb, lod.ib, allocator, bufferManager );
-        }
+		{
+			morphTarget.vb = UnapplyIndexBuffer( morphTarget.vb, lod.ib, allocator, bufferManager );
+		}
 		// Replace the index buffer with a simple identity index buffer.
 		lod.ib = MakeIdentityIndexBuffer( lod.ib.size / lod.ib.stride, allocator, bufferManager );
 
-        // Inject generated tangents and bitangents into the new vertex buffer.
+		// Inject generated tangents and bitangents into the new vertex buffer.
 		auto newVb = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
 		auto newNormals = ConstBufferElementStream<Vector3>( *FindElement( newVertexDeclaration, Usage::Normal ), newVb, bufferManager );
 		auto newTangents = BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager );
 		auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
 		for( uint32_t i = 0; i < uint32_t( tangentData.size() ); ++i )
-        {
+		{
 			auto normal = newNormals[i];
 			auto tangent = tangentData[i];
 			auto bitangent = -Cross( normal, tangent.GetXYZ() ) * tangentData[i].w;
 			newTangents.set( i, tangent.GetXYZ() );
 			newBitangents.set( i, bitangent );
-        }
+		}
 
-        // TODO: morph targets
+		// TODO: morph targets
 
 
 		//Re-index the data to avoid unnecessary work in the coming steps.
@@ -218,7 +221,10 @@ Vector4 PackTangentsQuaternion( Vector3 normal, Vector3 tangent, Vector3 bitange
 std::tuple<Vector3, Vector3, Vector3> UnpackTangentsQuaternion( Vector4 t )
 {
 
-#if 0
+	/*
+    
+    Unoptimized code that clearly shows the steps of unpacking the quaternion and reconstructing the TBN matrix.
+     
     // Reconstruct the w-value of the quaternion. This is guaranteed to be positive, so we don't need to store a sign for it.
 	float w = sqrtf( std::max( 0.0f, 1.0f - t.x * t.x - t.y * t.y - t.z * t.z ) );
 
@@ -232,8 +238,7 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsQuaternion( Vector4 t )
 	*tangent = Normalize( Vector3( m._11, m._12, m._13 ) );
 	*bitangent = Normalize( Vector3( m._21, m._22, m._23 ) );
 	*normal = Normalize( Vector3( m._31, m._32, m._33 ) ) * t.w; // t.w is the normal sign
-
-#else
+    */
 
 	// Heavily optimized shader-ready code that constructs the TBN matrix.
 
@@ -270,8 +275,7 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsQuaternion( Vector4 t )
 	auto bitangent = Vector3( -zw + xy, fma( -2.0f, x2, fma( -2.0f, z2, 1.0f ) ), +yz + xw );
 	auto normal = Vector3( +yw + xz, +yz - xw, fma( -2.0f, x2, fma( -2.0f, y2, 1.0f ) ) ) * t.w; // packed normal sign multiplication
 
-    return { normal, tangent, bitangent };
-#endif
+	return { normal, tangent, bitangent };
 }
 
 //Remaps a value that lies between oldMin and oldMax to [0, 1] range
@@ -284,7 +288,7 @@ void GenerateMorphTargetTangents( const Mesh& mesh, const MeshLod& srcLod, Buffe
 {
 	auto indices = ConstIndexBufferStream( srcLod.ib, bufferManager );
 
-    for( auto& morphTarget : srcLod.morphTargets )
+	for( auto& morphTarget : srcLod.morphTargets )
 	{
 		auto positions = ConstBufferElementStream<Vector3>( *FindElement( mesh.morphTargets.decl, Usage::Position ), morphTarget.vb, bufferManager );
 
@@ -390,20 +394,20 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsLegacy( Vector4 t )
 
 Vector4 PackTangents( TangentCompression compression, Vector3 normal, Vector3 tangent, Vector3 bitangent )
 {
-    if( compression == TangentCompression::PackedTangent )
-    {
-        return PackTangentsQuaternion( normal, tangent, bitangent );
-    }
-    return PackTangentsLegacy( normal, tangent, bitangent );
+	if( compression == TangentCompression::PackedTangent )
+	{
+		return PackTangentsQuaternion( normal, tangent, bitangent );
+	}
+	return PackTangentsLegacy( normal, tangent, bitangent );
 }
 
 std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compression, Vector4 t )
 {
 	if( compression == TangentCompression::PackedTangent )
-    {
-        return UnpackTangentsQuaternion( t );
-    }
-    return UnpackTangentsLegacy( t );
+	{
+		return UnpackTangentsQuaternion( t );
+	}
+	return UnpackTangentsLegacy( t );
 }
 
 void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, TangentCompression compression, CompressionErrorMetrics* metrics, MemoryAllocator& allocator, BufferManager& bufferManager )
@@ -424,16 +428,6 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 	if( !normalElement || !tangentElement || !bitangentElement )
 	{
 		printf( "Failed to pack tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-
-		if( !normalElement )
-			printf( "    No Normal%d attribute found.\n", 0 );
-
-		if( !tangentElement )
-			printf( "    No Tangent%d attribute found.\n", usageIndex );
-
-		if( !bitangentElement )
-			printf( "    No Binormal%d attribute found.\n", usageIndex );
-
 		return;
 	}
 
@@ -455,11 +449,11 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 			if( element.usage == Usage::Normal && element.usageIndex == usageIndex )
 			{
 				// Insert the packed tangent
-                if ( compression == TangentCompression::PackedTangent )
-                {
+				if( compression == TangentCompression::PackedTangent )
+				{
 					newPackedTangentElement = { Usage::PackedTangent, (uint8_t)usageIndex, ElementType::Int16Norm, 4, offset };
 				}
-                else
+				else
 				{
 					newPackedTangentElement = { Usage::PackedTangentLegacy, (uint8_t)usageIndex, ElementType::UInt16Norm, 4, offset };
 				}
@@ -480,7 +474,7 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 		}
 	}
 
-    uint32_t totalVertexCount = 0;
+	uint32_t totalVertexCount = 0;
 
 	double totalNormalError = 0.0;
 	double totalTangentError = 0.0;
@@ -491,18 +485,18 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 		auto newVertexBuffer = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
 		uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
 
-        ConstBufferElementStream<Vector3> normals( *normalElement, lod.vb, bufferManager );
+		ConstBufferElementStream<Vector3> normals( *normalElement, lod.vb, bufferManager );
 		ConstBufferElementStream<Vector3> tangents( *tangentElement, lod.vb, bufferManager );
 		ConstBufferElementStream<Vector3> bitangents( *bitangentElement, lod.vb, bufferManager );
 
-        BufferElementStream<Vector4> packedTangents( newPackedTangentElement, newVertexBuffer, bufferManager );
+		BufferElementStream<Vector4> packedTangents( newPackedTangentElement, newVertexBuffer, bufferManager );
 
-        for ( uint32_t i = 0; i < vertexCount; i++ )
-        {
-            Vector3 normal = normals[i];
-            Vector3 tangent = tangents[i];
-            Vector3 bitangent = bitangents[i];
-            Vector4 packedTangent = PackTangents( compression, normal, tangent, bitangent );
+		for( uint32_t i = 0; i < vertexCount; i++ )
+		{
+			Vector3 normal = normals[i];
+			Vector3 tangent = tangents[i];
+			Vector3 bitangent = bitangents[i];
+			Vector4 packedTangent = PackTangents( compression, normal, tangent, bitangent );
 			packedTangents.set( i, packedTangent );
 
 			if( metrics )
@@ -514,22 +508,22 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 				totalTangentError += acosf( std::clamp( Dot( tangent, tangent2 ), -1.0f, +1.0f ) );
 				totalBitangentError += acosf( std::clamp( Dot( bitangent, bitangent2 ), -1.0f, +1.0f ) );
 			}
-        }
+		}
 
-        totalVertexCount += vertexCount;
+		totalVertexCount += vertexCount;
 
 		// TODO: May need to compress morph target tangents here too.
 		lod.vb = newVertexBuffer;
 	}
 
-    mesh.decl = newVertexDeclaration;
+	mesh.decl = newVertexDeclaration;
 
-    if ( metrics )
-    {
+	if( metrics )
+	{
 		metrics->averageNormalErrorDegrees += float( totalNormalError / totalVertexCount * 180 / 3.14159265359 );
 		metrics->averageTangentErrorDegrees += float( totalTangentError / totalVertexCount * 180 / 3.14159265359 );
 		metrics->averageBitangentErrorDegrees += float( totalBitangentError / totalVertexCount * 180 / 3.14159265359 );
-    }
+	}
 }
 
 void DecompressTangents( Mesh& mesh, uint32_t usageIndex, MemoryAllocator& allocator, BufferManager& bufferManager )
@@ -537,7 +531,7 @@ void DecompressTangents( Mesh& mesh, uint32_t usageIndex, MemoryAllocator& alloc
 	// Check if tangents are already packed.
 	auto packedTangentElement = FindElement( mesh.decl, Usage::PackedTangent, usageIndex );
 	if( !packedTangentElement )
-    {
+	{
 		packedTangentElement = FindElement( mesh.decl, Usage::PackedTangentLegacy, usageIndex );
 	}
 	if( !packedTangentElement )
@@ -596,14 +590,14 @@ void DecompressTangents( Mesh& mesh, uint32_t usageIndex, MemoryAllocator& alloc
 		}
 	}
 
-    auto compression = ( packedTangentElement->usage == Usage::PackedTangent ) ? TangentCompression::PackedTangent : TangentCompression::PackedTangentLegacy;
+	auto compression = ( packedTangentElement->usage == Usage::PackedTangent ) ? TangentCompression::PackedTangent : TangentCompression::PackedTangentLegacy;
 
 	for( auto& lod : mesh.lods )
 	{
 		auto newVertexBuffer = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
 		uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
 
-        ConstBufferElementStream<Vector4> packedTangents( *packedTangentElement, lod.vb, bufferManager );
+		ConstBufferElementStream<Vector4> packedTangents( *packedTangentElement, lod.vb, bufferManager );
 		BufferElementStream<Vector3> normals( newNormalElement, newVertexBuffer, bufferManager );
 		BufferElementStream<Vector3> tangents( newTangentElement, newVertexBuffer, bufferManager );
 		BufferElementStream<Vector3> bitangents( newBitangentElement, newVertexBuffer, bufferManager );

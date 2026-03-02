@@ -108,13 +108,13 @@ void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager )
 		newVertexCount = (uint32_t)meshopt_generateVertexRemap( remap.data(), reinterpret_cast<uint32_t*>( indexData ), indexCount, vertexData, vertexCount, vertexStride );
 	}
 	else
-    {
+	{
 		newVertexCount = (uint32_t)meshopt_generateVertexRemap( remap.data(), reinterpret_cast<uint16_t*>( indexData ), indexCount, vertexData, vertexCount, vertexStride );
 	}
 	if( newVertexCount == vertexCount )
-    {
-        // No duplicates found.
-        return;
+	{
+		// No duplicates found.
+		return;
 	}
 
 	lod.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * vertexStride, vertexStride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
@@ -125,7 +125,7 @@ void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager )
 		meshopt_remapIndexBuffer( reinterpret_cast<uint32_t*>( indexData ), reinterpret_cast<uint32_t*>( indexData ), indexCount, remap.data() );
 	}
 	else
-    {
+	{
 		meshopt_remapIndexBuffer( reinterpret_cast<uint16_t*>( indexData ), reinterpret_cast<uint16_t*>( indexData ), indexCount, remap.data() );
 	}
 	for( auto& morph : lod.morphTargets )
@@ -138,32 +138,28 @@ void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager )
 
 BufferView ConvertTo16BitIndexBuffer( const BufferView& ib, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
-    if( ib.stride == 2 )
-    {
-        // Already 16-bit.
-        return ib;
-    }
+	if( ib.stride == 2 )
+	{
+		// Already 16-bit.
+		return ib;
+	}
 	auto indexData = static_cast<const uint32_t*>( bufferManager.GetData( ib ) );
-    uint32_t indexCount = ib.size / ib.stride;
-    uint32_t maxIndex = 0;
-    for( uint32_t i = 0; i < indexCount; ++i )
-    {
-        uint32_t index = indexData[i];
-        if( index > maxIndex )
-        {
-            maxIndex = index;
-        }
-    }
-    if( maxIndex > 0xffffu )
-    {
-        // Cannot convert to 16-bit because of large indices.
-        return ib;
-    }
-    auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint16_t ), sizeof( uint16_t ), SectionCompression::MeshOptimizerIndexBuffer );
-    for( uint32_t i = 0; i < indexCount; ++i )
-    {
+	uint32_t indexCount = ib.size / ib.stride;
+	uint32_t maxIndex = 0;
+	for( uint32_t i = 0; i < indexCount; ++i )
+	{
+		maxIndex = std::max( maxIndex, indexData[i] );
+	}
+	if( maxIndex > 0xffffu )
+	{
+		// Cannot convert to 16-bit because of large indices.
+		return ib;
+	}
+	auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint16_t ), sizeof( uint16_t ), SectionCompression::MeshOptimizerIndexBuffer );
+	for( uint32_t i = 0; i < indexCount; ++i )
+	{
 		static_cast<uint16_t*>( bufferManager.GetData( newIB ) )[i] = (uint16_t)indexData[i];
-    }
+	}
 	return newIB;
 }
 
