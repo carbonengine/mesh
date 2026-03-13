@@ -51,7 +51,7 @@ enum class Usage : uint8_t
 	Color,
 	BoneIndices,
 	BoneWeights,
-    PackedTangent,
+	PackedTangent,
 	PackedTangentLegacy,
 };
 
@@ -59,7 +59,7 @@ enum class ElementType : uint8_t
 {
 	Float32,
 	Float16,
-    UInt16Norm,
+	UInt16Norm,
 	UInt16,
 	Int16Norm,
 	Int16,
@@ -115,7 +115,7 @@ struct MeshArea
 
 struct LodMeshArea
 {
-    //TODO: These should be changed to be index counts, not primitive counts.
+	//TODO: These should be changed to be index counts, not primitive counts.
 	uint32_t firstElement = 0;
 	uint32_t elementCount = 0;
 
@@ -275,25 +275,25 @@ struct BoneWeight
 	float weight = 1;
 	static constexpr std::string_view TypeName = "BoneWeight";
 	template <typename T>
-    constexpr void EnumerateMembers( T&& visitor )
-    {
-        visitor( *this, index, "index" );
-        visitor( *this, weight, "weight" );
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, index, "index" );
+		visitor( *this, weight, "weight" );
 	}
 };
 
 struct BoneMask
 {
-    String name;
+	String name;
 	Span<BoneWeight> weights;
 
-    static constexpr std::string_view TypeName = "BoneMask";
-    template <typename T>
-    constexpr void EnumerateMembers( T&& visitor )
-    {
-        visitor( *this, name, "name" );
-        visitor( *this, weights, "weights" );
-    }
+	static constexpr std::string_view TypeName = "BoneMask";
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, weights, "weights" );
+	}
 };
 
 struct Skeleton
@@ -325,14 +325,13 @@ enum class AnimationChannelTargetType : uint8_t
 	BoneRotation,
 	BoneScale,
 	MorphTarget,
-    Other,
+	Other,
 };
 
 enum class Interpolation : uint8_t
 {
 	Step,
 	Linear,
-	CubicSpline,
 };
 
 struct AnimationChannel
@@ -424,15 +423,15 @@ struct Metadata
 
 enum class SectionCompression : uint8_t
 {
-    None,
+	None,
 	MeshOptimizerVertexBuffer,
 	MeshOptimizerIndexBuffer,
 };
 
 enum class SectionType : uint8_t
 {
-    Data,
-    GpuBuffer,
+	Data,
+	GpuBuffer,
 	Metadata,
 };
 

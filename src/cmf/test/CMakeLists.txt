@@ -1,4 +1,5 @@
 set(CMF_TEST_SOURCES
+    animation.cpp
     main.cpp
 )
     

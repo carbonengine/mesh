@@ -26,6 +26,7 @@ add_subdirectory( carbon-mesh-viewer )
 add_subdirectory( carbon-mesh-optimizer )
 
 set(PUBLIC_HEADER_FILES
+    include/cmf/animation.h
     include/cmf/bounds.h
     include/cmf/bufferstreams.h
     include/cmf/bufferutils.h
@@ -44,6 +45,7 @@ set(PUBLIC_HEADER_FILES
 
 set(CARBON_MESH_SOURCE_FILES
     ${PUBLIC_HEADER_FILES}
+    src/cmf/animation.cpp
     src/cmf/bounds.cpp
     src/cmf/bufferutils.cpp
     src/cmf/compression.cpp
