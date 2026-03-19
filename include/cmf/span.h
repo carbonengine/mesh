@@ -80,6 +80,11 @@ inline std::string ToStdString( const String& str )
 	return { str.begin(), str.end() };
 }
 
+inline std::string_view ToStdStringView( const String& str )
+{
+	return { str.begin(), size_t( str.end() - str.begin() ) };
+}
+
 inline bool operator==( const String& a, const String& b )
 {
 	return a.size() == b.size() && std::equal( a.begin(), a.end(), b.begin() );

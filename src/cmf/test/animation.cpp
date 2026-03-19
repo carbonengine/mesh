@@ -50,6 +50,40 @@ cmf::Skeleton MakeInPlaceSkeleton( const std::vector<BoneDesc>& bones, cmf::Memo
 	}
 	return result;
 }
+
+const Vector3 TEST_ANIMATION_CHILD_POSITION0 = Vector3( 0.0f, 1.f, 2.f );
+const Vector3 TEST_ANIMATION_CHILD_POSITION1 = Vector3( 100.0f, 110.f, 120.f );
+
+Vector3 GetTestAnimationBonePosition( float localTime )
+{
+	return TEST_ANIMATION_CHILD_POSITION0 * ( 1 - localTime ) + TEST_ANIMATION_CHILD_POSITION1 * localTime;
+}
+
+cmf::AnimationPlayer MakeTestAnimationPlayer( cmf::MemoryAllocator& allocator )
+{
+	auto skeleton = MakeInPlaceSkeleton( {
+											 { "Root", 0xffffffff, { { 0.f, 0.f, 0.f }, { 0.f, 0.f, 0.f, 1.f }, { 1.f, 1.f, 1.f } } },
+											 { "Child", 0, { { 1.f, 0.f, 0.f }, { 0.f, 0.f, 0.f, 1.f }, { 1.f, 1.f, 1.f } } },
+										 },
+										 allocator );
+	auto skeletonPtr = new( allocator.Allocate( sizeof( cmf::Skeleton ) ) ) cmf::Skeleton( skeleton );
+
+	auto curve = MakeInPlaceCurve<Vector3>( { 0.0f, 1.0f }, { TEST_ANIMATION_CHILD_POSITION0, TEST_ANIMATION_CHILD_POSITION1 }, cmf::Interpolation::Linear, allocator );
+
+	cmf::AnimationChannel channel;
+	channel.targetType = cmf::AnimationChannelTargetType::BonePosition;
+	channel.target = allocator.AllocateString( "Child" );
+	channel.curveIndex = 0;
+
+	auto animation = new( allocator.Allocate( sizeof( cmf::Animation ) ) ) cmf::Animation();
+	cmf::Modify( animation->channels, allocator ).push_back( channel );
+	animation->duration = 1.f;
+
+	cmf::Span<cmf::AnimationCurve> curves;
+	cmf::Modify( curves, allocator ).push_back( curve );
+
+	return cmf::AnimationPlayer( *skeletonPtr, *animation, curves );
+}
 }
 
 TEST( Curves, CanSampleConstantCurve )
@@ -195,4 +229,124 @@ TEST( Animation, CanSampleAnimation )
 	EXPECT_EQ( pose.boneTransforms[0].position, Vector3( 0.f, 0.f, 0.f ) );
 	EXPECT_EQ( pose.boneTransforms[0].rotation, Quaternion( 0.f, 0.f, 0.f, 1.f ) );
 	EXPECT_EQ( pose.boneTransforms[0].scale, Vector3( 1.f, 1.f, 1.f ) );
+}
+
+TEST( AnimationPlayer, GetDurationLeftAccountsForSpeed )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 3.0f );
+	player.SetLoopCount( 1 );
+	player.SetSpeed( 0.5f );
+
+	EXPECT_EQ( player.GetDurationLeft( 3.0f + 1.5f ), 0.5f );
+}
+
+TEST( AnimationPlayer, CanGetLocalTime )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 3.0f );
+	player.SetLoopCount( 10 );
+	player.SetSpeed( 0.5f );
+
+	EXPECT_EQ( player.GetLocalTime( 3.0f + 2.5f ), 0.25f );
+}
+
+TEST( AnimationPlayer, CanGetLoopIndex )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 3.0f );
+	player.SetLoopCount( 10 );
+	player.SetSpeed( 0.5f );
+
+	EXPECT_EQ( player.GetLoopIndex( 1.0f ), -1 );
+	EXPECT_EQ( player.GetLoopIndex( 3.5f ), 0 );
+	EXPECT_EQ( player.GetLoopIndex( 4.5f ), 0 );
+	EXPECT_EQ( player.GetLoopIndex( 6.0f ), 1 );
+}
+
+TEST( AnimationPlayer, CanGetInfiniteLoopIndex )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 3.0f );
+	player.SetLoopCount( 0 );
+	player.SetSpeed( 0.5f );
+
+	EXPECT_EQ( player.GetLoopIndex( 0.0f ), -1 );
+	EXPECT_EQ( player.GetLoopIndex( 1.0f ), -1 );
+	EXPECT_EQ( player.GetLoopIndex( 3.5f ), 0 );
+	EXPECT_EQ( player.GetLoopIndex( 4.5f ), 0 );
+	EXPECT_EQ( player.GetLoopIndex( 6.0f ), 1 );
+}
+
+TEST( AnimationPlayer, CanSampleAnimation )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 3.0f );
+	player.SetLoopCount( 1 );
+	player.SetSpeed( 0.5f );
+
+	cmf::SkeletonPose pose;
+	cmf::RestPose( pose, player.GetSkeleton() );
+	EXPECT_TRUE( player.Sample( pose, 3.0f + 0.5f ) );
+
+	EXPECT_EQ( pose.boneTransforms[1].position, GetTestAnimationBonePosition( 0.5f * 0.5f ) );
+}
+
+TEST( AnimationPlayer, AnimationDoesNotApplyBeforeStart )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 123.0f );
+	player.SetLoopCount( 1 );
+
+	cmf::SkeletonPose pose;
+	cmf::RestPose( pose, player.GetSkeleton() );
+	EXPECT_FALSE( player.Sample( pose, 123.0f - 1.0f ) );
+}
+
+TEST( AnimationPlayer, AnimationAppliesBeforeStartWithExtrapolateBefore )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 123.0f );
+	player.SetLoopCount( 1 );
+	player.SetExtrapolateBefore( true );
+
+	cmf::SkeletonPose pose;
+	cmf::RestPose( pose, player.GetSkeleton() );
+	EXPECT_TRUE( player.Sample( pose, 123.0f - 0.5f ) );
+
+	EXPECT_EQ( pose.boneTransforms[1].position, TEST_ANIMATION_CHILD_POSITION0 );
+}
+
+TEST( AnimationPlayer, AnimationDoesNotApplyAfterStop )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 123.0f );
+	player.SetLoopCount( 1 );
+
+	cmf::SkeletonPose pose;
+	cmf::RestPose( pose, player.GetSkeleton() );
+	EXPECT_FALSE( player.Sample( pose, 123.0f + 1.0f ) );
+}
+
+TEST( AnimationPlayer, AnimationAppliesAfterStopWithExtrapolateAfter )
+{
+	cmf::MemoryAllocator allocator;
+	cmf::AnimationPlayer player = MakeTestAnimationPlayer( allocator );
+	player.SetStartTime( 123.0f );
+	player.SetLoopCount( 1 );
+	player.SetExtrapolateAfter( true );
+
+	cmf::SkeletonPose pose;
+	cmf::RestPose( pose, player.GetSkeleton() );
+	EXPECT_TRUE( player.Sample( pose, 123.0f + 1.5f ) );
+
+	EXPECT_EQ( pose.boneTransforms[1].position, TEST_ANIMATION_CHILD_POSITION1 );
 }

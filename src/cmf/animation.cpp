@@ -89,6 +89,39 @@ T SampleCurve( const cmf::AnimationCurve& curve, float time )
 	}
 }
 
+template <typename T>
+T SampleCurve( const Knots& knots, const cmf::ConstBufferElementStream<T>& values, cmf::Interpolation interpolation, float time )
+{
+	const auto interval = FindKnotInterval( knots, time );
+	switch( interpolation )
+	{
+	case cmf::Interpolation::Step:
+		return values[interval.knot0];
+	case cmf::Interpolation::Linear: {
+		const auto v0 = values[interval.knot0];
+		const auto v1 = values[interval.knot1];
+		return v0 + ( v1 - v0 ) * interval.time;
+	}
+	default:
+		return {};
+	}
+}
+Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElementStream<Vector4>& values, cmf::Interpolation interpolation, float time )
+{
+	const auto interval = FindKnotInterval( knots, time );
+	switch( interpolation )
+	{
+	case cmf::Interpolation::Step:
+		return values[interval.knot0];
+	case cmf::Interpolation::Linear: {
+		return Slerp( values[interval.knot0], values[interval.knot1], interval.time );
+	}
+	default:
+		return {};
+	}
+}
+
+
 cmf::Transform BlendTransforms( const cmf::Transform& a, const cmf::Transform& b, float alpha )
 {
 	return {
@@ -96,18 +129,6 @@ cmf::Transform BlendTransforms( const cmf::Transform& a, const cmf::Transform& b
 		Slerp( a.rotation, b.rotation, alpha ),
 		a.scale + ( b.scale - a.scale ) * alpha
 	};
-}
-
-float GetMaskedWeight( uint32_t boneIndex, const cmf::Span<cmf::BoneWeight>& boneWeights )
-{
-	for( const auto& boneWeight : boneWeights )
-	{
-		if( boneWeight.index == boneIndex )
-		{
-			return boneWeight.weight;
-		}
-	}
-	return 0.0f;
 }
 
 }
@@ -203,12 +224,31 @@ void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const Skeleto
 	}
 }
 
-void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const Span<BoneWeight>& boneWeights )
+BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std::string_view& boneMask )
+{
+	BoneWeights result = { &skeleton };
+	result.boneWeights.resize( skeleton.bones.size(), 0.f );
+
+	for( const auto& mask : skeleton.boneMasks )
+	{
+		if( ToStdStringView( mask.name ) == boneMask )
+		{
+			for( const auto& boneWeight : mask.weights )
+			{
+				result.boneWeights[boneWeight.index] = boneWeight.weight;
+			}
+			break;
+		}
+	}
+	return result;
+}
+
+void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights )
 {
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
 	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
 	{
-		const float weight = GetMaskedWeight( uint32_t( i ), boneWeights );
+		const float weight = boneWeights.boneWeights[i];
 		outPose.boneTransforms[i] = BlendTransforms( poseA.boneTransforms[i], poseB.boneTransforms[i], weight );
 	}
 }
@@ -231,5 +271,257 @@ void ComputeWorldTransforms( std::vector<Matrix>& outWorldTransforms, const Skel
 	}
 }
 
+
+
+AnimationPlayer::AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation, const Span<AnimationCurve>& curves ) :
+	m_stopTime( animation.duration ),
+	m_loopDuration( animation.duration ),
+	m_skeleton( &skeleton )
+{
+	for( const auto& channel : animation.channels )
+	{
+		if( !IsBoneTarget( channel.targetType ) )
+		{
+			continue;
+		}
+		const auto* const bone = std::find_if( skeleton.bones.begin(), skeleton.bones.end(), [&channel]( const String& boneName ) {
+			return boneName == channel.target;
+		} );
+		if( bone == skeleton.bones.end() )
+		{
+			continue;
+		}
+		const auto boneIndex = static_cast<uint32_t>( std::distance( skeleton.bones.begin(), bone ) );
+		const auto& curve = curves[channel.curveIndex];
+		switch( channel.targetType )
+		{
+		case AnimationChannelTargetType::BonePosition:
+			m_positionCurves.push_back( { GetKnotStream( curve ), GetValueStream<Vector3>( curve ), curve.interpolation, boneIndex } );
+			break;
+		case AnimationChannelTargetType::BoneRotation:
+			m_rotationCurves.push_back( { GetKnotStream( curve ), GetValueStream<Vector4>( curve ), curve.interpolation, boneIndex } );
+			break;
+		case AnimationChannelTargetType::BoneScale:
+			m_scaleCurves.push_back( { GetKnotStream( curve ), GetValueStream<Vector3>( curve ), curve.interpolation, boneIndex } );
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void AnimationPlayer::AdjustStopTime()
+{
+	if( m_explicitStopTime )
+	{
+		return;
+	}
+	if( m_loopCount == INFINITE_LOOP || m_speed <= 0 )
+	{
+		m_stopTime = std::numeric_limits<float>::infinity();
+	}
+	else
+	{
+		m_stopTime = m_startTime + ( m_loopDuration * float( m_loopCount ) ) / m_speed;
+	}
+}
+
+uint32_t AnimationPlayer::GetLoopCount() const
+{
+	return m_loopCount;
+}
+
+void AnimationPlayer::SetLoopCount( uint32_t loopCount )
+{
+	m_loopCount = loopCount;
+	AdjustStopTime();
+}
+
+float AnimationPlayer::GetSpeed() const
+{
+	return m_speed;
+}
+
+void AnimationPlayer::SetSpeed( float speed )
+{
+	m_speed = std::max( 0.0f, speed );
+	AdjustStopTime();
+}
+
+float AnimationPlayer::GetStartTime() const
+{
+	return m_startTime;
+}
+
+void AnimationPlayer::SetStartTime( float startTime )
+{
+	m_startTime = startTime;
+	AdjustStopTime();
+}
+
+float AnimationPlayer::GetStopTime() const
+{
+	return m_stopTime;
+}
+
+void AnimationPlayer::SetStopTime( float stopTime )
+{
+	m_stopTime = stopTime;
+	m_explicitStopTime = true;
+}
+
+bool AnimationPlayer::GetExtrapolateBefore() const
+{
+	return m_extrapolateBefore;
+}
+
+void AnimationPlayer::SetExtrapolateBefore( bool extrapolateBefore )
+{
+	m_extrapolateBefore = extrapolateBefore;
+}
+
+bool AnimationPlayer::GetExtrapolateAfter() const
+{
+	return m_extrapolateAfter;
+}
+
+void AnimationPlayer::SetExtrapolateAfter( bool extrapolateAfter )
+{
+	m_extrapolateAfter = extrapolateAfter;
+}
+
+float AnimationPlayer::GetLoopDuration() const
+{
+	return m_loopDuration;
+}
+
+
+float AnimationPlayer::GetDurationLeft( float time ) const
+{
+	if( m_loopCount == 0 || m_speed <= 0 )
+	{
+		return std::numeric_limits<float>::infinity();
+	}
+	return std::max( 0.f, m_stopTime - time );
+}
+
+bool AnimationPlayer::IsActive( float time ) const
+{
+	return ( time >= m_startTime || m_extrapolateBefore ) && ( time < m_stopTime || m_extrapolateAfter );
+}
+
+int32_t AnimationPlayer::GetLoopIndex( float time ) const
+{
+	if( m_loopCount == 0 )
+	{
+		return int32_t( ( time - m_startTime ) * m_speed / m_loopDuration );
+	}
+	const float totalDuration = m_loopDuration * float( m_loopCount );
+	const float elapsed = ( time - m_startTime ) * m_speed;
+	if( elapsed >= totalDuration )
+	{
+		return int32_t( m_loopCount - 1 );
+	}
+	return int32_t( elapsed / m_loopDuration );
+}
+
+float AnimationPlayer::GetLocalTime( float time ) const
+{
+	time -= m_startTime;
+	time *= m_speed;
+	if( m_loopCount == 0 )
+	{
+		return std::fmod( time, m_loopDuration );
+	}
+	const float totalDuration = m_loopDuration * float( m_loopCount );
+	if( time >= totalDuration )
+	{
+		return m_loopDuration;
+	}
+	return std::fmod( time, m_loopDuration );
+}
+
+
+bool AnimationPlayer::Sample( SkeletonPose& outPose, float time ) const
+{
+	if( time < m_startTime && !m_extrapolateBefore )
+	{
+		return false;
+	}
+	if( time >= m_stopTime && !m_extrapolateAfter )
+	{
+		return false;
+	}
+	auto localTime = GetLocalTime( time );
+
+	for( const auto& position : m_positionCurves )
+	{
+		auto& boneTransform = outPose.boneTransforms[position.targetIndex];
+		boneTransform.position = SampleCurve( position.knots, position.values, position.interpolation, localTime );
+	}
+	for( const auto& rotation : m_rotationCurves )
+	{
+		auto& boneTransform = outPose.boneTransforms[rotation.targetIndex];
+		boneTransform.rotation = ::SampleQuaternionCurve( rotation.knots, rotation.values, rotation.interpolation, localTime );
+	}
+	for( const auto& scale : m_scaleCurves )
+	{
+		auto& boneTransform = outPose.boneTransforms[scale.targetIndex];
+		boneTransform.scale = SampleCurve( scale.knots, scale.values, scale.interpolation, localTime );
+	}
+	return true;
+}
+
+const cmf::Skeleton& AnimationPlayer::GetSkeleton() const
+{
+	return *m_skeleton;
+}
+
+
+AnimationSequencer::AnimationSequencer( const cmf::Skeleton& skeleton ) :
+	m_skeleton( &skeleton )
+{
+}
+
+std::shared_ptr<AnimationPlayer> AnimationSequencer::PlayAnimation( const cmf::Animation& animation, const Span<AnimationCurve>& curves )
+{
+	auto player = std::make_shared<AnimationPlayer>( *m_skeleton, animation, curves );
+	m_animations.push_back( player );
+	return player;
+}
+
+void AnimationSequencer::EnumerateAnimations( const std::function<void( const std::shared_ptr<AnimationPlayer>& )>& callback )
+{
+	for( const auto& player : m_animations )
+	{
+		callback( player );
+	}
+}
+
+void AnimationSequencer::Sample( SkeletonPose& outPose, float time )
+{
+	outPose.boneTransforms.resize( m_skeleton->restTransforms.size() );
+	std::copy( m_skeleton->restTransforms.begin(), m_skeleton->restTransforms.end(), outPose.boneTransforms.begin() );
+	for( const auto& player : m_animations )
+	{
+		if( player->Sample( outPose, time ) )
+		{
+			break;
+		}
+	}
+}
+
+void AnimationSequencer::RemoveFinishedAnimations( float time )
+{
+	m_animations.erase( std::remove_if( m_animations.begin(), m_animations.end(), [time]( const auto& player ) {
+							return player->GetStopTime() <= time && !player->GetExtrapolateAfter();
+						} ),
+						m_animations.end() );
+}
+
+const cmf::Skeleton& AnimationSequencer::GetSkeleton() const
+{
+	return *m_skeleton;
+}
 
 }
