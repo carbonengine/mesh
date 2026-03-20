@@ -16,7 +16,7 @@ void readBuffer( const CmfContent* content, const cmf::BufferView view, OptBuffe
 	uint32_t vertexBufferOffset = content->m_cmfHeader->sections[view.index].offset + view.offset;
 	const uint8_t* vertexData = content->m_fileContent.data() + vertexBufferOffset;
 
-    output.data.assign( vertexData, vertexData + view.size );
+	output.data.assign( vertexData, vertexData + view.size );
 	output.stride = view.stride;
 }
 
@@ -31,40 +31,39 @@ void convertIndexBuffer( const OptBufferData indexBuffer, const uint32_t newStri
 {
 	if( indexBuffer.stride == newStride )
 	{
-        // No conversion needed, just copy.
-        // This should be avoided, as it is an unnecessary copy.
+		// No conversion needed, just copy.
+		// This should be avoided, as it is an unnecessary copy.
 		output.data.resize( indexBuffer.data.size() );
 		memcpy( output.data.data(), indexBuffer.data.data(), indexBuffer.data.size() );
 		return;
 	}
 
-    uint32_t length = indexBuffer.length();
-    
+	uint32_t length = indexBuffer.length();
+
 	output.data.resize( length * newStride );
 	output.stride = newStride;
 
 
-    if (indexBuffer.stride == 2 && newStride == 4)
-    {
-		const uint16_t* oldData = reinterpret_cast<const uint16_t*>(indexBuffer.data.data());
+	if( indexBuffer.stride == 2 && newStride == 4 )
+	{
+		const uint16_t* oldData = reinterpret_cast<const uint16_t*>( indexBuffer.data.data() );
 		uint32_t* newData = reinterpret_cast<uint32_t*>( output.data.data() );
 
-        for( uint32_t i = 0; i < length; i++ )
+		for( uint32_t i = 0; i < length; i++ )
 		{
 			newData[i] = oldData[i];
 		}
-
-    }
-    else if (indexBuffer.stride == 4 && newStride == 2)
+	}
+	else if( indexBuffer.stride == 4 && newStride == 2 )
 	{
 		const uint32_t* oldData = reinterpret_cast<const uint32_t*>( indexBuffer.data.data() );
 		uint16_t* newData = reinterpret_cast<uint16_t*>( output.data.data() );
 
 		for( uint32_t i = 0; i < length; i++ )
 		{
-			newData[i] = (uint16_t) oldData[i];
+			newData[i] = (uint16_t)oldData[i];
 		}
-    }
+	}
 	else
 	{
 		printf( "Unsupported index buffer stride conversion: %d --> %d", indexBuffer.stride, newStride );
@@ -75,21 +74,21 @@ Optimizer::Optimizer( CmfContent* content ) :
 	content( content )
 {
 
-    for( Mesh& mesh : content->m_cmfData->meshes )
-    {
+	for( Mesh& mesh : content->m_cmfData->meshes )
+	{
 		OptMesh optMesh;
 
-        optMesh.name = std::string(mesh.name.begin(), mesh.name.end() );
+		optMesh.name = std::string( mesh.name.begin(), mesh.name.end() );
 
-        optMesh.vertexDeclaration = std::vector( mesh.decl.begin(), mesh.decl.end() );
+		optMesh.vertexDeclaration = std::vector( mesh.decl.begin(), mesh.decl.end() );
 
-        for( MeshLod& lod : mesh.lods )
-        {
-            OptMeshLod optLod;
+		for( MeshLod& lod : mesh.lods )
+		{
+			OptMeshLod optLod;
 
 			readBuffer( content, lod.vb, optLod.vertexBuffer );
 
-            //Convert to 32-bit indices for simplicity during optimizations.
+			//Convert to 32-bit indices for simplicity during optimizations.
 			if( lod.ib.stride == 4 )
 			{
 				readBuffer( content, lod.ib, optLod.indexBuffer );
@@ -113,19 +112,18 @@ Optimizer::Optimizer( CmfContent* content ) :
 				optLod.morphTargetLods.push_back( std::move( morphLod ) );
 			}
 
-            optLod.threshold = lod.threshold;
+			optLod.threshold = lod.threshold;
 
 			optMesh.lods.push_back( std::move( optLod ) );
-        }
+		}
 
-        for( MorphTarget& morphTarget : mesh.morphTargets.targets )
-        {
+		for( MorphTarget& morphTarget : mesh.morphTargets.targets )
+		{
 			optMesh.morphTargets.push_back( { std::vector( mesh.morphTargets.decl.begin(), mesh.morphTargets.decl.end() ) } );
-        }
+		}
 
-        meshes.push_back( std::move( optMesh ) );
-    }
-
+		meshes.push_back( std::move( optMesh ) );
+	}
 }
 
 Optimizer::~Optimizer()
@@ -140,23 +138,23 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 		std::vector<VertexElement>& vertexDeclaration = mesh.vertexDeclaration;
 
 
-        // Check if the mesh already has tangents and bitangents.
+		// Check if the mesh already has tangents and bitangents.
 		auto tangentElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::Tangent && v.usageIndex == usageIndex; } );
 		auto bitangentElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::Binormal && v.usageIndex == usageIndex; } );
 
-        bool shouldGenerate = force || tangentElement == vertexDeclaration.end() || bitangentElement == vertexDeclaration.end();
+		bool shouldGenerate = force || tangentElement == vertexDeclaration.end() || bitangentElement == vertexDeclaration.end();
 		if( !shouldGenerate )
-        {
+		{
 			printf( "Mesh %s already has tangents, using existing ones.\n", mesh.name.c_str() );
 			continue;
-        }
+		}
 
-        // Make sure that we have the required vertex attributes to generate tangents.
+		// Make sure that we have the required vertex attributes to generate tangents.
 		auto positionElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), []( const auto& v ) { return v.usage == Usage::Position && v.usageIndex == 0; } );
 		auto normalElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), []( const auto& v ) { return v.usage == Usage::Normal && v.usageIndex == 0; } );
 		auto texCoordElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::TexCoord && v.usageIndex == usageIndex; } );
 
-        if( positionElement == vertexDeclaration.end() || normalElement == vertexDeclaration.end() || texCoordElement == vertexDeclaration.end() )
+		if( positionElement == vertexDeclaration.end() || normalElement == vertexDeclaration.end() || texCoordElement == vertexDeclaration.end() )
 		{
 			printf( "Failed to generate tangents for mesh %s\n", mesh.name.c_str() );
 
@@ -169,50 +167,50 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 			if( texCoordElement == vertexDeclaration.end() )
 				printf( "    No TexCoord%d attribute found.\n", usageIndex );
 
-            continue;
-        }
+			continue;
+		}
 
 
-        // Create a new vertex declaration with the new tangents, and a mapping for copying to it.
+		// Create a new vertex declaration with the new tangents, and a mapping for copying to it.
 		std::vector<VertexElement> newVertexDeclaration;
 		std::vector<std::pair<VertexElement, VertexElement>> vertexElementMapping;
 
-        VertexElement newTangentElement;
+		VertexElement newTangentElement;
 		VertexElement newBitangentElement;
 		uint32_t newVertexStride;
 
-        {
+		{
 			uint32_t offset = 0;
 			for( VertexElement element : mesh.vertexDeclaration )
 			{
 				if( ( element.usage == Usage::Tangent || element.usage == Usage::Binormal ) && element.usageIndex == usageIndex )
 				{
-                    // Omit the old tangents.
+					// Omit the old tangents.
 					continue;
 				}
 
 				VertexElement newElement = element;
 				newElement.offset = offset;
 				newVertexDeclaration.push_back( newElement );
-                offset += getElementTypeByteSize( element.type ) * element.elementCount;
+				offset += getElementTypeByteSize( element.type ) * element.elementCount;
 
-                vertexElementMapping.emplace_back( element, newElement );
-                
-                if( element.usage == Usage::Normal && element.usageIndex == 0 )
+				vertexElementMapping.emplace_back( element, newElement );
+
+				if( element.usage == Usage::Normal && element.usageIndex == 0 )
 				{
 					// Insert the tangent and bitangent after the normal.
 
-					newTangentElement = { Usage::Tangent, (uint8_t) usageIndex, ElementType::Float32, 3, offset };
+					newTangentElement = { Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
 					newVertexDeclaration.push_back( newTangentElement );
 					offset += getElementTypeByteSize( ElementType::Float32 ) * 3;
 
-					newBitangentElement = { Usage::Binormal, (uint8_t) usageIndex, ElementType::Float32, 3, offset };
+					newBitangentElement = { Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
 					newVertexDeclaration.push_back( newBitangentElement );
 					offset += getElementTypeByteSize( ElementType::Float32 ) * 3;
-                }
+				}
 			}
 
-            newVertexStride = offset;
+			newVertexStride = offset;
 		}
 
 		for( OptMeshLod& lod : mesh.lods )
@@ -233,20 +231,20 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 				std::vector<Vector4>& tangentData;
 			};
 
-            std::vector<Vector4> tangentData( lod.indexBuffer.length() );
+			std::vector<Vector4> tangentData( lod.indexBuffer.length() );
 
 			MikkTSpaceData data = {
 				reinterpret_cast<uint32_t*>( lod.indexBuffer.data.data() ),
 				lod.indexBuffer.length(),
 
 				lod.vertexBuffer.data.data(),
-                lod.vertexBuffer.stride,
+				lod.vertexBuffer.stride,
 
-                *positionElement,
-                *normalElement,
-                *texCoordElement,
+				*positionElement,
+				*normalElement,
+				*texCoordElement,
 
-                tangentData
+				tangentData
 			};
 
 			SMikkTSpaceInterface interface = {};
@@ -289,16 +287,16 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 			interface.m_setTSpaceBasic = []( const SMikkTSpaceContext* ctx, const float tangent[3], float sign, int face, int vert ) {
 				MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
 
-                data->tangentData[face * 3 + vert] = Vector4( tangent[0], tangent[1], tangent[2], sign );
+				data->tangentData[face * 3 + vert] = Vector4( tangent[0], tangent[1], tangent[2], sign );
 			};
-			
+
 
 			SMikkTSpaceContext context = { &interface, &data };
 
-            genTangSpaceDefault( &context );
+			genTangSpaceDefault( &context );
 
-            
-            /* if( tangentElement != vertexDeclaration.end() && bitangentElement != vertexDeclaration.end() )
+
+			/* if( tangentElement != vertexDeclaration.end() && bitangentElement != vertexDeclaration.end() )
 			{
 				double totalTangentDifference = 0.0;
 				float maxTangentDifference = 0.0;
@@ -361,12 +359,11 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 				printf( "Average bitangent change: %f degrees\n", totalBitangentDifference / data.indexCount );
 				printf( "Max bitangent change: %f degrees\n", maxBitangentDifference );
             }*/
-            
 
-            
 
-            
-            {
+
+
+			{
 
 				// Create a new vertex and index buffer that includes the new tangent and bitangent data.
 				OptBufferData newVertexBuffer;
@@ -384,38 +381,36 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 					const uint8_t* oldData = data.vertexData + index * data.vertexDataStride;
 					uint8_t* newData = newVertexBuffer.data.data() + i * newVertexBuffer.stride;
 
-                    // Move all unmodified attributes over.
+					// Move all unmodified attributes over.
 					for( std::pair<VertexElement, VertexElement> elements : vertexElementMapping )
 					{
 						Vector4 attribute = readAttribute( elements.first, oldData );
-                        writeAttribute( elements.second, newData, attribute );
+						writeAttribute( elements.second, newData, attribute );
 					}
 
-                    
-                    // Write out the new tangent and bitangent.
+
+					// Write out the new tangent and bitangent.
 					Vector4 normal = readAttribute( *normalElement, oldData );
 					Vector4 tangent = tangentData[i];
 					Vector3 bitangent = -Cross( Vector3( normal.x, normal.y, normal.z ), Vector3( tangent.x, tangent.y, tangent.z ) ) * tangentData[i].w;
 
-                    writeAttribute( newTangentElement, newData, tangent );
+					writeAttribute( newTangentElement, newData, tangent );
 					writeAttribute( newBitangentElement, newData, Vector4( bitangent, 0.0f ) );
 
-                    // Write out an identity index buffer
-                    reinterpret_cast<uint32_t*>( newIndexBuffer.data.data() )[i] = i;
-
-
+					// Write out an identity index buffer
+					reinterpret_cast<uint32_t*>( newIndexBuffer.data.data() )[i] = i;
 				}
 
 				// TODO: Need to handle morph target here too.
 
-                lod.vertexBuffer = newVertexBuffer;
+				lod.vertexBuffer = newVertexBuffer;
 				lod.indexBuffer = newIndexBuffer;
 			}
 
 
-            //Re-index the data to avoid unnecessary work in the coming steps.
+			//Re-index the data to avoid unnecessary work in the coming steps.
 
-            {
+			{
 				uint32_t* indexData = reinterpret_cast<uint32_t*>( lod.indexBuffer.data.data() );
 				uint32_t indexCount = lod.indexBuffer.length();
 
@@ -442,36 +437,30 @@ void Optimizer::generateTangents( uint32_t usageIndex, bool force )
 
 				vertexCount = newVertexCount;
 			}
-
-
 		}
 
-        mesh.vertexDeclaration = newVertexDeclaration;
+		mesh.vertexDeclaration = newVertexDeclaration;
 	}
 }
 
 
 Vector4 packTangents( Vector3 normal, Vector3 tangent, Vector3 bitangent )
 {
-    // Figure out if we need to flip the normal before compressing.
+	// Figure out if we need to flip the normal before compressing.
 	bool flipNormal = Dot( normal, Cross( tangent, bitangent ) ) < 0.0f;
 	if( flipNormal )
 	{
 		normal = -normal;
 	}
 
-    // Construct a TBN matrix.
+	// Construct a TBN matrix.
 	Matrix matrix(
-		tangent.x, tangent.y, tangent.z, 0.0f, 
-        bitangent.x, bitangent.y, bitangent.z, 0.0f, 
-        normal.x, normal.y, normal.z, 0.0f, 
-        0.0f, 0.0f, 0.0f, 1.0f 
-    );
+		tangent.x, tangent.y, tangent.z, 0.0f, bitangent.x, bitangent.y, bitangent.z, 0.0f, normal.x, normal.y, normal.z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f );
 
-    // Convert matrix to quaternion.
+	// Convert matrix to quaternion.
 	Quaternion q = Normalize( RotationQuaternion( matrix ) );
 
-    // We need to be able to reconstruct the W-component during unpacking, so make sure that it's always positive.
+	// We need to be able to reconstruct the W-component during unpacking, so make sure that it's always positive.
 	if( q.w < 0.0f )
 	{
 		q = -q; // Represents the same rotation.
@@ -501,23 +490,23 @@ void unpackTangents( Vector4 t, Vector3* normal, Vector3* tangent, Vector3* bita
 
 #else
 
-    // Heavily optimized shader-ready code that constructs the TBN matrix.
+	// Heavily optimized shader-ready code that constructs the TBN matrix.
 
-    // Extract the xyz components and square them
-    float x = t.x;
+	// Extract the xyz components and square them
+	float x = t.x;
 	float y = t.y;
 	float z = t.z;
 	float x2 = x * x;
 	float y2 = y * y;
 	float z2 = z * z;
 
-    // Optimized fma() chain to reconstruct W = sqrt(1 - x2 - y2 - z2)
-    // Don't use the above x2, y2 and z2 values, to reduce pipeline dependencies.
+	// Optimized fma() chain to reconstruct W = sqrt(1 - x2 - y2 - z2)
+	// Don't use the above x2, y2 and z2 values, to reduce pipeline dependencies.
 	float w2 = std::clamp( fma( z, -z, fma( y, -y, fma( x, -x, 1.0f ) ) ), 0.0f, 1.0f );
 	float w = sqrt( w2 );
 
-    // Calculate shared values.
-    // These multiplications by 2.0f are free on some GPUs.
+	// Calculate shared values.
+	// These multiplications by 2.0f are free on some GPUs.
 	float xy = x * y * 2.0f;
 	float xz = x * z * 2.0f;
 	float yz = y * z * 2.0f;
@@ -525,20 +514,18 @@ void unpackTangents( Vector4 t, Vector3* normal, Vector3* tangent, Vector3* bita
 	float yw = y * w * 2.0f;
 	float zw = z * w * 2.0f;
 
-    // Compute the three vectors. 
-    // This takes advantage of the fact that we know that w2 = 1 - x2 - y2 - z2 to simplify the math along the diagonal.
-    //Equivalent to:
+	// Compute the three vectors.
+	// This takes advantage of the fact that we know that w2 = 1 - x2 - y2 - z2 to simplify the math along the diagonal.
+	//Equivalent to:
 	//  *tangent =   Vector3( 1.0f - 2.0f * y2 - 2.0f * z2, + xy + zw, + xz - yw );
 	//  *bitangent = Vector3( - zw + xy, 1.0f - 2.0f * x2 - 2.0f * z2, + yz + xw );
 	//  *normal =    Vector3( + yw + xz, + yz - xw, 1.0f - 2.0f * x2 - 2.0f * y2 ) * t.w; // packed normal sign multiplication
 
-    *tangent =   Vector3( fma( -2.0f, y2, fma( -2.0f, z2, 1.0f ) ), + xy + zw, + xz - yw );
-    *bitangent = Vector3( - zw + xy, fma( -2.0f, x2, fma( -2.0f, z2, 1.0f ) ), + yz + xw );
-	*normal =    Vector3( + yw + xz, + yz - xw, fma( -2.0f, x2, fma( -2.0f, y2, 1.0f ) ) ) * t.w; // packed normal sign multiplication
+	*tangent = Vector3( fma( -2.0f, y2, fma( -2.0f, z2, 1.0f ) ), +xy + zw, +xz - yw );
+	*bitangent = Vector3( -zw + xy, fma( -2.0f, x2, fma( -2.0f, z2, 1.0f ) ), +yz + xw );
+	*normal = Vector3( +yw + xz, +yz - xw, fma( -2.0f, x2, fma( -2.0f, y2, 1.0f ) ) ) * t.w; // packed normal sign multiplication
 
 #endif
-
-
 }
 
 void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
@@ -548,12 +535,12 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 	{
 		std::vector<VertexElement>& vertexDeclaration = mesh.vertexDeclaration;
 
-        // Check if tangents are already packed.
+		// Check if tangents are already packed.
 		auto packedTangentElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::PackedTangent && v.usageIndex == usageIndex; } );
 		if( packedTangentElement != vertexDeclaration.end() )
-        {
+		{
 			continue;
-        }
+		}
 
 
 		// Check if the mesh has the required data to pack tangents.
@@ -561,7 +548,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 		auto tangentElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::Tangent && v.usageIndex == usageIndex; } );
 		auto bitangentElement = std::find_if( vertexDeclaration.begin(), vertexDeclaration.end(), [usageIndex]( const auto& v ) { return v.usage == Usage::Binormal && v.usageIndex == usageIndex; } );
 
-        if( normalElement == vertexDeclaration.end() || tangentElement == vertexDeclaration.end() || bitangentElement == vertexDeclaration.end() )
+		if( normalElement == vertexDeclaration.end() || tangentElement == vertexDeclaration.end() || bitangentElement == vertexDeclaration.end() )
 		{
 			printf( "Failed to pack tangents for mesh %s\n", mesh.name.c_str() );
 
@@ -578,7 +565,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 		}
 
 
-        // Create a new vertex declaration with the new tangents, and a mapping for copying to it.
+		// Create a new vertex declaration with the new tangents, and a mapping for copying to it.
 		std::vector<VertexElement> newVertexDeclaration;
 		std::vector<std::pair<VertexElement, VertexElement>> vertexElementMapping;
 
@@ -603,7 +590,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 					offset += getElementTypeByteSize( newPackedTangentElement.type ) * newPackedTangentElement.elementCount;
 				}
 
-                if( !retainNormal && element.usage == Usage::Normal && element.usageIndex == 0 )
+				if( !retainNormal && element.usage == Usage::Normal && element.usageIndex == 0 )
 				{
 					// Omit the normal. //TODO: This should be a separate cleanup pass.
 					continue;
@@ -632,8 +619,8 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 			newVertexBuffer.stride = newVertexStride;
 			newVertexBuffer.data.resize( vertexCount * newVertexStride );
 
-            
-            double totalNormalError = 0.0;
+
+			double totalNormalError = 0.0;
 			double totalTangentError = 0.0;
 			double totalBitangentError = 0.0;
 
@@ -647,7 +634,7 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 				{
 					Vector4 attribute = readAttribute( elements.first, oldData );
 
-                    /* for( int i = 0; i < 4; i++ )
+					/* for( int i = 0; i < 4; i++ )
 					{
 						float quantized = meshopt_quantizeFloat( attribute[i], 16 );
 
@@ -669,14 +656,14 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 				Vector3 tangent = readAttribute( *tangentElement, oldData ).GetXYZ();
 				Vector3 bitangent = readAttribute( *bitangentElement, oldData ).GetXYZ();
 
-                Vector4 packedTangents = packTangents( normal, tangent, bitangent );
-				
+				Vector4 packedTangents = packTangents( normal, tangent, bitangent );
+
 				writeAttribute( newPackedTangentElement, newData, packedTangents );
 
 
-                if( true )
+				if( true )
 				{
-                    packedTangents = readAttribute( newPackedTangentElement, newData );
+					packedTangents = readAttribute( newPackedTangentElement, newData );
 					Vector3 normal2;
 					Vector3 tangent2;
 					Vector3 bitangent2;
@@ -686,10 +673,10 @@ void Optimizer::compressTangents( uint32_t usageIndex, bool retainNormal )
 					totalTangentError += acosf( std::clamp( Dot( tangent, tangent2 ), -1.0f, +1.0f ) );
 					totalBitangentError += acosf( std::clamp( Dot( bitangent, bitangent2 ), -1.0f, +1.0f ) );
 
-                    //printf( "Normal error: %f\n", acosf( std::clamp( Dot( normal, normal2 ), -1.0f, +1.0f) ) * 180 / 3.14159265359 );
+					//printf( "Normal error: %f\n", acosf( std::clamp( Dot( normal, normal2 ), -1.0f, +1.0f) ) * 180 / 3.14159265359 );
 					//printf( "Tangent error: %f\n", acosf( std::clamp( Dot( tangent, tangent2 ), -1.0f, +1.0f ) ) * 180 / 3.14159265359 );
 					//printf( "Bitangent error: %f\n", acosf( std::clamp( Dot( bitangent, bitangent2 ), -1.0f, +1.0f ) ) * 180 / 3.14159265359 );
-                }
+				}
 			}
 
 			printf( "Average normal error: %f degrees\n", totalNormalError / vertexCount * 180 / 3.14159265359 );
@@ -767,7 +754,7 @@ void Optimizer::decompressTangents( uint32_t usageIndex )
 					continue;
 				}
 
-                
+
 				VertexElement newElement = element;
 				newElement.offset = offset;
 				newVertexDeclaration.push_back( newElement );
@@ -808,10 +795,10 @@ void Optimizer::decompressTangents( uint32_t usageIndex )
 				Vector4 packedTangents = readAttribute( *packedTangentElement, oldData );
 
 				Vector3 normal;
-                Vector3 tangent;
+				Vector3 tangent;
 				Vector3 bitangent;
-                unpackTangents( packedTangents, &normal, &tangent, &bitangent );
-                
+				unpackTangents( packedTangents, &normal, &tangent, &bitangent );
+
 				writeAttribute( newTangentElement, newData, Vector4( tangent, 0.0f ) );
 				writeAttribute( newBitangentElement, newData, Vector4( bitangent, 0.0f ) );
 				writeAttribute( newNormalElement, newData, Vector4( normal, 0.0f ) );
@@ -828,29 +815,29 @@ void Optimizer::decompressTangents( uint32_t usageIndex )
 
 void Optimizer::optimizeVertexPerformance()
 {
-    for( OptMesh& mesh : meshes )
-    {
+	for( OptMesh& mesh : meshes )
+	{
 		for( OptMeshLod& lod : mesh.lods )
 		{
 			uint32_t* indexData = reinterpret_cast<uint32_t*>( lod.indexBuffer.data.data() );
 			uint32_t indexCount = lod.indexBuffer.length();
 
-            uint8_t* vertexData = lod.vertexBuffer.data.data();
-            uint32_t vertexCount = lod.vertexBuffer.length();
+			uint8_t* vertexData = lod.vertexBuffer.data.data();
+			uint32_t vertexCount = lod.vertexBuffer.length();
 			uint32_t vertexStride = lod.vertexBuffer.stride;
 
 
-            // Regenerate the index buffer.
-            // - Some exporters may not be perfect.
-            // - Some vertices may get merged after attribute compression.
-            {
+			// Regenerate the index buffer.
+			// - Some exporters may not be perfect.
+			// - Some vertices may get merged after attribute compression.
+			{
 				std::vector<uint32_t> remap( vertexCount );
-				uint32_t newVertexCount = (uint32_t) meshopt_generateVertexRemap( remap.data(), indexData, indexCount, vertexData, vertexCount, vertexStride );
+				uint32_t newVertexCount = (uint32_t)meshopt_generateVertexRemap( remap.data(), indexData, indexCount, vertexData, vertexCount, vertexStride );
 
 				meshopt_remapVertexBuffer( vertexData, vertexData, vertexCount, vertexStride, remap.data() );
 
 				meshopt_remapIndexBuffer( indexData, indexData, indexCount, remap.data() );
-                lod.vertexBuffer.data.resize( newVertexCount * vertexStride );
+				lod.vertexBuffer.data.resize( newVertexCount * vertexStride );
 
 				for( OptMorphTargetLod& morph : lod.morphTargetLods )
 				{
@@ -861,21 +848,21 @@ void Optimizer::optimizeVertexPerformance()
 					morph.vertexBuffer.data.resize( newVertexCount * morphStride );
 				}
 
-                vertexCount = newVertexCount;
-            }
-            
+				vertexCount = newVertexCount;
+			}
 
-            // Optimize the index buffer for vertex cache coherency and overdraw. This can improve performance a lot.
-            for( OptMeshAreaLod& area : lod.areas )
-            {
+
+			// Optimize the index buffer for vertex cache coherency and overdraw. This can improve performance a lot.
+			for( OptMeshAreaLod& area : lod.areas )
+			{
 				uint32_t* data = indexData + area.firstElement;
 				meshopt_optimizeVertexCache( data, data, area.elementCount, vertexCount );
 				meshopt_optimizeOverdraw( data, data, area.elementCount, reinterpret_cast<const float*>( vertexData ), vertexCount, vertexStride, 1.01f );
-            }
+			}
 
-            // Reorder all the vertices so that they are in the order that they appear in the optimized index buffer.
-            // This improves cache coherency when reading vertex attributes, which is a minor but easy win.
-            {
+			// Reorder all the vertices so that they are in the order that they appear in the optimized index buffer.
+			// This improves cache coherency when reading vertex attributes, which is a minor but easy win.
+			{
 				std::vector<uint32_t> remap( vertexCount );
 				meshopt_optimizeVertexFetchRemap( remap.data(), indexData, indexCount, vertexCount );
 
@@ -889,8 +876,8 @@ void Optimizer::optimizeVertexPerformance()
 					meshopt_remapVertexBuffer( morphData, morphData, vertexCount, morphStride, remap.data() );
 				}
 			}
-        }
-    }
+		}
+	}
 }
 
 void cmf::optimizer::Optimizer::generateLODs()
@@ -898,39 +885,39 @@ void cmf::optimizer::Optimizer::generateLODs()
 	for( OptMesh& mesh : meshes )
 	{
 
-        if( mesh.lods.size() > 1 )
+		if( mesh.lods.size() > 1 )
 		{
 			printf( "Mesh %s already has %zu LODs. Deleting them.\n", mesh.name.c_str(), mesh.lods.size() );
 
-            mesh.lods.resize( 1 );
+			mesh.lods.resize( 1 );
 		}
 
-        /* while( mesh.lods[0].areas.size() > 1 )
+		/* while( mesh.lods[0].areas.size() > 1 )
 		{
 			mesh.lods[0].areas.erase( mesh.lods[0].areas.begin() + 1 );
 		}*/
 
-        
-        if( true )
+
+		if( true )
 		{
 
 
-            uint32_t numFloats = 0u;
+			uint32_t numFloats = 0u;
 			std::vector<float> attributeWeights;
 
-		    for( VertexElement element : mesh.vertexDeclaration )
-		    {
-                for( uint32_t i = 0; i < element.elementCount; i++ )
+			for( VertexElement element : mesh.vertexDeclaration )
+			{
+				for( uint32_t i = 0; i < element.elementCount; i++ )
 				{
-                    numFloats++;
+					numFloats++;
 					if( element.usage != Usage::Position )
-                    {
+					{
 						attributeWeights.push_back( 1.0f );
 					}
 				}
-		    }
+			}
 
-            numFloats += 1u; //for area index
+			numFloats += 1u; //for area index
 			attributeWeights.push_back( 100.0f );
 
 
@@ -938,7 +925,7 @@ void cmf::optimizer::Optimizer::generateLODs()
 			std::vector<float> vertexAttributeFloats;
 			std::vector<uint32_t> indexData;
 
-            {
+			{
 				OptMeshLod& originalLod = mesh.lods[0];
 				uint8_t* vertexBuffer = originalLod.vertexBuffer.data.data();
 				uint32_t vertexCount = originalLod.vertexBuffer.length();
@@ -973,11 +960,11 @@ void cmf::optimizer::Optimizer::generateLODs()
 				}
 			}
 
-            {
-                
-				uint32_t indexCount = (uint32_t) indexData.size();
-				
-				uint32_t vertexCount = (uint32_t) vertexAttributeFloats.size() / numFloats;
+			{
+
+				uint32_t indexCount = (uint32_t)indexData.size();
+
+				uint32_t vertexCount = (uint32_t)vertexAttributeFloats.size() / numFloats;
 				uint32_t vertexStride = sizeof( float ) * numFloats;
 
 				std::vector<uint32_t> remap( indexCount );
@@ -996,13 +983,13 @@ void cmf::optimizer::Optimizer::generateLODs()
 
 				uint32_t targetIndexCount = previousLodIndexCount / 2u;
 
-                //uint32_t targets[6] = { 32517, 29106, 20373, 11535, 5301, 1929 };
-                //uint32_t targetIndexCount = targets[i];
+				//uint32_t targets[6] = { 32517, 29106, 20373, 11535, 5301, 1929 };
+				//uint32_t targetIndexCount = targets[i];
 
 				printf( "Generating LOD with a target of %d indices.\n", targetIndexCount );
 
-                
-				uint32_t vertexCount = (uint32_t) vertexAttributeFloats.size() / numFloats;
+
+				uint32_t vertexCount = (uint32_t)vertexAttributeFloats.size() / numFloats;
 				uint32_t vertexStride = sizeof( float ) * numFloats;
 
 				std::vector<float> lodVertexAttributeFloats;
@@ -1018,8 +1005,8 @@ void cmf::optimizer::Optimizer::generateLODs()
 				options |= meshopt_SimplifyPrune;
 				//options |= meshopt_SimplifyRegularize;
 				//options |= meshopt_SimplifyLockBorder;
-                
-                /*
+
+				/*
                 uint32_t lodIndexCount = (uint32_t)meshopt_simplifyWithAttributes( 
                     lodIndexBuffer.data(), lodIndexBuffer.data(), lodIndexBuffer.size(),
                     vertexData.data(), vertexCount, vertexStride, 
@@ -1032,24 +1019,15 @@ void cmf::optimizer::Optimizer::generateLODs()
                     &error
                 );
                 */
-                
 
-                
-                uint32_t lodIndexCount = (uint32_t)meshopt_simplifyWithUpdate(
-                    lodIndexBuffer.data(), lodIndexBuffer.size(),
-                    lodVertexAttributeFloats.data(), vertexCount, vertexStride, 
-                    lodVertexAttributeFloats.data() + 3, vertexStride, 
-                    attributeWeights.data(), attributeWeights.size(), 
-                    nullptr, 
-                    targetIndexCount, 
-                    FLT_MAX, 
-                    options, 
-                    &error
-                );
-                
-                
+
+
+				uint32_t lodIndexCount = (uint32_t)meshopt_simplifyWithUpdate(
+					lodIndexBuffer.data(), lodIndexBuffer.size(), lodVertexAttributeFloats.data(), vertexCount, vertexStride, lodVertexAttributeFloats.data() + 3, vertexStride, attributeWeights.data(), attributeWeights.size(), nullptr, targetIndexCount, FLT_MAX, options, &error );
+
+
 				//uint32_t lodIndexCount = (uint32_t)meshopt_simplify( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, FLT_MAX, options, &error );
-				
+
 
 
 				if( lodIndexCount >= targetIndexCount * 1.1f || lodIndexCount == 0 )
@@ -1080,7 +1058,7 @@ void cmf::optimizer::Optimizer::generateLODs()
 				printf( "Generated LOD with %d indices with error %f.\n", lodIndexCount, error );
 
 
-                
+
 
 				OptMeshLod& lod = mesh.lods.emplace_back();
 
@@ -1095,24 +1073,23 @@ void cmf::optimizer::Optimizer::generateLODs()
 
 					uint8_t* vertexPointer = lod.vertexBuffer.data.data();
 
-                    for( uint32_t i = 0; i < vertexCount; i++ )
+					for( uint32_t i = 0; i < vertexCount; i++ )
 					{
-
 					}
-				} 
-                else 
-                {
+				}
+				else
+				{
 
 
-                    uint32_t newStride = mesh.lods[0].vertexBuffer.stride;
+					uint32_t newStride = mesh.lods[0].vertexBuffer.stride;
 
 
-                    lod.vertexBuffer.data.resize( lodIndexCount * newStride );
+					lod.vertexBuffer.data.resize( lodIndexCount * newStride );
 					lod.vertexBuffer.stride = newStride;
 
-                    uint8_t* vertexPointer = lod.vertexBuffer.data.data();
+					uint8_t* vertexPointer = lod.vertexBuffer.data.data();
 
-                    std::vector<std::vector<uint32_t>> areaIndexBuffers( mesh.lods[0].areas.size() );
+					std::vector<std::vector<uint32_t>> areaIndexBuffers( mesh.lods[0].areas.size() );
 
 					for( uint32_t i = 0; i < lodIndexCount; i += 3 )
 					{
@@ -1123,19 +1100,19 @@ void cmf::optimizer::Optimizer::generateLODs()
 						{
 							uint32_t index = lodIndexBuffer[i + j];
 
-                            float* vertexFloats = lodVertexAttributeFloats.data() + index * numFloats;
+							float* vertexFloats = lodVertexAttributeFloats.data() + index * numFloats;
 							for( VertexElement attribute : mesh.vertexDeclaration )
 							{
-								Vector4 values(0, 0, 0, 0);
+								Vector4 values( 0, 0, 0, 0 );
 								for( uint32_t k = 0; k < attribute.elementCount; k++ )
 								{
-									values[k] = *(vertexFloats++);
+									values[k] = *( vertexFloats++ );
 								}
 								writeAttribute( attribute, vertexPointer, values );
 							}
 							vertexPointer += newStride;
 
-                            areaIndices[j] = roundf( *(vertexFloats++) );
+							areaIndices[j] = roundf( *( vertexFloats++ ) );
 						}
 
 						if( areaIndices[0] != areaIndices[1] || areaIndices[0] != areaIndices[2] )
@@ -1143,105 +1120,100 @@ void cmf::optimizer::Optimizer::generateLODs()
 							printf( "Area indices of triangle are messed up! %f, %f, %f\n", areaIndices[0], areaIndices[1], areaIndices[2] );
 						}
 
-                        uint32_t areaIndex = (uint32_t) areaIndices[0];
+						uint32_t areaIndex = (uint32_t)areaIndices[0];
 
-                        areaIndexBuffers[areaIndex].push_back( i + 0 );
+						areaIndexBuffers[areaIndex].push_back( i + 0 );
 						areaIndexBuffers[areaIndex].push_back( i + 1 );
 						areaIndexBuffers[areaIndex].push_back( i + 2 );
 					}
 
-                    
 
-                    lod.indexBuffer.data.resize( lodIndexCount * 4 );
+
+					lod.indexBuffer.data.resize( lodIndexCount * 4 );
 					lod.indexBuffer.stride = 4;
 					uint32_t test = lod.indexBuffer.length();
 
 					uint32_t* indexPointer = reinterpret_cast<uint32_t*>( lod.indexBuffer.data.data() );
 					uint32_t firstElement = 0u;
-                    for( uint32_t areaIndex = 0; areaIndex < mesh.lods[0].areas.size(); areaIndex++ )
-                    {
+					for( uint32_t areaIndex = 0; areaIndex < mesh.lods[0].areas.size(); areaIndex++ )
+					{
 						uint32_t elementCount = (uint32_t)areaIndexBuffers[areaIndex].size();
 						lod.areas.push_back( { firstElement, elementCount } );
 
-                        for( uint32_t i = 0; i < elementCount; i++ )
+						for( uint32_t i = 0; i < elementCount; i++ )
 						{
 							indexPointer[firstElement + i] = areaIndexBuffers[areaIndex][i];
 						}
 
-                        firstElement += elementCount;
-						
-                    }
+						firstElement += elementCount;
+					}
 				}
 
 				previousLodIndexCount = lodIndexCount;
-
-
 			}
 
 
 
-            printf( "Done\n" );
-
+			printf( "Done\n" );
 		}
 		else
 		{
 
 
-            uint32_t previousLodIndexCount = mesh.lods[0].indexBuffer.length();
-		    while( previousLodIndexCount > 3 * 128 )
-		    {
+			uint32_t previousLodIndexCount = mesh.lods[0].indexBuffer.length();
+			while( previousLodIndexCount > 3 * 128 )
+			{
 
-			    OptMeshLod& originalLod = mesh.lods[0];
+				OptMeshLod& originalLod = mesh.lods[0];
 
-			    float* originalVertexBuffer = reinterpret_cast<float*>( originalLod.vertexBuffer.data.data() );
-			    uint32_t originalVertexCount = originalLod.vertexBuffer.length();
-			    uint32_t vertexStride = originalLod.vertexBuffer.stride;
+				float* originalVertexBuffer = reinterpret_cast<float*>( originalLod.vertexBuffer.data.data() );
+				uint32_t originalVertexCount = originalLod.vertexBuffer.length();
+				uint32_t vertexStride = originalLod.vertexBuffer.stride;
 
-			    uint32_t* originalIndexBuffer = reinterpret_cast<uint32_t*>( originalLod.indexBuffer.data.data() );
-			    uint32_t originalIndexCount = originalLod.indexBuffer.length();
+				uint32_t* originalIndexBuffer = reinterpret_cast<uint32_t*>( originalLod.indexBuffer.data.data() );
+				uint32_t originalIndexCount = originalLod.indexBuffer.length();
 
 
 
-                uint32_t targetIndexCount = previousLodIndexCount / 2u;
+				uint32_t targetIndexCount = previousLodIndexCount / 2u;
 
-                std::vector<uint8_t> lodIndexBuffer( originalIndexCount * 4 );
-			    float error;
+				std::vector<uint8_t> lodIndexBuffer( originalIndexCount * 4 );
+				float error;
 
-                auto options = 0;
-			    options |= meshopt_SimplifyPermissive;
-			    options |= meshopt_SimplifyPrune;
-			    options |= meshopt_SimplifyRegularize;
-			    uint32_t lodIndexCount = (uint32_t)meshopt_simplify( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, FLT_MAX, options, &error );
-			    //uint32_t lodIndexCount = (uint32_t)meshopt_simplifySloppy( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, 1.0f, &error );
-            
+				auto options = 0;
+				options |= meshopt_SimplifyPermissive;
+				options |= meshopt_SimplifyPrune;
+				options |= meshopt_SimplifyRegularize;
+				uint32_t lodIndexCount = (uint32_t)meshopt_simplify( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, FLT_MAX, options, &error );
+				//uint32_t lodIndexCount = (uint32_t)meshopt_simplifySloppy( reinterpret_cast<uint32_t*>( lodIndexBuffer.data() ), originalIndexBuffer, originalIndexCount, originalVertexBuffer, originalVertexCount, vertexStride, targetIndexCount, 1.0f, &error );
 
-                if( lodIndexCount >= targetIndexCount * 3 / 2 || lodIndexCount == 0 )
-			    {
-				    printf( "Generated LOD with %d indices, so we're stuck. Cancelling.\n", lodIndexCount );
-				    break;
-                }
 
-                lodIndexBuffer.resize( lodIndexCount * 4 );
+				if( lodIndexCount >= targetIndexCount * 3 / 2 || lodIndexCount == 0 )
+				{
+					printf( "Generated LOD with %d indices, so we're stuck. Cancelling.\n", lodIndexCount );
+					break;
+				}
 
-                printf( "Generated LOD with %d indices with error %f.\n", lodIndexCount, error );
+				lodIndexBuffer.resize( lodIndexCount * 4 );
 
-                OptMeshLod& lod = mesh.lods.emplace_back();
+				printf( "Generated LOD with %d indices with error %f.\n", lodIndexCount, error );
 
-                lod.threshold = 1.0f / error;
+				OptMeshLod& lod = mesh.lods.emplace_back();
 
-                lod.vertexBuffer = mesh.lods[0].vertexBuffer;
+				lod.threshold = 1.0f / error;
 
-			    lod.indexBuffer.data.assign( lodIndexBuffer.begin(), lodIndexBuffer.end() );
-			    lod.indexBuffer.stride = 4;
+				lod.vertexBuffer = mesh.lods[0].vertexBuffer;
 
-                lod.areas.push_back( {0, lodIndexCount} );
+				lod.indexBuffer.data.assign( lodIndexBuffer.begin(), lodIndexBuffer.end() );
+				lod.indexBuffer.stride = 4;
 
-                previousLodIndexCount = lodIndexCount;
+				lod.areas.push_back( { 0, lodIndexCount } );
+
+				previousLodIndexCount = lodIndexCount;
 			}
 		}
-    }
+	}
 }
-
 
 
 
@@ -1251,13 +1223,13 @@ Span<T> convertToSpan( MemoryAllocator& allocator, const std::vector<T>& element
 {
 	Span<T> span = allocator.AllocateSpan<T>( elements.size() );
 	memcpy( span.data(), elements.data(), elements.size() * sizeof( T ) );
-    return span;
+	return span;
 }
 
 std::vector<uint8_t> Optimizer::toCmf( bool compress )
 {
 	MemoryAllocator allocator;
-	BufferManager bufferAllocator(allocator);
+	BufferManager bufferAllocator( allocator );
 
 	Data* data = content->m_cmfData;
 
@@ -1287,12 +1259,12 @@ std::vector<uint8_t> Optimizer::toCmf( bool compress )
 		{
 			newMesh.morphTargets.decl = convertToSpan( allocator, optMesh.morphTargets[0].vertexDeclaration );
 		}
-		for( uint32_t morphIndex = 0; morphIndex < optMesh.morphTargets.size(); morphIndex++ ) 
-        {
+		for( uint32_t morphIndex = 0; morphIndex < optMesh.morphTargets.size(); morphIndex++ )
+		{
 			MorphTarget oldMorph = oldMesh.morphTargets.targets[morphIndex];
 			OptMorphTarget optMorph = optMesh.morphTargets[morphIndex];
 			newMesh.morphTargets.targets[morphIndex] = oldMorph;
-	    }
+		}
 
 
 		newMesh.lods = allocator.AllocateSpan<MeshLod>( optMesh.lods.size() );
@@ -1302,40 +1274,39 @@ std::vector<uint8_t> Optimizer::toCmf( bool compress )
 
 			MeshLod& newLod = newMesh.lods[lodIndex];
 
-            OptBufferData& vertexBuffer = optLod.vertexBuffer;
+			OptBufferData& vertexBuffer = optLod.vertexBuffer;
 			OptBufferData& indexBuffer = optLod.indexBuffer;
 
-            
-			newLod.vb = bufferAllocator.AddBuffer( vertexBuffer.data.data(), (uint32_t)vertexBuffer.data.size(), vertexBuffer.stride, compress ? SectionCompression::MeshOptimizerVertexBuffer : SectionCompression::None );
+			newLod.vb = bufferAllocator.AddBuffer( vertexBuffer.data.data(), (uint32_t)vertexBuffer.data.size(), vertexBuffer.stride );
 
 
-            
-            if( vertexBuffer.length() < ( 1u << 16 ) )
-            {
+
+			if( vertexBuffer.length() < ( 1u << 16 ) )
+			{
 				OptBufferData indexBuffer16;
 				convertIndexBuffer( indexBuffer, 2, indexBuffer16 );
-                //Use AllocateBuffer here since the data we have isn't persistent
-				newLod.ib = bufferAllocator.AllocateBuffer( indexBuffer16.data.data(), (uint32_t)indexBuffer16.data.size(), indexBuffer16.stride, compress ? SectionCompression::MeshOptimizerIndexBuffer : SectionCompression::None );
+				//Use AllocateBuffer here since the data we have isn't persistent
+				newLod.ib = bufferAllocator.AllocateBuffer( indexBuffer16.data.data(), (uint32_t)indexBuffer16.data.size(), indexBuffer16.stride );
 			}
 			else
 			{
-				newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t)indexBuffer.data.size(), indexBuffer.stride, compress ? SectionCompression::MeshOptimizerIndexBuffer : SectionCompression::None );
-            }
-            
-			
+				newLod.ib = bufferAllocator.AddBuffer( indexBuffer.data.data(), (uint32_t)indexBuffer.data.size(), indexBuffer.stride );
+			}
 
-            newLod.areas = allocator.AllocateSpan<LodMeshArea>( optLod.areas.size() );
+
+
+			newLod.areas = allocator.AllocateSpan<LodMeshArea>( optLod.areas.size() );
 			for( uint32_t areaIndex = 0; areaIndex < optLod.areas.size(); areaIndex++ )
-            {
+			{
 				OptMeshAreaLod optArea = optLod.areas[areaIndex];
 				newLod.areas[areaIndex] = { optArea.firstElement / 3, optArea.elementCount / 3 };
-            }
+			}
 
-            newLod.morphTargets = allocator.AllocateSpan<LodMorphTarget>( optLod.morphTargetLods.size() );
+			newLod.morphTargets = allocator.AllocateSpan<LodMorphTarget>( optLod.morphTargetLods.size() );
 			for( uint32_t morphIndex = 0; morphIndex < optLod.morphTargetLods.size(); morphIndex++ )
 			{
 				OptMorphTargetLod optMorphTarget = optLod.morphTargetLods[morphIndex];
-				newLod.morphTargets[morphIndex] = { bufferAllocator.AddBuffer( optMorphTarget.vertexBuffer.data.data(), (uint32_t)optMorphTarget.vertexBuffer.data.size(), optMorphTarget.vertexBuffer.stride, compress ? SectionCompression::MeshOptimizerVertexBuffer : SectionCompression::None ) };
+				newLod.morphTargets[morphIndex] = { bufferAllocator.AddBuffer( optMorphTarget.vertexBuffer.data.data(), (uint32_t)optMorphTarget.vertexBuffer.data.size(), optMorphTarget.vertexBuffer.stride ) };
 			}
 
 			newLod.threshold = optLod.threshold;

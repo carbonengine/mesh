@@ -10,7 +10,7 @@ BufferView UnapplyIndexBuffer( const BufferView& vb, const BufferView& ib, Memor
 {
 	auto indexCount = ib.size / ib.stride;
 
-	auto newVB = bufferManager.AllocateBuffer( nullptr, vb.stride * indexCount, vb.stride, SectionCompression::MeshOptimizerVertexBuffer );
+	auto newVB = bufferManager.AllocateBuffer( nullptr, vb.stride * indexCount, vb.stride );
 
 	ConstIndexBufferStream oldIndices( ib, bufferManager );
 	for( uint32_t i = 0; i < oldIndices.size(); ++i )
@@ -26,7 +26,7 @@ BufferView UnapplyIndexBuffer( const BufferView& vb, const BufferView& ib, Memor
 
 BufferView MakeIdentityIndexBuffer( uint32_t indexCount, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
-	auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint32_t ), sizeof( uint32_t ), SectionCompression::MeshOptimizerIndexBuffer );
+	auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint32_t ), sizeof( uint32_t ) );
 	for( uint32_t i = 0; i < indexCount; ++i )
 	{
 		static_cast<uint32_t*>( bufferManager.GetData( newIB ) )[i] = i;
@@ -42,7 +42,7 @@ BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Sp
 	{
 		newVertexStride += GetVertexElementSize( element );
 	}
-	auto newView = bufferManager.AllocateBuffer( nullptr, vertexCount * newVertexStride, newVertexStride, SectionCompression::MeshOptimizerVertexBuffer );
+	auto newView = bufferManager.AllocateBuffer( nullptr, vertexCount * newVertexStride, newVertexStride );
 
 	struct Mapping
 	{
@@ -117,7 +117,7 @@ void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager )
 		return;
 	}
 
-	lod.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * vertexStride, vertexStride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+	lod.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * vertexStride, vertexStride );
 
 	meshopt_remapVertexBuffer( bufferManager.GetData( lod.vb ), vertexData, vertexCount, vertexStride, remap.data() );
 	if( lod.ib.stride == 4 )
@@ -131,7 +131,7 @@ void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager )
 	for( auto& morph : lod.morphTargets )
 	{
 		auto morphData = bufferManager.GetData( morph.vb );
-		morph.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * morph.vb.stride, morph.vb.stride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+		morph.vb = bufferManager.AllocateBuffer( nullptr, newVertexCount * morph.vb.stride, morph.vb.stride );
 		meshopt_remapVertexBuffer( bufferManager.GetData( morph.vb ), morphData, vertexCount, morph.vb.stride, remap.data() );
 	}
 }
@@ -155,7 +155,7 @@ BufferView ConvertTo16BitIndexBuffer( const BufferView& ib, MemoryAllocator& all
 		// Cannot convert to 16-bit because of large indices.
 		return ib;
 	}
-	auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint16_t ), sizeof( uint16_t ), SectionCompression::MeshOptimizerIndexBuffer );
+	auto newIB = bufferManager.AllocateBuffer( nullptr, indexCount * sizeof( uint16_t ), sizeof( uint16_t ) );
 	for( uint32_t i = 0; i < indexCount; ++i )
 	{
 		static_cast<uint16_t*>( bufferManager.GetData( newIB ) )[i] = (uint16_t)indexData[i];

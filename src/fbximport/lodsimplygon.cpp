@@ -356,7 +356,7 @@ void ImportIndexBuffer( cmf::MeshLod& newLod, const Simplygon::spPackedGeometryD
 	}
 
 	// build index buffer to keep group order intact
-	newLod.ib = bufferAllocator.AllocateBuffer( nullptr, newIndexCount * sizeof( uint32_t ), sizeof( uint32_t ), cmf::SectionCompression::MeshOptimizerIndexBuffer );
+	newLod.ib = bufferAllocator.AllocateBuffer( nullptr, newIndexCount * sizeof( uint32_t ), sizeof( uint32_t ) );
 	auto newIndices = static_cast<uint32_t*>( bufferAllocator.GetData( newLod.ib ) );
 	cntr = 0;
 	for( auto& indices : groupIndices )
@@ -371,7 +371,7 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 	cmf::MeshLod newLod;
 
 	uint32_t newVertexCount = packed->GetCoords()->GetTupleCount();
-	newLod.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( newVertexCount * mesh.lods[0].vb.stride ), mesh.lods[0].vb.stride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+	newLod.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( newVertexCount * mesh.lods[0].vb.stride ), mesh.lods[0].vb.stride );
 	uint8_t* vbData = static_cast<uint8_t*>( bufferAllocator.GetData( newLod.vb ) );
 
 	for( auto& element : mesh.decl )
@@ -425,7 +425,7 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 	for( size_t targetIndex = 0; targetIndex < mesh.morphTargets.targets.size(); ++targetIndex )
 	{
 		cmf::LodMorphTarget newMorphTarget;
-		newMorphTarget.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( newVertexCount * mesh.lods[0].morphTargets[0].vb.stride ), mesh.lods[0].morphTargets[0].vb.stride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+		newMorphTarget.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( newVertexCount * mesh.lods[0].morphTargets[0].vb.stride ), mesh.lods[0].morphTargets[0].vb.stride );
 
 		for( auto& element : mesh.morphTargets.decl )
 		{

@@ -221,12 +221,12 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 				break;
 			case cmf::Usage::Color:
 				if( element.usageIndex == 0 )
-                {
-                    AddToVertex( ToVector4( colors[i] ) );
-                }
-                else 
-                {
-                    // locked vertex flags
+				{
+					AddToVertex( ToVector4( colors[i] ) );
+				}
+				else
+				{
+					// locked vertex flags
 					AddToVertex( ToVector4( lockedVertices->vertex_color[i] ) );
 				}
 				break;
@@ -261,7 +261,7 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 		vb.insert( vb.end(), vertex.begin(), vertex.end() );
 	}
 
-	return bufferAllocator.AllocateBuffer( vb.data(), uint32_t( vb.size() ), stride, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+	return bufferAllocator.AllocateBuffer( vb.data(), uint32_t( vb.size() ), stride );
 }
 
 /**
@@ -321,18 +321,18 @@ cmf::Span<cmf::VertexElement> CreateVertexDeclaration( const ufbx_mesh& geom, co
 		cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, 0, cmf::ElementType::Float32, 4, offset } );
 		offset += sizeof( Vector4 );
 	}
-    if ( !options.lods.simplygon.lockVertexChannel.empty() )
-    {
-        auto found = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [&options]( const ufbx_color_set& cs ) {
-            return ToString( cs.name ) == options.lods.simplygon.lockVertexChannel;
+	if( !options.lods.simplygon.lockVertexChannel.empty() )
+	{
+		auto found = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [&options]( const ufbx_color_set& cs ) {
+			return ToString( cs.name ) == options.lods.simplygon.lockVertexChannel;
 		} );
-        if ( found == geom.color_sets.end() || !found->vertex_color.exists )
-        {
+		if( found == geom.color_sets.end() || !found->vertex_color.exists )
+		{
 			throw std::runtime_error( "mesh is missing simplygon lock vertex color set " + options.lods.simplygon.lockVertexChannel );
-        }
+		}
 		cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, LOCKED_VERTEX_USAGE_INDEX, cmf::ElementType::Float32, 4, offset } );
 		offset += sizeof( Vector4 );
-    }
+	}
 	for( uint32_t uvSet = 0; uvSet < options.uvSets; ++uvSet )
 	{
 		if( uvSet >= geom.uv_sets.count || !geom.uv_sets[uvSet].vertex_uv.exists )
@@ -670,7 +670,7 @@ std::pair<cmf::MorphTargets, cmf::Span<cmf::LodMorphTarget>> ImportBlendShapes( 
 		normals.ExtractNormals( name, positions.data() );
 
 		cmf::LodMorphTarget lodMorphTarget;
-		lodMorphTarget.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( mesh.vertex_position.indices.count * vertexSize ), vertexSize, cmf::SectionCompression::MeshOptimizerVertexBuffer );
+		lodMorphTarget.vb = bufferAllocator.AllocateBuffer( nullptr, uint32_t( mesh.vertex_position.indices.count * vertexSize ), vertexSize );
 		auto vb = static_cast<uint8_t*>( bufferAllocator.GetData( lodMorphTarget.vb ) );
 
 		auto AddData = [&vb]( const auto& x ) {
@@ -892,7 +892,7 @@ void CreateTopology( cmf::MeshLod& outLod, const ufbx_mesh& geom, cmf::MemoryAll
 		area.elementCount = uint32_t( indices.size() / 3 ) - area.firstElement;
 		cmf::Modify( outLod.areas, allocator ).push_back( area );
 	}
-	outLod.ib = bufferAllocator.AllocateBuffer( indices.data(), uint32_t( indices.size() * sizeof( uint32_t ) ), sizeof( uint32_t ), cmf::SectionCompression::MeshOptimizerIndexBuffer );
+	outLod.ib = bufferAllocator.AllocateBuffer( indices.data(), uint32_t( indices.size() * sizeof( uint32_t ) ), sizeof( uint32_t ) );
 }
 
 /** @brief Computes the transformation matrices from mesh space to each bone's local space.
@@ -1053,26 +1053,26 @@ cmf::Mesh ImportMesh( const ufbx_node& meshNode, const MeshImportOptions& option
 
 	GenerateLods( outMesh, options.lods, allocator, bufferAllocator );
 
-    // Remove vertex colors if they were added for LOD generation but are not desired in the final mesh
+	// Remove vertex colors if they were added for LOD generation but are not desired in the final mesh
 	if( FindElement( outMesh.decl, cmf::Usage::Color, LOCKED_VERTEX_USAGE_INDEX ) )
-    {
+	{
 		cmf::Span<cmf::VertexElement> newDecl;
 		uint32_t offset = 0;
-        for( auto element : outMesh.decl )
-        {
-            if( element.usage != cmf::Usage::Color || element.usageIndex != LOCKED_VERTEX_USAGE_INDEX )
-            {
+		for( auto element : outMesh.decl )
+		{
+			if( element.usage != cmf::Usage::Color || element.usageIndex != LOCKED_VERTEX_USAGE_INDEX )
+			{
 				element.offset = offset;
 				offset += cmf::GetVertexElementSize( element );
-                cmf::Modify( newDecl, allocator ).push_back( element );
-            }
+				cmf::Modify( newDecl, allocator ).push_back( element );
+			}
 		}
 		for( auto& lod : outMesh.lods )
-        {
-            lod.vb = cmf::ChangeBufferVertexDeclaration( lod.vb, outMesh.decl, newDecl, allocator, bufferAllocator );
+		{
+			lod.vb = cmf::ChangeBufferVertexDeclaration( lod.vb, outMesh.decl, newDecl, allocator, bufferAllocator );
 		}
 		outMesh.decl = newDecl;
-    }
+	}
 
 	if( options.compressTangents )
 	{

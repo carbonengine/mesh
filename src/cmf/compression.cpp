@@ -54,11 +54,6 @@ std::vector<uint8_t> Compress( const void* data, uint32_t size, uint32_t compres
 	return compressedData;
 }
 
-std::vector<uint8_t> Compress( BufferManager::Buffer buffer )
-{
-	return Compress( buffer.data, buffer.size, buffer.compressionStride, buffer.compression );
-}
-
 void Decompress( void* dest, const Section& section, const void* sectionData )
 {
 	switch( section.compression )
