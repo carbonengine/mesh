@@ -161,6 +161,7 @@ endif()
 
 
 add_subdirectory (src/fbximport) 
+add_subdirectory( src/processor )
 
 add_subdirectory (src/cmf/test) 
 enable_testing()

@@ -52,7 +52,7 @@ BufferView BufferManager::AddBuffer( void* data, uint32_t size, uint32_t stride 
 
 BufferView BufferManager::AddCompressedBuffer( void* data, uint32_t size, uint32_t stride, SectionCompression compression, uint32_t compressedSize )
 {
-	m_buffers.push_back( std::make_unique<Buffer>( Buffer{ data, size, compression, compressedSize } ) );
+	m_buffers.push_back( std::make_unique<Buffer>( Buffer{ data, size, compression, compressedSize, stride } ) );
 	return { uint32_t( m_buffers.size() - 1 ), 0, size, stride };
 }
 
