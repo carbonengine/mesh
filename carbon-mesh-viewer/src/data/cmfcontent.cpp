@@ -50,19 +50,9 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	fclose( file );
 
 	auto validationResult = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
-	if( !validationResult.first )
+	if( !validationResult )
 	{
-		Log::Error( "File validation failed: %s", filename );
-		return nullptr;
-	}
-	if( !validationResult.second.validateHeader )
-	{
-		Log::Error( "File header validation failed: %s", filename );
-		return nullptr;
-	}
-	if( !validationResult.second.validateMainData )
-	{
-		Log::Error( "File main data validation failed: %s", filename );
+		Log::Error( "File %s validation failed: %s", filename, validationResult.error.c_str() );
 		return nullptr;
 	}
 

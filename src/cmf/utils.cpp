@@ -1,5 +1,6 @@
 #include "cmf/utils.h"
 #include "cmf/declutils.h"
+#include "cmf/bufferstreams.h"
 #include <numeric>
 
 
@@ -85,29 +86,29 @@ bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& section
 	}
 }
 
-bool IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& header, uint32_t lastEnd, size_t fileSize )
+std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& header, uint32_t lastEnd, size_t fileSize )
 {
 	// Section must be within file bounds
 	if( section.offset + section.compressedSize > fileSize )
 	{
-		return false;
+		return "Section exceeds file bounds (offset + compressedSize > fileSize)";
 	}
 	// Sections must not overlap
 	if( section.offset < lastEnd )
 	{
-		return false;
+		return "Section overlaps with a previous section";
 	}
 	// The first section must be a data section
 	if( &section == header.sections.begin() && section.type != cmf::SectionType::Data )
 	{
-		return false;
+		return "First section must be a data section";
 	}
 	// If not compressed, uncompressedSize must match size
 	if( section.compression == cmf::SectionCompression::None )
 	{
 		if( section.uncompressedSize != section.compressedSize )
 		{
-			return false;
+			return "Uncompressed section has mismatched uncompressedSize and compressedSize";
 		}
 	}
 	switch( section.type )
@@ -116,49 +117,50 @@ bool IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& heade
 		// Only one data section allowed
 		if( &section != header.sections.begin() )
 		{
-			return false;
+			return "Multiple data sections found; only one is allowed";
 		}
 		// Data section must not be compressed
 		if( section.compression != cmf::SectionCompression::None )
 		{
-			return false;
+			return "Data section must not be compressed";
 		}
 		break;
 	case cmf::SectionType::Metadata:
 		// Metadata section must be last
 		if( &section != header.sections.end() - 1 )
 		{
-			return false;
+			return "Metadata section must be the last section";
 		}
 		// Metadata section must not be compressed
 		if( section.compression != cmf::SectionCompression::None )
 		{
-			return false;
+			return "Metadata section must not be compressed";
 		}
 		break;
 	default:
 		break;
 	}
-	return true;
+	return {};
 }
 
-bool AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
+std::string AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 {
 	if( header.sections.empty() )
 	{
-		return false;
+		return "Header contains no sections";
 	}
 
 	uint32_t lastEnd = header.headerSize;
-	for( auto& section : header.sections )
+	for( const auto& section : header.sections )
 	{
-		if( !IsHeaderSectionValid( section, header, lastEnd, fileSize ) )
+		auto error = IsHeaderSectionValid( section, header, lastEnd, fileSize );
+		if( !error.empty() )
 		{
-			return false;
+			return error;
 		}
 		lastEnd = section.offset + section.compressedSize;
 	}
-	return true;
+	return {};
 }
 
 bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cmf::VertexElement>& decl )
@@ -169,7 +171,7 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 		return false;
 	}
 	// Each (usage, usageIndex) pair must be unique within the decl
-	for( auto other = &element + 1; other != decl.end(); ++other )
+	for( const auto* other = &element + 1; other != decl.end(); ++other )
 	{
 		if( element.usage == other->usage && element.usageIndex == other->usageIndex )
 		{
@@ -221,26 +223,26 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 	} );
 }
 
-bool IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size_t lodIndex )
 {
 	// LOD must have a vertex buffer
 	if( lod.vb.size == 0 )
 	{
-		return false;
+		return "LOD " + std::to_string( lodIndex ) + " has no vertex buffer";
 	}
 	// If not a point list, LOD must have an index buffer
 	if( mesh.topology != cmf::MeshTopology::PointList )
 	{
 		if( lod.ib.size == 0 )
 		{
-			return false;
+			return "LOD " + std::to_string( lodIndex ) + " has no index buffer";
 		}
 	}
 	else
 	{
 		if( lod.ib.size != 0 )
 		{
-			return false;
+			return "LOD " + std::to_string( lodIndex ) + " has an index buffer but topology is PointList";
 		}
 	}
 	if( lod.ib.size > 0 )
@@ -248,141 +250,156 @@ bool IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod )
 		// Mesh index buffer is either 2 or 4 bytes per index
 		if( lod.ib.stride != 2 && lod.ib.stride != 4 )
 		{
-			return false;
+			return "LOD " + std::to_string( lodIndex ) + " index buffer stride must be 2 or 4";
 		}
 	}
 
 	// Mesh areas lists must match
 	if( lod.areas.size() != mesh.areas.size() )
 	{
-		return false;
+		return "LOD " + std::to_string( lodIndex ) + " area count does not match mesh area count";
 	}
-	for( auto& area : lod.areas )
+	for( size_t i = 0; i < lod.areas.size(); ++i )
 	{
+		const auto& area = lod.areas[i];
 		// Area must be within the mesh index or vertex range
-		uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
-		uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
+		const uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
+		const uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
 		if( area.firstElement * verticesPerElement + area.elementCount * verticesPerElement > vertexCount )
 		{
-			return false;
+			return "LOD " + std::to_string( lodIndex ) + " area " + std::to_string( i ) + " exceeds vertex/index range";
 		}
 	}
 
 	// Mesh morph target lists must match
 	if( lod.morphTargets.size() != mesh.morphTargets.targets.size() )
 	{
-		return false;
+		return "LOD " + std::to_string( lodIndex ) + " morph target count does not match mesh morph target count";
 	}
 
-	return std::all_of( lod.morphTargets.begin(), lod.morphTargets.end(), [&lod]( const auto& morph ) {
+	for( size_t i = 0; i < lod.morphTargets.size(); ++i )
+	{
+		const auto& morph = lod.morphTargets[i];
 		if( morph.vb.size == 0 )
 		{
-			return true;
+			continue;
 		}
 		// Morph target vertex buffer must have the same number of vertices as the LOD
 		if( morph.vb.size / morph.vb.stride != lod.vb.size / lod.vb.stride )
 		{
-			return false;
+			return "LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " vertex count does not match LOD vertex count";
 		}
-		return true;
-	} );
+	}
+	return {};
 }
 
-bool MeshHasValidLodThresholds( const cmf::Mesh& mesh )
+std::string MeshHasValidLodThresholds( const cmf::Mesh& mesh )
 {
 	// First LOD must have threshold of 0xffffffff
 	if( mesh.lods[0].threshold != 0xffffffff )
 	{
-		return false;
+		return "First LOD threshold must be 0xffffffff";
 	}
 	// LOD thresholds must be in descending order
 	for( size_t i = 1; i < mesh.lods.size(); ++i )
 	{
 		if( mesh.lods[i].threshold >= mesh.lods[i - 1].threshold )
 		{
-			return false;
+			return "LOD thresholds must be in strictly descending order (LOD " + std::to_string( i ) + ")";
 		}
 	}
-	return true;
+	return {};
 }
 
-bool AreMorphTargetsValid( const cmf::Mesh& mesh )
+std::string AreMorphTargetsValid( const cmf::Mesh& mesh )
 {
 	if( mesh.morphTargets.targets.empty() )
 	{
-		return true;
+		return {};
 	}
 	if( !IsVertexDeclarationValid( mesh.morphTargets.decl ) )
 	{
-		return false;
+		return "Morph target vertex declaration is invalid";
 	}
 	// Morph target decl must be a subset of the mesh decl
-	for( auto& element : mesh.morphTargets.decl )
+	for( const auto& element : mesh.morphTargets.decl )
 	{
 		if( !FindElement( mesh.decl, element.usage, element.usageIndex ) )
 		{
-			return false;
+			return "Morph target declaration element not found in mesh declaration";
 		}
 	}
-	return std::all_of( mesh.morphTargets.targets.begin(), mesh.morphTargets.targets.end(), []( const auto& morph ) {
-		return morph.maxDisplacement >= 0;
-	} );
+	for( size_t i = 0; i < mesh.morphTargets.targets.size(); ++i )
+	{
+		if( mesh.morphTargets.targets[i].maxDisplacement < 0 )
+		{
+			return "Morph target " + std::to_string( i ) + " has negative maxDisplacement";
+		}
+	}
+	return {};
 }
 
 
-bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
+std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 {
 	// Mesh must have at least one LOD
 	if( mesh.lods.empty() )
 	{
-		return false;
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has no LODs";
 	}
-	if( !MeshHasValidLodThresholds( mesh ) )
 	{
-		return false;
-	}
-	for( auto& lod : mesh.lods )
-	{
-		if( !IsMeshLodValid( mesh, lod ) )
+		auto error = MeshHasValidLodThresholds( mesh );
+		if( !error.empty() )
 		{
-			return false;
+			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
+		}
+	}
+	for( size_t i = 0; i < mesh.lods.size(); ++i )
+	{
+		auto error = IsMeshLodValid( mesh, mesh.lods[i], i );
+		if( !error.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
 		}
 	}
 
-	for( auto& area : mesh.areas )
+	for( size_t areaIdx = 0; areaIdx < mesh.areas.size(); ++areaIdx )
 	{
-		for( auto& bone : area.bones )
+		for( const auto& bone : mesh.areas[areaIdx].bones )
 		{
 			if( bone >= mesh.boneBindings.size() )
 			{
-				return false;
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" area " + std::to_string( areaIdx ) + " references out-of-range bone binding";
 			}
 		}
 	}
 
 	if( !IsVertexDeclarationValid( mesh.decl ) )
 	{
-		return false;
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has an invalid vertex declaration";
 	}
 
-	if( !AreMorphTargetsValid( mesh ) )
 	{
-		return false;
+		auto error = AreMorphTargetsValid( mesh );
+		if( !error.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
+		}
 	}
 
-	if( auto boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
+	if( const auto* boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
 	{
 		if( boneIndicesElement->type == cmf::ElementType::UInt8 )
 		{
 			// Mesh can have up to 255 bone bindings
-			if( mesh.boneBindings.size() > 255 )
+			if( mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
 			{
-				return false;
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings with UInt8 bone indices";
 			}
 		}
 	}
 
-	size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
+	const size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
 		if( element.usage == cmf::Usage::TexCoord )
 		{
 			return std::max( count, size_t( element.usageIndex + 1 ) );
@@ -391,94 +408,172 @@ bool IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 	} );
 	if( mesh.uvDensities.size() != uvCount )
 	{
-		return false;
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" uvDensities count does not match UV channel count";
 	}
 
 	if( mesh.skeleton != 0xff )
 	{
 		if( mesh.skeleton >= skeletonCount )
 		{
-			return false;
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" references out-of-range skeleton index";
 		}
 	}
-	return true;
+	return {};
 }
 
-bool IsSkeletonValid( const cmf::Skeleton& skeleton )
+std::string IsSkeletonValid( const cmf::Skeleton& skeleton )
 {
 	// Skeleton must have at least one bone
 	if( skeleton.bones.empty() )
 	{
-		return false;
+		return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has no bones";
 	}
 	// All skeleton arrays must have the same size
 	if( skeleton.bones.size() != skeleton.parents.size() || skeleton.bones.size() != skeleton.restTransforms.size() || skeleton.bones.size() != skeleton.invBindTransforms.size() )
 	{
-		return false;
+		return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has mismatched array sizes";
 	}
-	for( auto& parent : skeleton.parents )
+	for( const auto& parent : skeleton.parents )
 	{
+		auto idx = &parent - skeleton.parents.data();
 		// Parent index must be either -1 (0xffffffff) or a valid bone index
 		if( parent != 0xffffffff && parent >= skeleton.bones.size() )
 		{
-			return false;
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" bone " + std::to_string( idx ) + " has out-of-range parent index";
 		}
 		// Parent index must be less than the bone index (no cycles)
-		auto idx = &parent - skeleton.parents.data();
-		if( parent != 0xffffffff && parent >= idx )
+		if( parent != 0xffffffff && parent >= static_cast<uint32_t>( idx ) )
 		{
-			return false;
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" bone " + std::to_string( idx ) + " has parent index >= own index (would form a cycle)";
 		}
 	}
-	return true;
+	return {};
 }
 
-bool IsAnimationValid( const cmf::Animation& animation, size_t curveCount )
+std::string IsAnimationValid( const cmf::Animation& animation, const cmf::Span<cmf::AnimationCurve>& curves )
 {
 	// Animation duration must be > 0
 	if( animation.duration <= 0 )
 	{
-		return false;
+		return "Animation \"" + ToStdString( animation.name ) + "\" has non-positive duration";
 	}
 	if( animation.channels.empty() )
 	{
-		return false;
+		return "Animation \"" + ToStdString( animation.name ) + "\" has no channels";
 	}
-	return std::all_of( animation.channels.begin(), animation.channels.end(), [curveCount]( const auto& channel ) {
-		return channel.curveIndex < curveCount;
-	} );
+	for( size_t i = 0; i < animation.channels.size(); ++i )
+	{
+		if( animation.channels[i].curveIndex >= curves.size() )
+		{
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " references out-of-range curve index";
+		}
+
+		switch( animation.channels[i].targetType )
+		{
+		case cmf::AnimationChannelTargetType::BonePosition:
+		case cmf::AnimationChannelTargetType::BoneScale:
+			if( curves[animation.channels[i].curveIndex].valueDimension != 3 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BonePosition/BoneScale but curve value dimension is not 3";
+			}
+			break;
+		case cmf::AnimationChannelTargetType::BoneRotation:
+			if( curves[animation.channels[i].curveIndex].valueDimension != 4 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BoneRotation but curve value dimension is not 4";
+			}
+			break;
+		case cmf::AnimationChannelTargetType::MorphTarget:
+			if( curves[animation.channels[i].curveIndex].valueDimension != 1 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets MorphTarget but curve value dimension is not 1";
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	return {};
 }
 
-bool IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
+std::string IsCurveValid( const cmf::AnimationCurve& curve )
+{
+	if( curve.knotCount == 0 )
+	{
+		return "Curve has no keyframes";
+	}
+	// Knots must be in ascending order
+	cmf::VertexElement element = {};
+	element.type = curve.knotType;
+	element.elementCount = 1;
+	const auto stride = cmf::GetVertexElementSize( element );
+	if( curve.knots.size() != curve.knotCount * stride )
+	{
+		return "Curve keyframe buffer size does not match keyframes count and time type";
+	}
+	const cmf::ConstBufferElementStream<float> knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
+	for( uint32_t i = 1; i < knots.size(); ++i )
+	{
+		if( knots[i] <= knots[i - 1] )
+		{
+			return "Curve keyframes are not in ascending order";
+		}
+	}
+
+	if( curve.values.size() != curve.knotCount * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
+	{
+		return "Curve value buffer size does not match keyframes count, value dimension and value type";
+	}
+	return {};
+}
+
+std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
 {
 	if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
 	{
-		return false;
+		return "Main data contains invalid span pointers";
 	}
 	if( !AreBufferViewsValid( mainData, header.sections ) )
 	{
-		return false;
+		return "Main data contains invalid buffer views";
 	}
 
-	for( auto& mesh : mainData.meshes )
+	for( size_t i = 0; i < mainData.meshes.size(); ++i )
 	{
-		if( !IsMeshValid( mesh, mainData.skeletons.size() ) )
+		auto error = IsMeshValid( mainData.meshes[i], mainData.skeletons.size() );
+		if( !error.empty() )
 		{
-			return false;
+			return error;
 		}
 	}
 
-	for( auto& skeleton : mainData.skeletons )
+	for( const auto& skeleton : mainData.skeletons )
 	{
-		if( !IsSkeletonValid( skeleton ) )
+		auto error = IsSkeletonValid( skeleton );
+		if( !error.empty() )
 		{
-			return false;
+			return error;
 		}
 	}
 
-	return std::all_of( mainData.animations.begin(), mainData.animations.end(), [&mainData]( const auto& animation ) {
-		return IsAnimationValid( animation, mainData.curves.size() );
-	} );
+	for( const auto& animation : mainData.animations )
+	{
+		auto error = IsAnimationValid( animation, mainData.curves );
+		if( !error.empty() )
+		{
+			return error;
+		}
+	}
+
+	for( size_t i = 0; i < mainData.curves.size(); ++i )
+	{
+		auto error = IsCurveValid( mainData.curves[i] );
+		if( !error.empty() )
+		{
+			return "Curve " + std::to_string( i ) + ": " + error;
+		}
+	}
+	return {};
 }
 
 }
@@ -489,24 +584,22 @@ namespace cmf
 
 ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options )
 {
-	ValidationOptions result = {};
-
-	auto& header = *static_cast<const Header*>( data );
+	const auto& header = *static_cast<const Header*>( data );
 	if( size < sizeof( Header ) )
 	{
-		return { false, {} };
+		return { false, "File is too small to contain a valid header" };
 	}
 	if( header.signature != FILE_SIGNATURE )
 	{
-		return { false, {} };
+		return { false, "Invalid file signature" };
 	}
 	if( header.version != FILE_VERSION )
 	{
-		return { false, {} };
+		return { false, "Unsupported file version" };
 	}
 	if( header.headerSize < sizeof( Header ) || header.headerSize > size )
 	{
-		return { false, {} };
+		return { false, "Invalid header size" };
 	}
 	if( options.validateCrc )
 	{
@@ -514,46 +607,44 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		auto crc = ComputeCrc32( static_cast<const uint8_t*>( data ) + crcOffset + sizeof( Header::crc32 ), size - ( crcOffset + sizeof( Header::crc32 ) ) );
 		if( crc != header.crc32 )
 		{
-			return { false, result };
+			return { false, "CRC32 checksum mismatch" };
 		}
-		result.validateCrc = true;
 	}
 
 	if( !options.validateHeader && !options.validateMainData )
 	{
-		return { true, result };
+		return { true, {} };
 	}
 
 	if( !AreSpanPointersValid( header, &header, header.headerSize ) )
 	{
-		return { false, result };
+		return { false, "Header contains invalid span pointers" };
 	}
-	if( !AreHeaderSectionsValid( header, size ) )
 	{
-		return { false, result };
+		auto error = AreHeaderSectionsValid( header, size );
+		if( !error.empty() )
+		{
+			return { false, error };
+		}
 	}
-	result.validateHeader = true;
 
 	if( !options.validateMainData )
 	{
-		return { true, result };
+		return { true, {} };
 	}
 
-	if( options.validateMainData )
+	const auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
+	auto error = IsMainDataValid( mainData, header );
+	if( !error.empty() )
 	{
-		auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
-		if( !IsMainDataValid( mainData, header ) )
-		{
-			return { false, result };
-		}
-		result.validateMainData = true;
+		return { false, error };
 	}
-	return { true, result };
+	return { true, {} };
 }
 
 uint32_t ComputeCrc32( const void* data, size_t size )
 {
-	const uint8_t* bytes = reinterpret_cast<const uint8_t*>( data );
+	const auto* bytes = static_cast<const uint8_t*>( data );
 	uint32_t crc = 0xFFFFFFFF;
 	for( size_t i = 0; i < size; ++i )
 	{

@@ -57,9 +57,10 @@ CmfFile::CmfFile( std::string_view path )
 	m_fileContents = ReadFile( std::string( path ).c_str() );
 
 	auto* header = reinterpret_cast<cmf::Header*>( m_fileContents.data() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-	if( !cmf::ValidateFile( m_fileContents.data(), m_fileContents.size(), { true, true, true } ).first )
+	auto result = cmf::ValidateFile( m_fileContents.data(), m_fileContents.size(), { true, true, true } );
+	if( !result )
 	{
-		throw std::runtime_error( std::string( "File is not a valid CMF file: " ) + std::string( path ) );
+		throw std::runtime_error( std::string( "File is not a valid CMF file: " ) + std::string( path ) + " (" + result.error + ")" );
 	}
 
 	for( auto& section : header->sections )

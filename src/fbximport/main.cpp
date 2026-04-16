@@ -161,9 +161,9 @@ int main( int argc, char** argv )
 	auto fileData = cmf::BuildFile( data, bufferAllocator, &metadata );
 
 	auto validated = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
-	if( !validated.first )
+	if( !validated )
 	{
-		fprintf( stderr, "Internal error: generated CMF file is invalid" );
+		fprintf( stderr, "Internal error: generated CMF file is invalid: %s\n", validated.error.c_str() );
 		return 1;
 	}
 

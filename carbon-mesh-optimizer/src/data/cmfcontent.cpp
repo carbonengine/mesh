@@ -5,13 +5,13 @@
 // Special case for non windows builders
 inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
 {
-    *stream = fopen( fileName, mode );
-    if( !*stream )
-    {
-        auto error = errno;
-        return error ? error : -1;
-    }
-    return 0;
+	*stream = fopen( fileName, mode );
+	if( !*stream )
+	{
+		auto error = errno;
+		return error ? error : -1;
+	}
+	return 0;
 }
 
 #endif
@@ -48,19 +48,9 @@ CmfContent* LoadContentFromFile( const std::string& filePath )
 	fclose( file );
 
 	auto validationResult = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
-	if( !validationResult.first )
+	if( !validationResult )
 	{
-		printf( "File validation failed: %s\n", filename );
-		return nullptr;
-	}
-	if( !validationResult.second.validateHeader )
-	{
-		printf( "File header validation failed: %s\n", filename );
-		return nullptr;
-	}
-	if( !validationResult.second.validateMainData )
-	{
-		printf( "File main data validation failed: %s\n", filename );
+		printf( "File %s validation failed: %s\n", filename, validationResult.error.c_str() );
 		return nullptr;
 	}
 

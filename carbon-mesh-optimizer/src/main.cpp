@@ -21,19 +21,19 @@ void decompress( const uint8_t* fileData, Section section, std::vector<uint8_t>&
 
 	switch( section.compression )
 	{
-	    case SectionCompression::None: {
-		    memcpy( uncompressed.data(), fileData + section.offset, section.uncompressedSize );
-		    break;
-	    }
-		case SectionCompression::MeshOptimizerVertexBuffer: {
-			meshopt_decodeVertexBuffer( uncompressed.data(), section.uncompressedSize / section.gpuAlignment, section.gpuAlignment, fileData + section.offset, section.compressedSize );
-			break;
-		}
-	    case SectionCompression::MeshOptimizerIndexBuffer: {
-		    meshopt_decodeIndexBuffer( uncompressed.data(), section.uncompressedSize / section.gpuAlignment, section.gpuAlignment, fileData + section.offset, section.compressedSize );
-		    break;
-	    }
-    }
+	case SectionCompression::None: {
+		memcpy( uncompressed.data(), fileData + section.offset, section.uncompressedSize );
+		break;
+	}
+	case SectionCompression::MeshOptimizerVertexBuffer: {
+		meshopt_decodeVertexBuffer( uncompressed.data(), section.uncompressedSize / section.gpuAlignment, section.gpuAlignment, fileData + section.offset, section.compressedSize );
+		break;
+	}
+	case SectionCompression::MeshOptimizerIndexBuffer: {
+		meshopt_decodeIndexBuffer( uncompressed.data(), section.uncompressedSize / section.gpuAlignment, section.gpuAlignment, fileData + section.offset, section.compressedSize );
+		break;
+	}
+	}
 }
 
 void print( CmfContent* content )
@@ -89,7 +89,7 @@ void print( CmfContent* content )
 				uint32_t indexBufferOffset = content->m_cmfHeader->sections[lod.ib.index].offset + lod.ib.offset;
 				const uint8_t* indexData = content->m_fileContent.data() + indexBufferOffset;*/
 
-                std::vector<uint8_t> vertexData;
+				std::vector<uint8_t> vertexData;
 				decompress( content->m_fileContent.data(), content->m_cmfHeader->sections[lod.vb.index], vertexData );
 
 				std::vector<uint8_t> indexData;
@@ -99,7 +99,7 @@ void print( CmfContent* content )
 				uint32_t numVertices = lod.vb.size / lod.vb.stride;
 				uint32_t numIndices = lod.ib.size / lod.ib.stride;
 
-                /*
+				/*
 				for( LodMeshArea area : lod.areas )
 				{
 					uint32_t start = area.firstElement * 3;
@@ -152,51 +152,43 @@ void print( CmfContent* content )
 int main()
 {
 
-    //std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1.cmf";
+	//std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1.cmf";
 	//std::string path = "C:\\Users\\isheden\\Desktop\\Release\\ab1_t1_compressed.cmf";
-    std::string path = "C:\\Users\\isheden\\Desktop\\Release\\mf1_t1.cmf";
+	std::string path = "C:\\Users\\isheden\\Desktop\\Release\\mf1_t1.cmf";
 	//std::string path = "C:\\Users\\isheden\\Desktop\\Release\\uwi01_t1.cmf";
 
-    CmfContent* content = CmfContentLoader::LoadContentFromFile( path );
+	CmfContent* content = CmfContentLoader::LoadContentFromFile( path );
 
-    cmf::optimizer::Optimizer optimizer( content );
+	cmf::optimizer::Optimizer optimizer( content );
 
 	print( content );
 
-	
-    optimizer.generateTangents( 0, true );
+
+	optimizer.generateTangents( 0, true );
 	optimizer.compressTangents( 0, false );
 	//optimizer.decompressTangents( 0 );
 
 	optimizer.optimizeVertexPerformance();
 
-    optimizer.generateLODs();
+	optimizer.generateLODs();
 
 	optimizer.optimizeVertexPerformance();
 
 	{
 
 
-        std::string outputPath = "C:\\Users\\isheden\\Desktop\\Release\\result.cmf";
+		std::string outputPath = "C:\\Users\\isheden\\Desktop\\Release\\result.cmf";
 		//std::string outputPath = "C:\\Users\\isheden\\Desktop\\Release\\shadow.cmf";
 
-        std::vector<uint8_t> fileData = optimizer.toCmf( false );
+		std::vector<uint8_t> fileData = optimizer.toCmf( false );
 
 		ValidationResult validationResult = ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
-		if( !validationResult.first )
+		if( !validationResult )
 		{
-			printf( "File validation failed: %s\n", outputPath.c_str() );
-		}
-		if( !validationResult.second.validateHeader )
-		{
-			printf( "File header validation failed: %s\n", outputPath.c_str() );
-		}
-		if( !validationResult.second.validateMainData )
-		{
-			printf( "File main data validation failed: %s\n", outputPath.c_str() );
+			printf( "File %s validation failed: %s\n", outputPath.c_str(), validationResult.error.c_str() );
 		}
 
-        FILE* outFile = fopen( outputPath.c_str(), "wb" );
+		FILE* outFile = fopen( outputPath.c_str(), "wb" );
 		if( !outFile )
 		{
 			printf( "Failed to open output file: %s\n", outputPath.c_str() );
@@ -211,10 +203,10 @@ int main()
 		fclose( outFile );
 		printf( "Successfully wrote CMF file: %s\n", outputPath.c_str() );
 
-        print( new CmfContent( fileData, outputPath.c_str() ) );
-    }
+		print( new CmfContent( fileData, outputPath.c_str() ) );
+	}
 
-    
+
 
 
 	return EXIT_SUCCESS;

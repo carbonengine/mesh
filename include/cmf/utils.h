@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <string>
 #include "cmf.h"
 
 namespace cmf
@@ -70,7 +71,16 @@ struct ValidationOptions
 	bool validateMainData = false;
 };
 
-using ValidationResult = std::pair<bool, ValidationOptions>;
+struct ValidationResult
+{
+	bool valid = false;
+	std::string error;
+
+	explicit operator bool() const
+	{
+		return valid;
+	}
+};
 
 CARBON_MESH_EXPORT ValidationResult ValidateFile( const void* data, size_t size, const ValidationOptions& options );
 
