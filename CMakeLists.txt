@@ -37,6 +37,7 @@ set(PUBLIC_HEADER_FILES
     include/cmf/memallocator.h
     include/cmf/span.h
     include/cmf/tangents.h
+    include/cmf/transforms.h
     include/cmf/utils.h
     include/cmf/uvdensity.h
     include/cmf/v1.h

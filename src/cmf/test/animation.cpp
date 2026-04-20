@@ -2,6 +2,7 @@
 
 #include "cmf/animation.h"
 #include "cmf/memallocator.h"
+#include "cmf/transforms.h"
 
 
 namespace
@@ -84,6 +85,17 @@ cmf::AnimationPlayer MakeTestAnimationPlayer( cmf::MemoryAllocator& allocator )
 
 	return cmf::AnimationPlayer( *skeletonPtr, *animation, curves );
 }
+
+bool NearlyEqual( const Vector3& a, const Vector3& b, float epsilon = 0.001f )
+{
+	return std::abs( a.x - b.x ) < epsilon && std::abs( a.y - b.y ) < epsilon && std::abs( a.z - b.z ) < epsilon;
+}
+
+bool NearlyEqual( const Quaternion& a, const Quaternion& b, float epsilon = 0.001f )
+{
+	return std::abs( a.x - b.x ) < epsilon && std::abs( a.y - b.y ) < epsilon && std::abs( a.z - b.z ) < epsilon && std::abs( a.w - b.w ) < epsilon;
+}
+
 }
 
 TEST( Curves, CanSampleConstantCurve )
@@ -193,6 +205,8 @@ TEST( Animation, CanCreateRestPose )
 	EXPECT_EQ( pose.boneTransforms[1].rotation, Quaternion( 0.f, 0.f, 0.f, 1.f ) );
 	EXPECT_EQ( pose.boneTransforms[1].scale, Vector3( 1.f, 1.f, 1.f ) );
 }
+
+
 
 TEST( Animation, CanSampleAnimation )
 {
@@ -349,4 +363,108 @@ TEST( AnimationPlayer, AnimationAppliesAfterStopWithExtrapolateAfter )
 	EXPECT_TRUE( player.Sample( pose, 123.0f + 1.5f ) );
 
 	EXPECT_EQ( pose.boneTransforms[1].position, TEST_ANIMATION_CHILD_POSITION1 );
+}
+
+TEST( Animation, BlendAdditivePoseWithZeroAlphaIsIdentity )
+{
+	cmf::MemoryAllocator allocator;
+
+	auto skeleton = MakeInPlaceSkeleton( {
+											 { "Root", 0xffffffff, { { 0.f, 2.f, 0.f }, { 0.f, 0.3826834f, 0.f, 0.9238795f }, { 2.f, 2.f, 2.f } } },
+											 { "Child", 0, { { 1.f, 0.5f, 0.f }, { 0.f, 0.f, 0.3826834f, 0.9238795f }, { 1.5f, 1.5f, 1.5f } } },
+										 },
+										 allocator );
+
+	cmf::SkeletonPose basePose, additivePose, inputPose, outPose;
+	cmf::RestPose( basePose, skeleton );
+	cmf::RestPose( additivePose, skeleton );
+	cmf::RestPose( inputPose, skeleton );
+
+	// Make inputPose differ from basePose
+	inputPose.boneTransforms[0].position = Vector3( 3.f, 4.f, 5.f );
+	inputPose.boneTransforms[0].rotation = Quaternion( 0.f, 0.f, 0.f, 1.f );
+	inputPose.boneTransforms[0].scale = Vector3( 1.f, 1.f, 1.f );
+	inputPose.boneTransforms[1].position = Vector3( 2.f, 3.f, 4.f );
+	inputPose.boneTransforms[1].rotation = Quaternion( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	inputPose.boneTransforms[1].scale = Vector3( 2.f, 2.f, 2.f );
+
+	additivePose.boneTransforms[1].position = Vector3( 5.f, 10.f, 15.f );
+
+	cmf::BlendAdditivePose( outPose, inputPose, basePose, additivePose, 0.0f );
+
+	EXPECT_EQ( outPose.boneTransforms[0].position, inputPose.boneTransforms[0].position );
+	EXPECT_EQ( outPose.boneTransforms[0].rotation, inputPose.boneTransforms[0].rotation );
+	EXPECT_EQ( outPose.boneTransforms[0].scale, inputPose.boneTransforms[0].scale );
+	EXPECT_TRUE( NearlyEqual( outPose.boneTransforms[1].position, inputPose.boneTransforms[1].position ) );
+	EXPECT_TRUE( NearlyEqual( outPose.boneTransforms[1].rotation, inputPose.boneTransforms[1].rotation ) );
+	EXPECT_TRUE( NearlyEqual( outPose.boneTransforms[1].scale, inputPose.boneTransforms[1].scale ) );
+}
+
+TEST( Animation, BlendAdditivePoseWithFullAlpha )
+{
+	cmf::MemoryAllocator allocator;
+
+	auto skeleton = MakeInPlaceSkeleton( {
+											 { "Root", 0xffffffff, { { 0.f, 2.f, 0.f }, { 0.f, 0.3826834f, 0.f, 0.9238795f }, { 2.f, 2.f, 2.f } } },
+											 { "Child", 0, { { 1.f, 0.5f, 0.f }, { 0.f, 0.f, 0.3826834f, 0.9238795f }, { 1.5f, 1.5f, 1.5f } } },
+										 },
+										 allocator );
+
+	cmf::SkeletonPose basePose, additivePose, inputPose, outPose;
+	cmf::RestPose( basePose, skeleton );
+	cmf::RestPose( additivePose, skeleton );
+	cmf::RestPose( inputPose, skeleton );
+
+	// Make inputPose differ from basePose
+	inputPose.boneTransforms[1].position = Vector3( 2.f, 3.f, 4.f );
+	inputPose.boneTransforms[1].rotation = Quaternion( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	inputPose.boneTransforms[1].scale = Vector3( 2.f, 2.f, 2.f );
+
+	additivePose.boneTransforms[1].position = Vector3( 5.f, 0.f, 0.f );
+	additivePose.boneTransforms[1].rotation = Quaternion( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	additivePose.boneTransforms[1].scale = Vector3( 3.f, 3.f, 3.f );
+
+	cmf::BlendAdditivePose( outPose, inputPose, basePose, additivePose, 1.0f );
+
+	auto inverseBase = cmf::Inverse( basePose.boneTransforms[1] );
+	auto diff = cmf::Multiply( inverseBase, additivePose.boneTransforms[1] );
+	auto expected = cmf::Multiply( inputPose.boneTransforms[1], diff );
+	EXPECT_EQ( outPose.boneTransforms[1].position, expected.position );
+	EXPECT_EQ( outPose.boneTransforms[1].rotation, expected.rotation );
+	EXPECT_EQ( outPose.boneTransforms[1].scale, expected.scale );
+}
+
+TEST( Animation, BlendAdditivePoseWithHalfAlpha )
+{
+	cmf::MemoryAllocator allocator;
+
+	auto skeleton = MakeInPlaceSkeleton( {
+											 { "Root", 0xffffffff, { { 0.f, 2.f, 0.f }, { 0.f, 0.3826834f, 0.f, 0.9238795f }, { 2.f, 2.f, 2.f } } },
+											 { "Child", 0, { { 1.f, 0.5f, 0.f }, { 0.f, 0.f, 0.3826834f, 0.9238795f }, { 1.5f, 1.5f, 1.5f } } },
+										 },
+										 allocator );
+
+	cmf::SkeletonPose basePose, additivePose, inputPose, outPose;
+	cmf::RestPose( basePose, skeleton );
+	cmf::RestPose( additivePose, skeleton );
+	cmf::RestPose( inputPose, skeleton );
+
+	// Make inputPose differ from basePose
+	inputPose.boneTransforms[1].position = Vector3( 2.f, 3.f, 4.f );
+	inputPose.boneTransforms[1].rotation = Quaternion( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	inputPose.boneTransforms[1].scale = Vector3( 2.f, 2.f, 2.f );
+
+	additivePose.boneTransforms[1].position = Vector3( 5.f, 0.f, 0.f );
+	additivePose.boneTransforms[1].rotation = Quaternion( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	additivePose.boneTransforms[1].scale = Vector3( 3.f, 3.f, 3.f );
+
+	cmf::BlendAdditivePose( outPose, inputPose, basePose, additivePose, 0.5f );
+
+	auto inverseBase = cmf::Inverse( basePose.boneTransforms[1] );
+	auto diff = cmf::Multiply( inverseBase, additivePose.boneTransforms[1] );
+	auto blended = cmf::Lerp( cmf::Transform{}, diff, 0.5f );
+	auto expected = cmf::Multiply( inputPose.boneTransforms[1], blended );
+	EXPECT_EQ( outPose.boneTransforms[1].position, expected.position );
+	EXPECT_EQ( outPose.boneTransforms[1].rotation, expected.rotation );
+	EXPECT_EQ( outPose.boneTransforms[1].scale, expected.scale );
 }

@@ -132,6 +132,34 @@ CARBON_MESH_EXPORT BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std
 CARBON_MESH_EXPORT void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights );
 
 
+/** @brief Blends an additive pose onto a base skeleton pose using a uniform alpha value.
+* The function computes the difference between the additive pose and the base pose (by multiplying with the inverse of the base transform),
+* then interpolates between the input pose and the computed additive difference using the specified alpha value.
+* All poses must reference the same skeleton. The function does not perform any validation on the parameters.
+*
+* @param outPose The output skeleton pose.
+* @param poseA The input skeleton pose to blend onto.
+* @param basePose The base pose of the additive animation (used to compute the additive difference).
+* @param additivePose The additive pose to blend in.
+* @param alpha The interpolation factor controlling the strength of the additive blend.
+*/
+CARBON_MESH_EXPORT void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, float alpha );
+
+
+/** @brief Blends an additive pose onto a base skeleton pose using per-bone weights.
+* The function computes the difference between the additive pose and the base pose (by multiplying with the inverse of the base transform),
+* then interpolates between the input pose and the computed additive difference using the per-bone weights.
+* All poses must reference the same skeleton, and the bone weights must correspond to the bones in the skeleton.
+* The function does not perform any validation on the parameters.
+*
+* @param outPose The output skeleton pose.
+* @param poseA The input skeleton pose to blend onto.
+* @param basePose The base pose of the additive animation (used to compute the additive difference).
+* @param additivePose The additive pose to blend in.
+* @param boneWeights The per-bone weights controlling the strength of the additive blend for each bone.
+*/
+CARBON_MESH_EXPORT void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights );
+
 /** @brief Computes the world transformation matrices for each bone in a skeleton pose.
 * The function iterates through the bones of the skeleton pose and computes the world transformation matrices based on the local transforms and the hierarchy of the skeleton.
 * 
@@ -196,6 +224,14 @@ public:
     * @param time The time at which to sample the animation.
     */
 	CARBON_MESH_EXPORT bool Sample( SkeletonPose& outPose, float time ) const;
+
+	/** @brief The function samples the animation at the given local time (time within the current loop) and outputs the resulting pose.
+    * The output pose should be initialized with the same skeleton as the one used to construct the AnimationPlayer, and it should have valid bone transforms (e.g., from the rest pose) before calling this function. 
+    * The function will modify the bone transforms in place based on the sampled animation data, but only for bones referenced in the animation. The function does not perform any validation on the parameters.
+    * @param outPose The output pose to store the sampled animation data.
+    * @param localTime The local time within the current loop at which to sample the animation.
+    */
+	CARBON_MESH_EXPORT void SampleAtLocalTime( SkeletonPose& outPose, float localTime ) const;
 
 private:
 	template <typename T>

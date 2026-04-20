@@ -1,6 +1,7 @@
 #include "cmf/animation.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
+#include "cmf/transforms.h"
 
 namespace
 {
@@ -121,16 +122,6 @@ Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElem
 	}
 }
 
-
-cmf::Transform BlendTransforms( const cmf::Transform& a, const cmf::Transform& b, float alpha )
-{
-	return {
-		a.position + ( b.position - a.position ) * alpha,
-		Slerp( a.rotation, b.rotation, alpha ),
-		a.scale + ( b.scale - a.scale ) * alpha
-	};
-}
-
 }
 
 namespace cmf
@@ -220,7 +211,7 @@ void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const Skeleto
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
 	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
 	{
-		outPose.boneTransforms[i] = BlendTransforms( poseA.boneTransforms[i], poseB.boneTransforms[i], alpha );
+		outPose.boneTransforms[i] = Lerp( poseA.boneTransforms[i], poseB.boneTransforms[i], alpha );
 	}
 }
 
@@ -249,7 +240,38 @@ void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const Skeleto
 	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
 	{
 		const float weight = boneWeights.boneWeights[i];
-		outPose.boneTransforms[i] = BlendTransforms( poseA.boneTransforms[i], poseB.boneTransforms[i], weight );
+		outPose.boneTransforms[i] = Lerp( poseA.boneTransforms[i], poseB.boneTransforms[i], weight );
+	}
+}
+
+void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, float alpha )
+{
+	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
+	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
+	{
+		const auto& additive = additivePose.boneTransforms[i];
+		const auto& base = basePose.boneTransforms[i];
+		const auto inverseBase = Inverse( base );
+		const auto multiplied = Multiply( inverseBase, additive );
+
+		const auto blended = Lerp( {}, multiplied, alpha );
+		outPose.boneTransforms[i] = Multiply( poseA.boneTransforms[i], blended );
+	}
+}
+
+void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights )
+{
+	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
+	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
+	{
+		const auto& additive = additivePose.boneTransforms[i];
+		const auto& base = basePose.boneTransforms[i];
+		const auto inverseBase = Inverse( base );
+		const auto multiplied = Multiply( inverseBase, additive );
+
+		const float weight = boneWeights.boneWeights[i];
+		const auto blended = Lerp( {}, multiplied, weight );
+		outPose.boneTransforms[i] = Multiply( poseA.boneTransforms[i], blended );
 	}
 }
 
@@ -454,6 +476,12 @@ bool AnimationPlayer::Sample( SkeletonPose& outPose, float time ) const
 	}
 	auto localTime = GetLocalTime( time );
 
+	SampleAtLocalTime( outPose, localTime );
+	return true;
+}
+
+void AnimationPlayer::SampleAtLocalTime( SkeletonPose& outPose, float localTime ) const
+{
 	for( const auto& position : m_positionCurves )
 	{
 		auto& boneTransform = outPose.boneTransforms[position.targetIndex];
@@ -469,7 +497,6 @@ bool AnimationPlayer::Sample( SkeletonPose& outPose, float time ) const
 		auto& boneTransform = outPose.boneTransforms[scale.targetIndex];
 		boneTransform.scale = SampleCurve( scale.knots, scale.values, scale.interpolation, localTime );
 	}
-	return true;
 }
 
 const cmf::Skeleton& AnimationPlayer::GetSkeleton() const
@@ -488,6 +515,15 @@ std::shared_ptr<AnimationPlayer> AnimationSequencer::PlayAnimation( const cmf::A
 	auto player = std::make_shared<AnimationPlayer>( *m_skeleton, animation, curves );
 	m_animations.push_back( player );
 	return player;
+}
+
+void AnimationSequencer::StopAnimation( const std::shared_ptr<AnimationPlayer>& player )
+{
+	auto found = std::find( m_animations.begin(), m_animations.end(), player );
+	if( found != m_animations.end() )
+	{
+		m_animations.erase( found );
+	}
 }
 
 void AnimationSequencer::EnumerateAnimations( const std::function<void( const std::shared_ptr<AnimationPlayer>& )>& callback )
