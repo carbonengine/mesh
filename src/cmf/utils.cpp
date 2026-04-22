@@ -450,52 +450,6 @@ std::string IsSkeletonValid( const cmf::Skeleton& skeleton )
 	return {};
 }
 
-std::string IsAnimationValid( const cmf::Animation& animation, const cmf::Span<cmf::AnimationCurve>& curves )
-{
-	// Animation duration must be > 0
-	if( animation.duration <= 0 )
-	{
-		return "Animation \"" + ToStdString( animation.name ) + "\" has non-positive duration";
-	}
-	if( animation.channels.empty() )
-	{
-		return "Animation \"" + ToStdString( animation.name ) + "\" has no channels";
-	}
-	for( size_t i = 0; i < animation.channels.size(); ++i )
-	{
-		if( animation.channels[i].curveIndex >= curves.size() )
-		{
-			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " references out-of-range curve index";
-		}
-
-		switch( animation.channels[i].targetType )
-		{
-		case cmf::AnimationChannelTargetType::BonePosition:
-		case cmf::AnimationChannelTargetType::BoneScale:
-			if( curves[animation.channels[i].curveIndex].valueDimension != 3 )
-			{
-				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BonePosition/BoneScale but curve value dimension is not 3";
-			}
-			break;
-		case cmf::AnimationChannelTargetType::BoneRotation:
-			if( curves[animation.channels[i].curveIndex].valueDimension != 4 )
-			{
-				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BoneRotation but curve value dimension is not 4";
-			}
-			break;
-		case cmf::AnimationChannelTargetType::MorphTarget:
-			if( curves[animation.channels[i].curveIndex].valueDimension != 1 )
-			{
-				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets MorphTarget but curve value dimension is not 1";
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	return {};
-}
-
 std::string IsCurveValid( const cmf::AnimationCurve& curve )
 {
 	if( curve.knotCount == 0 )
@@ -523,6 +477,60 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	if( curve.values.size() != curve.knotCount * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
 	{
 		return "Curve value buffer size does not match keyframes count, value dimension and value type";
+	}
+	return {};
+}
+
+std::string IsAnimationValid( const cmf::Animation& animation )
+{
+	// Animation duration must be > 0
+	if( animation.duration <= 0 )
+	{
+		return "Animation \"" + ToStdString( animation.name ) + "\" has non-positive duration";
+	}
+	if( animation.channels.empty() )
+	{
+		return "Animation \"" + ToStdString( animation.name ) + "\" has no channels";
+	}
+	for( size_t i = 0; i < animation.channels.size(); ++i )
+	{
+		if( animation.channels[i].curveIndex >= animation.curves.size() )
+		{
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " references out-of-range curve index";
+		}
+
+		switch( animation.channels[i].targetType )
+		{
+		case cmf::AnimationChannelTargetType::BonePosition:
+		case cmf::AnimationChannelTargetType::BoneScale:
+			if( animation.curves[animation.channels[i].curveIndex].valueDimension != 3 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BonePosition/BoneScale but curve value dimension is not 3";
+			}
+			break;
+		case cmf::AnimationChannelTargetType::BoneRotation:
+			if( animation.curves[animation.channels[i].curveIndex].valueDimension != 4 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets BoneRotation but curve value dimension is not 4";
+			}
+			break;
+		case cmf::AnimationChannelTargetType::MorphTarget:
+			if( animation.curves[animation.channels[i].curveIndex].valueDimension != 1 )
+			{
+				return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " targets MorphTarget but curve value dimension is not 1";
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	for( size_t i = 0; i < animation.curves.size(); ++i )
+	{
+		auto error = IsCurveValid( animation.curves[i] );
+		if( !error.empty() )
+		{
+			return "Animation \"" + ToStdString( animation.name ) + "\" curve " + std::to_string( i ) + ": " + error;
+		}
 	}
 	return {};
 }
@@ -558,19 +566,10 @@ std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& heade
 
 	for( const auto& animation : mainData.animations )
 	{
-		auto error = IsAnimationValid( animation, mainData.curves );
+		auto error = IsAnimationValid( animation );
 		if( !error.empty() )
 		{
 			return error;
-		}
-	}
-
-	for( size_t i = 0; i < mainData.curves.size(); ++i )
-	{
-		auto error = IsCurveValid( mainData.curves[i] );
-		if( !error.empty() )
-		{
-			return "Curve " + std::to_string( i ) + ": " + error;
 		}
 	}
 	return {};

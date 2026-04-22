@@ -188,10 +188,9 @@ void ImportMorphAnimations( cmf::Span<cmf::AnimationChannel>& channels, cmf::Spa
 	}
 }
 
-std::pair<cmf::Span<cmf::Animation>, cmf::Span<cmf::AnimationCurve>> ImportAnimations( const ufbx_scene& scene, const BoneMap& boneMap, const AnimationImportOptions& options, cmf::MemoryAllocator& allocator, const CoordinateSystem& system )
+cmf::Span<cmf::Animation> ImportAnimations( const ufbx_scene& scene, const BoneMap& boneMap, const AnimationImportOptions& options, cmf::MemoryAllocator& allocator, const CoordinateSystem& system )
 {
 	cmf::Span<cmf::Animation> outAnims;
-	cmf::Span<cmf::AnimationCurve> curves;
 
 	for( auto animStack : scene.anim_stacks )
 	{
@@ -216,14 +215,14 @@ std::pair<cmf::Span<cmf::Animation>, cmf::Span<cmf::AnimationCurve>> ImportAnima
 		auto bakedAnim = ufbx_bake_anim( &scene, animStack->anim, &opts, nullptr );
 		ImportSkeletalAnimations(
 			outAnim.channels,
-			curves,
+			outAnim.curves,
 			*bakedAnim,
 			options.moveToOrigin,
 			scene,
 			boneMap,
 			allocator,
 			system );
-		ImportMorphAnimations( outAnim.channels, curves, *bakedAnim, scene, boneMap, allocator );
+		ImportMorphAnimations( outAnim.channels, outAnim.curves, *bakedAnim, scene, boneMap, allocator );
 
 		if( !outAnim.channels.empty() )
 		{
@@ -235,5 +234,5 @@ std::pair<cmf::Span<cmf::Animation>, cmf::Span<cmf::AnimationCurve>> ImportAnima
 	// To match the order of animations in the legacy importer
 	std::reverse( outAnims.begin(), outAnims.end() );
 
-    return { outAnims, curves };
+	return outAnims;
 }

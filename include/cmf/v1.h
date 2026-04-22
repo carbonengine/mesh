@@ -351,23 +351,6 @@ struct AnimationChannel
 	}
 };
 
-struct Animation
-{
-	String name;
-	Span<AnimationChannel> channels;
-	float duration = 0;
-
-	static constexpr std::string_view TypeName = "Animation";
-
-	template <typename T>
-	constexpr void EnumerateMembers( T&& visitor )
-	{
-		visitor( *this, name, "name" );
-		visitor( *this, channels, "channels" );
-		visitor( *this, duration, "duration" );
-	}
-};
-
 struct AnimationCurve
 {
 	uint8_t valueDimension = 0;
@@ -390,6 +373,25 @@ struct AnimationCurve
 		visitor( *this, knotCount, "knotCount" );
 		visitor( *this, knots, "knots" );
 		visitor( *this, values, "values" );
+	}
+};
+
+struct Animation
+{
+	String name;
+	Span<AnimationChannel> channels;
+	Span<AnimationCurve> curves;
+	float duration = 0;
+
+	static constexpr std::string_view TypeName = "Animation";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, name, "name" );
+		visitor( *this, channels, "channels" );
+		visitor( *this, curves, "curves" );
+		visitor( *this, duration, "duration" );
 	}
 };
 
@@ -484,7 +486,6 @@ struct Data
 	Span<Mesh> meshes;
 	Span<Skeleton> skeletons;
 	Span<Animation> animations;
-	Span<AnimationCurve> curves;
 
 	static constexpr std::string_view TypeName = "Data";
 
@@ -494,7 +495,6 @@ struct Data
 		visitor( *this, meshes, "meshes" );
 		visitor( *this, skeletons, "skeletons" );
 		visitor( *this, animations, "animations" );
-		visitor( *this, curves, "curves" );
 	}
 };
 

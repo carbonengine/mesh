@@ -80,10 +80,9 @@ cmf::AnimationPlayer MakeTestAnimationPlayer( cmf::MemoryAllocator& allocator )
 	cmf::Modify( animation->channels, allocator ).push_back( channel );
 	animation->duration = 1.f;
 
-	cmf::Span<cmf::AnimationCurve> curves;
-	cmf::Modify( curves, allocator ).push_back( curve );
+	cmf::Modify( animation->curves, allocator ).push_back( curve );
 
-	return cmf::AnimationPlayer( *skeletonPtr, *animation, curves );
+	return cmf::AnimationPlayer( *skeletonPtr, *animation );
 }
 
 bool NearlyEqual( const Vector3& a, const Vector3& b, float epsilon = 0.001f )

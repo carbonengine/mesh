@@ -295,7 +295,7 @@ void ComputeWorldTransforms( std::vector<Matrix>& outWorldTransforms, const Skel
 
 
 
-AnimationPlayer::AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation, const Span<AnimationCurve>& curves ) :
+AnimationPlayer::AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation ) :
 	m_stopTime( animation.duration ),
 	m_loopDuration( animation.duration ),
 	m_skeleton( &skeleton )
@@ -314,7 +314,7 @@ AnimationPlayer::AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Anim
 			continue;
 		}
 		const auto boneIndex = static_cast<uint32_t>( std::distance( skeleton.bones.begin(), bone ) );
-		const auto& curve = curves[channel.curveIndex];
+		const auto& curve = animation.curves[channel.curveIndex];
 		switch( channel.targetType )
 		{
 		case AnimationChannelTargetType::BonePosition:
@@ -510,9 +510,9 @@ AnimationSequencer::AnimationSequencer( const cmf::Skeleton& skeleton ) :
 {
 }
 
-std::shared_ptr<AnimationPlayer> AnimationSequencer::PlayAnimation( const cmf::Animation& animation, const Span<AnimationCurve>& curves )
+std::shared_ptr<AnimationPlayer> AnimationSequencer::PlayAnimation( const cmf::Animation& animation )
 {
-	auto player = std::make_shared<AnimationPlayer>( *m_skeleton, animation, curves );
+	auto player = std::make_shared<AnimationPlayer>( *m_skeleton, animation );
 	m_animations.push_back( player );
 	return player;
 }

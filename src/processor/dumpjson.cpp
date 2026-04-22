@@ -200,9 +200,13 @@ void DumpJson( CLI::App& app, DumpJsonOptions& options )
 		if( options.data )
 		{
 			DumpCmfData( output["data"], file.GetData() );
-			if( options.curves && !file.GetData().curves.empty() )
+			if( options.curves && !file.GetData().animations.empty() )
 			{
-				DumpCurveData( output.at( "data" ).at( "curves" ), file.GetData().curves );
+				for( uint32_t i = 0; i < file.GetData().animations.size(); ++i )
+				{
+					auto& jsonAnim = output.at( "data" ).at( "animations" ).at( i );
+					DumpCurveData( jsonAnim.at( "curves" ), file.GetData().animations[i].curves );
+				}
 			}
 			if( options.buffers )
 			{

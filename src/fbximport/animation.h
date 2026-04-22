@@ -17,6 +17,6 @@
 * @param options Options for importing animations.
 * @param allocator The memory allocator used for allocating curve data.
 * @param system The coordinate system to use for transforming animation data.
-* @return A pair of spans containing the imported animations and their corresponding curves.
+* @return A span containing the imported animations.
 */
-std::pair<cmf::Span<cmf::Animation>, cmf::Span<cmf::AnimationCurve>> ImportAnimations( const ufbx_scene& scene, const BoneMap& boneMap, const AnimationImportOptions& options, cmf::MemoryAllocator& allocator, const CoordinateSystem& system );
+cmf::Span<cmf::Animation> ImportAnimations( const ufbx_scene& scene, const BoneMap& boneMap, const AnimationImportOptions& options, cmf::MemoryAllocator& allocator, const CoordinateSystem& system );

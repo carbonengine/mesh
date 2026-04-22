@@ -184,10 +184,8 @@ public:
 	/** @brief Constructs an AnimationPlayer for a given skeleton and animation.
     * @param skeleton The skeleton to play the animation on.
     * @param animation The animation to play.
-    * @param curves The animation curves referenced by the animation.
-    * @param params The parameters for the animation player, including start time, loop count, and speed.
     */
-	CARBON_MESH_EXPORT AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation, const Span<AnimationCurve>& curves );
+	CARBON_MESH_EXPORT AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation );
 
 	[[nodiscard]] CARBON_MESH_EXPORT uint32_t GetLoopCount() const;
 	CARBON_MESH_EXPORT void SetLoopCount( uint32_t loopCount );
@@ -276,10 +274,9 @@ public:
 
 	/** @brief Plays an animation on the sequencer.
     * @param animation The animation to play.
-    * @param curves The animation curves referenced by the animation.
     * @return A shared pointer to the AnimationPlayer managing the animation.
     */
-	CARBON_MESH_EXPORT std::shared_ptr<AnimationPlayer> PlayAnimation( const cmf::Animation& animation, const Span<AnimationCurve>& curves );
+	CARBON_MESH_EXPORT std::shared_ptr<AnimationPlayer> PlayAnimation( const cmf::Animation& animation );
 
 	/** @brief Stops an animation and removes it from the sequencer.
     * @param player The animation to remove, previosly created by PlayAnimation.

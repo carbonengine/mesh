@@ -142,9 +142,7 @@ int main( int argc, char** argv )
 
 	if( options.animationOptions.importAnimations )
 	{
-		auto [anims, curves] = ImportAnimations( *scene, boneMap, options.animationOptions, allocator, system );
-		data.animations = anims;
-		data.curves = curves;
+		data.animations = ImportAnimations( *scene, boneMap, options.animationOptions, allocator, system );
 	}
 
 	cmf::Metadata metadata;

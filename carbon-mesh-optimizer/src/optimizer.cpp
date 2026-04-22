@@ -1314,7 +1314,6 @@ std::vector<uint8_t> Optimizer::toCmf( bool compress )
 	}
 
 	newData.animations = data->animations;
-	newData.curves = data->curves;
 	newData.skeletons = data->skeletons;
 
 	return BuildFile( newData, bufferAllocator );
