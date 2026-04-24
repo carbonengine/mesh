@@ -468,7 +468,7 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	const cmf::ConstBufferElementStream<float> knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
 	for( uint32_t i = 1; i < knots.size(); ++i )
 	{
-		if( knots[i] <= knots[i - 1] )
+		if( knots[i] < knots[i - 1] )
 		{
 			return "Curve keyframes are not in ascending order";
 		}

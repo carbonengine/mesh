@@ -25,6 +25,22 @@ struct BoneWeights
 	std::vector<float> boneWeights;
 };
 
+/**
+ * @brief Curve evaluation cache for a single curve. Stores the last evaluated knot interval and corresponding values to optimize subsequent evaluations that fall within the same interval.
+ * @tparam T The type of the values stored in the cache.
+ */
+template <typename T>
+struct CurveEvaluationCache
+{
+	static constexpr uint32_t INVALID_INDEX = 0xffffffff;
+
+	uint32_t knotIndex = INVALID_INDEX;
+	float knot0 = 0.f;
+	float knot1 = 0.f;
+	T value0 = {};
+	T value1 = {};
+};
+
 
 /** @brief Samples a scalar curve at the given time.
 * The curve must be a well-formed object, and have a value dimension of 1. The function does not perform any validation on the curve, 
@@ -239,6 +255,7 @@ private:
 		cmf::ConstBufferElementStream<T> values;
 		Interpolation interpolation = Interpolation::Linear;
 		uint32_t targetIndex = 0;
+		mutable CurveEvaluationCache<T> cache;
 	};
 
 	void AdjustStopTime();

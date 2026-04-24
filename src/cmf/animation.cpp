@@ -13,8 +13,8 @@ bool IsBoneTarget( cmf::AnimationChannelTargetType targetType )
 
 struct Interval
 {
-	uint32_t knot0 = 0;
-	uint32_t knot1 = 0;
+	uint32_t knotIndex0 = 0;
+	uint32_t knotIndex1 = 0;
 	float time = 0;
 };
 
@@ -27,26 +27,86 @@ Interval FindKnotInterval( const Knots& knots, float time )
 	{
 		return interval;
 	}
-	auto knot0 = knots[interval.knot0];
+	auto knot0 = knots[interval.knotIndex0];
 	if( time < knot0 )
 	{
 		return interval;
 	}
-	interval.knot1 = 1;
+	interval.knotIndex1 = 1;
 	interval.time = 1;
-	while( interval.knot1 < knots.size() )
+	while( interval.knotIndex1 < knots.size() )
 	{
-		const auto knot1 = knots[interval.knot1];
+		const auto knot1 = knots[interval.knotIndex1];
 		if( time < knot1 )
 		{
 			interval.time = ( time - knot0 ) / ( knot1 - knot0 );
 			return interval;
 		}
-		++interval.knot0;
-		++interval.knot1;
+		++interval.knotIndex0;
+		++interval.knotIndex1;
 		knot0 = knot1;
 	}
-	interval.knot1 = interval.knot0;
+	interval.knotIndex1 = interval.knotIndex0;
+	return interval;
+}
+
+template <typename T>
+Interval FindKnotInterval( const Knots& knots, float time, cmf::CurveEvaluationCache<T>& cache )
+{
+	Interval interval = {};
+	if( knots.size() == 0 )
+	{
+		return interval;
+	}
+	if( cache.knotIndex < knots.size() )
+	{
+		if( time >= cache.knot0 )
+		{
+			interval.knotIndex0 = cache.knotIndex;
+			if( cache.knotIndex + 1 >= knots.size() )
+			{
+				interval.knotIndex1 = cache.knotIndex;
+				interval.time = 1;
+				return interval;
+			}
+			if( time < cache.knot1 )
+			{
+				interval.knotIndex1 = cache.knotIndex + 1;
+				interval.time = ( time - cache.knot0 ) / ( cache.knot1 - cache.knot0 );
+				return interval;
+			}
+		}
+	}
+	auto knot0 = cache.knotIndex == interval.knotIndex0 ? cache.knot0 : knots[interval.knotIndex0];
+	if( time < knot0 )
+	{
+		cache.knotIndex = interval.knotIndex0;
+		cache.knot0 = knot0;
+		cache.knot1 = cache.knot0;
+		return interval;
+	}
+	cache.knotIndex = interval.knotIndex0;
+	cache.knot0 = knot0;
+	interval.knotIndex1 = interval.knotIndex0 + 1;
+	interval.time = 1;
+	while( interval.knotIndex1 < knots.size() )
+	{
+		const auto knot1 = knots[interval.knotIndex1];
+		cache.knot1 = knot1;
+		if( time < knot1 )
+		{
+			interval.time = ( time - knot0 ) / ( knot1 - knot0 );
+			cache.knotIndex = interval.knotIndex0;
+			return interval;
+		}
+		++interval.knotIndex0;
+		++interval.knotIndex1;
+		knot0 = knot1;
+		cache.knot0 = knot0;
+	}
+	interval.knotIndex1 = interval.knotIndex0;
+	cache.knot1 = cache.knot0;
+	cache.knotIndex = interval.knotIndex0;
 	return interval;
 }
 
@@ -79,10 +139,10 @@ T SampleCurve( const cmf::AnimationCurve& curve, float time )
 	switch( curve.interpolation )
 	{
 	case cmf::Interpolation::Step:
-		return valueStream[interval.knot0];
+		return valueStream[interval.knotIndex0];
 	case cmf::Interpolation::Linear: {
-		const auto v0 = valueStream[interval.knot0];
-		const auto v1 = valueStream[interval.knot1];
+		const auto v0 = valueStream[interval.knotIndex0];
+		const auto v1 = valueStream[interval.knotIndex1];
 		return v0 + ( v1 - v0 ) * interval.time;
 	}
 	default:
@@ -97,26 +157,61 @@ T SampleCurve( const Knots& knots, const cmf::ConstBufferElementStream<T>& value
 	switch( interpolation )
 	{
 	case cmf::Interpolation::Step:
-		return values[interval.knot0];
+		return values[interval.knotIndex0];
 	case cmf::Interpolation::Linear: {
-		const auto v0 = values[interval.knot0];
-		const auto v1 = values[interval.knot1];
+		const auto v0 = values[interval.knotIndex0];
+		const auto v1 = values[interval.knotIndex1];
 		return v0 + ( v1 - v0 ) * interval.time;
 	}
 	default:
 		return {};
 	}
 }
-Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElementStream<Vector4>& values, cmf::Interpolation interpolation, float time )
+
+template <typename T>
+T SampleCurve( const Knots& knots, const cmf::ConstBufferElementStream<T>& values, cmf::Interpolation interpolation, float time, cmf::CurveEvaluationCache<T>& cache )
 {
-	const auto interval = FindKnotInterval( knots, time );
+	auto prevKnot = cache.knotIndex;
+	const auto interval = FindKnotInterval( knots, time, cache );
 	switch( interpolation )
 	{
 	case cmf::Interpolation::Step:
-		return values[interval.knot0];
-	case cmf::Interpolation::Linear: {
-		return Slerp( values[interval.knot0], values[interval.knot1], interval.time );
+		if( prevKnot != cache.knotIndex )
+		{
+			cache.value0 = values[interval.knotIndex0];
+		}
+		return cache.value0;
+	case cmf::Interpolation::Linear:
+		if( prevKnot != cache.knotIndex )
+		{
+			cache.value0 = values[interval.knotIndex0];
+			cache.value1 = values[interval.knotIndex1];
+		}
+		return cache.value0 + ( cache.value1 - cache.value0 ) * interval.time;
+	default:
+		return {};
 	}
+}
+
+Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElementStream<Vector4>& values, cmf::Interpolation interpolation, float time, cmf::CurveEvaluationCache<Vector4>& cache )
+{
+	auto prevKnot = cache.knotIndex;
+	const auto interval = FindKnotInterval( knots, time, cache );
+	switch( interpolation )
+	{
+	case cmf::Interpolation::Step:
+		if( prevKnot != cache.knotIndex )
+		{
+			cache.value0 = values[interval.knotIndex0];
+		}
+		return cache.value0;
+	case cmf::Interpolation::Linear:
+		if( prevKnot != cache.knotIndex )
+		{
+			cache.value0 = values[interval.knotIndex0];
+			cache.value1 = values[interval.knotIndex1];
+		}
+		return Slerp( cache.value0, cache.value1, interval.time );
 	default:
 		return {};
 	}
@@ -155,9 +250,9 @@ Quaternion SampleQuaternionCurve( const cmf::AnimationCurve& curve, float time )
 	switch( curve.interpolation )
 	{
 	case cmf::Interpolation::Step:
-		return valueStream[interval.knot0];
+		return valueStream[interval.knotIndex0];
 	case cmf::Interpolation::Linear:
-		return Slerp( valueStream[interval.knot0], valueStream[interval.knot1], interval.time );
+		return Slerp( valueStream[interval.knotIndex0], valueStream[interval.knotIndex1], interval.time );
 	default:
 		return {};
 	}
@@ -485,17 +580,17 @@ void AnimationPlayer::SampleAtLocalTime( SkeletonPose& outPose, float localTime 
 	for( const auto& position : m_positionCurves )
 	{
 		auto& boneTransform = outPose.boneTransforms[position.targetIndex];
-		boneTransform.position = SampleCurve( position.knots, position.values, position.interpolation, localTime );
+		boneTransform.position = SampleCurve( position.knots, position.values, position.interpolation, localTime, position.cache );
 	}
 	for( const auto& rotation : m_rotationCurves )
 	{
 		auto& boneTransform = outPose.boneTransforms[rotation.targetIndex];
-		boneTransform.rotation = ::SampleQuaternionCurve( rotation.knots, rotation.values, rotation.interpolation, localTime );
+		boneTransform.rotation = ::SampleQuaternionCurve( rotation.knots, rotation.values, rotation.interpolation, localTime, rotation.cache );
 	}
 	for( const auto& scale : m_scaleCurves )
 	{
 		auto& boneTransform = outPose.boneTransforms[scale.targetIndex];
-		boneTransform.scale = SampleCurve( scale.knots, scale.values, scale.interpolation, localTime );
+		boneTransform.scale = SampleCurve( scale.knots, scale.values, scale.interpolation, localTime, scale.cache );
 	}
 }
 
