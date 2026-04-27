@@ -3,6 +3,8 @@
 #include "cmf/declutils.h"
 #include "cmf/transforms.h"
 
+#include <mutex>
+
 namespace
 {
 
@@ -217,6 +219,18 @@ Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElem
 	}
 }
 
+std::mutex& GetActiveAnimationPlayersMutex()
+{
+	static std::mutex mutex;
+	return mutex;
+}
+
+std::vector<cmf::AnimationPlayer*>& GetActiveAnimationPlayers()
+{
+	static std::vector<cmf::AnimationPlayer*> activePlayers;
+	return activePlayers;
+}
+
 }
 
 namespace cmf
@@ -329,12 +343,12 @@ BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std::string_view& bone
 	return result;
 }
 
-void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights )
+void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights, float alpha )
 {
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
 	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
 	{
-		const float weight = boneWeights.boneWeights[i];
+		const float weight = boneWeights.boneWeights[i] * alpha;
 		outPose.boneTransforms[i] = Lerp( poseA.boneTransforms[i], poseB.boneTransforms[i], weight );
 	}
 }
@@ -354,7 +368,7 @@ void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const 
 	}
 }
 
-void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights )
+void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights, float alpha )
 {
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
 	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
@@ -364,7 +378,7 @@ void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const 
 		const auto inverseBase = Inverse( base );
 		const auto multiplied = Multiply( inverseBase, additive );
 
-		const float weight = boneWeights.boneWeights[i];
+		const float weight = boneWeights.boneWeights[i] * alpha;
 		const auto blended = Lerp( {}, multiplied, weight );
 		outPose.boneTransforms[i] = Multiply( poseA.boneTransforms[i], blended );
 	}
@@ -425,6 +439,24 @@ AnimationPlayer::AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Anim
 			break;
 		}
 	}
+
+	const std::scoped_lock lock( GetActiveAnimationPlayersMutex() );
+
+	m_playerIndex = GetActiveAnimationPlayers().size(); // NOLINT(cppcoreguidelines-prefer-member-initializer): requires mutex lock; cannot use member initializer
+	GetActiveAnimationPlayers().push_back( this );
+}
+
+AnimationPlayer::~AnimationPlayer()
+{
+	const std::scoped_lock lock( GetActiveAnimationPlayersMutex() );
+
+	auto& activePlayers = GetActiveAnimationPlayers();
+	if( m_playerIndex != activePlayers.size() - 1 )
+	{
+		activePlayers[m_playerIndex] = activePlayers.back();
+		activePlayers[m_playerIndex]->m_playerIndex = m_playerIndex;
+	}
+	activePlayers.pop_back();
 }
 
 void AnimationPlayer::AdjustStopTime()
@@ -594,6 +626,12 @@ void AnimationPlayer::SampleAtLocalTime( SkeletonPose& outPose, float localTime 
 	}
 }
 
+void AnimationPlayer::RebaseClocks( float deltaTime )
+{
+	m_startTime += deltaTime;
+	m_stopTime += deltaTime;
+}
+
 const cmf::Skeleton& AnimationPlayer::GetSkeleton() const
 {
 	return *m_skeleton;
@@ -631,8 +669,6 @@ void AnimationSequencer::EnumerateAnimations( const std::function<void( const st
 
 void AnimationSequencer::Sample( SkeletonPose& outPose, float time )
 {
-	outPose.boneTransforms.resize( m_skeleton->restTransforms.size() );
-	std::copy( m_skeleton->restTransforms.begin(), m_skeleton->restTransforms.end(), outPose.boneTransforms.begin() );
 	for( const auto& player : m_animations )
 	{
 		if( player->Sample( outPose, time ) )
@@ -653,6 +689,15 @@ void AnimationSequencer::RemoveFinishedAnimations( float time )
 const cmf::Skeleton& AnimationSequencer::GetSkeleton() const
 {
 	return *m_skeleton;
+}
+
+void RebaseAllAnimationPlayerClocks( float deltaTime )
+{
+	const std::scoped_lock lock( GetActiveAnimationPlayersMutex() );
+	for( auto* player : GetActiveAnimationPlayers() )
+	{
+		player->RebaseClocks( deltaTime );
+	}
 }
 
 }

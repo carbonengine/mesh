@@ -144,8 +144,9 @@ CARBON_MESH_EXPORT BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std
 * @param poseA The first input skeleton pose.
 * @param poseB The second input skeleton pose.
 * @param boneWeights The per-bone weights for blending.
+* @param alpha The interpolation factor between the two poses (multiplied by the per-bone weights).
 */
-CARBON_MESH_EXPORT void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights );
+CARBON_MESH_EXPORT void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights, float alpha );
 
 
 /** @brief Blends an additive pose onto a base skeleton pose using a uniform alpha value.
@@ -173,8 +174,9 @@ CARBON_MESH_EXPORT void BlendAdditivePose( SkeletonPose& outPose, const Skeleton
 * @param basePose The base pose of the additive animation (used to compute the additive difference).
 * @param additivePose The additive pose to blend in.
 * @param boneWeights The per-bone weights controlling the strength of the additive blend for each bone.
+* @param alpha The interpolation factor controlling the strength of the additive blend (multiplied by the per-bone weights).
 */
-CARBON_MESH_EXPORT void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights );
+CARBON_MESH_EXPORT void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights, float alpha );
 
 /** @brief Computes the world transformation matrices for each bone in a skeleton pose.
 * The function iterates through the bones of the skeleton pose and computes the world transformation matrices based on the local transforms and the hierarchy of the skeleton.
@@ -202,6 +204,12 @@ public:
     * @param animation The animation to play.
     */
 	CARBON_MESH_EXPORT AnimationPlayer( const cmf::Skeleton& skeleton, const cmf::Animation& animation );
+	CARBON_MESH_EXPORT ~AnimationPlayer();
+
+	AnimationPlayer( const AnimationPlayer& ) = delete;
+	AnimationPlayer( AnimationPlayer&& ) = delete;
+	AnimationPlayer& operator=( const AnimationPlayer& ) = delete;
+	AnimationPlayer& operator=( AnimationPlayer&& ) = delete;
 
 	[[nodiscard]] CARBON_MESH_EXPORT uint32_t GetLoopCount() const;
 	CARBON_MESH_EXPORT void SetLoopCount( uint32_t loopCount );
@@ -247,6 +255,11 @@ public:
     */
 	CARBON_MESH_EXPORT void SampleAtLocalTime( SkeletonPose& outPose, float localTime ) const;
 
+	/** @brief Rebases internal clocks by a given delta time.
+    * @param deltaTime The amount of time to rebase the clocks by.
+    */
+	CARBON_MESH_EXPORT void RebaseClocks( float deltaTime );
+
 private:
 	template <typename T>
 	struct CurveAccessor
@@ -272,6 +285,7 @@ private:
 	bool m_explicitStopTime = false;
 	bool m_extrapolateBefore = false;
 	bool m_extrapolateAfter = false;
+	size_t m_playerIndex = 0;
 
 	const cmf::Skeleton* m_skeleton = nullptr;
 };
@@ -325,4 +339,10 @@ private:
 	const cmf::Skeleton* m_skeleton = nullptr;
 	std::vector<std::shared_ptr<AnimationPlayer>> m_animations;
 };
+
+/** @brief Rebases the internal clocks of all active AnimationPlayer instances by a given delta time.
+ * @param deltaTime The amount of time to rebase the clocks by.
+ */
+CARBON_MESH_EXPORT void RebaseAllAnimationPlayerClocks( float deltaTime );
+
 }
