@@ -208,6 +208,23 @@ struct MeshLod
 	}
 };
 
+struct AudioOcclusionMesh
+{
+	Span<Vector3> vertices;
+	Span<uint16_t> indices;
+	CcpMath::AxisAlignedBox bounds;
+
+	static constexpr std::string_view TypeName = "AudioOcclusionMesh";
+
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, vertices, "vertices" );
+		visitor( *this, indices, "indices" );
+		visitor( *this, bounds, "bounds" );
+	}
+};
+
 enum class IndexType : uint8_t
 {
 	UInt32,
@@ -231,6 +248,7 @@ struct Mesh
 	MorphTargets morphTargets;
 	Span<float> uvDensities;
 	CcpMath::AxisAlignedBox bounds;
+	AudioOcclusionMesh audioOcclusionMesh;
 	MeshTopology topology = MeshTopology::TriangleList;
 	uint8_t skeleton = 0xff;
 
@@ -247,6 +265,7 @@ struct Mesh
 		visitor( *this, morphTargets, "morphTargets" );
 		visitor( *this, uvDensities, "uvDensities" );
 		visitor( *this, bounds, "bounds" );
+		visitor( *this, audioOcclusionMesh, "audioOcclusionMesh" );
 		visitor( *this, topology, "topology" );
 		visitor( *this, skeleton, "skeleton" );
 	}

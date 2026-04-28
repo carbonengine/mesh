@@ -31,6 +31,7 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 	appState.morphTargetEnabled.Clear();
 	appState.morphTargetWeight.Clear();
 	appState.meshWireframeOverlay.Clear();
+	appState.audioOcclusionMesh.Clear();
 	appState.meshBoundingBox.Clear();
 
 	appState.modelBoundingBox.RegisterCallback( [&]( bool value, AppState& ) {

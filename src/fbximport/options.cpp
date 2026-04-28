@@ -159,9 +159,9 @@ void from_json( const nlohmann::json& j, SimplygonLodOptions& p )
 	{
 		j.at( "screenSizeFactor" ).get_to( p.screenSizeFactor );
 	}
-    if( j.contains( "lockVertexChannel" ) )
-    {
-        j.at( "lockVertexChannel" ).get_to( p.lockVertexChannel );
+	if( j.contains( "lockVertexChannel" ) )
+	{
+		j.at( "lockVertexChannel" ).get_to( p.lockVertexChannel );
 	}
 }
 
@@ -177,6 +177,81 @@ void to_json( nlohmann::json& j, const SimplygonLodOptions& p )
 		{ "vertexColorImportance", p.vertexColorImportance },
 		{ "screenSizeFactor", p.screenSizeFactor },
 		{ "lockVertexChannel", p.lockVertexChannel }
+	};
+}
+
+void from_json( const nlohmann::json& j, SimplygonHoleFilling& p )
+{
+	p = SimplygonHoleFilling::Medium;
+	if( j.is_string() )
+	{
+		auto str = j.get<std::string>();
+		if( str == "Disabled" )
+		{
+			p = SimplygonHoleFilling::Disabled;
+		}
+		else if( str == "Low" )
+		{
+			p = SimplygonHoleFilling::Low;
+		}
+		else if( str == "Medium" )
+		{
+			p = SimplygonHoleFilling::Medium;
+		}
+		else if( str == "High" )
+		{
+			p = SimplygonHoleFilling::High;
+		}
+		else
+		{
+			throw std::runtime_error( "invalid SimplygonHoleFilling: " + str );
+		}
+	}
+	else
+	{
+		throw std::runtime_error( "SimplygonHoleFilling must be a string" );
+	}
+}
+
+void to_json( nlohmann::json& j, const SimplygonHoleFilling& p )
+{
+	std::string str;
+	switch( p )
+	{
+	case SimplygonHoleFilling::Disabled:
+		str = "Disabled";
+		break;
+	case SimplygonHoleFilling::Low:
+		str = "Low";
+		break;
+	case SimplygonHoleFilling::Medium:
+		str = "Medium";
+		break;
+	case SimplygonHoleFilling::High:
+		str = "High";
+		break;
+	}
+	j = str;
+}
+
+void from_json( const nlohmann::json& j, SimplygonAudioOcclusionMeshOptions& p )
+{
+	p = {};
+	if( j.contains( "screenSize" ) )
+	{
+		j.at( "screenSize" ).get_to( p.screenSize );
+	}
+	if( j.contains( "holeFilling" ) )
+	{
+		j.at( "holeFilling" ).get_to( p.holeFilling );
+	}
+}
+
+void to_json( nlohmann::json& j, const SimplygonAudioOcclusionMeshOptions& p )
+{
+	j = nlohmann::json{
+		{ "screenSize", p.screenSize },
+		{ "holeFilling", p.holeFilling }
 	};
 }
 
@@ -238,6 +313,66 @@ void to_json( nlohmann::json& j, const LodOptions& p )
 		{ "simplygon", p.simplygon }
 	};
 }
+
+void from_json( const nlohmann::json& j, AudioOcclusionMeshGenerationMethod& p )
+{
+	p = AudioOcclusionMeshGenerationMethod::Simplygon;
+	if( j.is_string() )
+	{
+		auto str = j.get<std::string>();
+		if( str == "Simplygon" )
+		{
+			p = AudioOcclusionMeshGenerationMethod::Simplygon;
+		}
+		else
+		{
+			throw std::runtime_error( "invalid AudioOcclusionMeshGenerationMethod: " + str );
+		}
+	}
+	else
+	{
+		throw std::runtime_error( "AudioOcclusionMeshGenerationMethod must be a string" );
+	}
+}
+
+void to_json( nlohmann::json& j, const AudioOcclusionMeshGenerationMethod& p )
+{
+	std::string str;
+	switch( p )
+	{
+	case AudioOcclusionMeshGenerationMethod::Simplygon:
+		str = "Simplygon";
+		break;
+	}
+	j = str;
+}
+
+void from_json( const nlohmann::json& j, AudioOcclusionMeshOptions& p )
+{
+	p = {};
+	if( j.contains( "generate" ) )
+	{
+		j.at( "generate" ).get_to( p.generate );
+	}
+	if( j.contains( "method" ) )
+	{
+		j.at( "method" ).get_to( p.method );
+	}
+	if( j.contains( "simplygon" ) )
+	{
+		j.at( "simplygon" ).get_to( p.simplygon );
+	}
+}
+
+void to_json( nlohmann::json& j, const AudioOcclusionMeshOptions& p )
+{
+	j = nlohmann::json{
+		{ "generate", p.generate },
+		{ "method", p.method },
+		{ "simplygon", p.simplygon }
+	};
+}
+
 
 void from_json( const nlohmann::json& j, MeshImportOptions& p )
 {
@@ -305,6 +440,10 @@ void from_json( const nlohmann::json& j, MeshImportOptions& p )
 	if( j.contains( "lods" ) )
 	{
 		j.at( "lods" ).get_to( p.lods );
+	}
+	if( j.contains( "audioOcclusionMesh" ) )
+	{
+		j.at( "audioOcclusionMesh" ).get_to( p.audioOcclusionMesh );
 	}
 }
 

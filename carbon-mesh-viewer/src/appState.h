@@ -115,6 +115,7 @@ struct AppState
 	StateCollection<float> morphTargetWeight{ 0.0 };
 	StateCollection<bool> morphTargetEnabled{ true };
 	StateCollection<bool> meshWireframeOverlay{ false };
+	StateCollection<bool> audioOcclusionMesh{ false };
 	StateCollection<bool> meshBoundingBox{ false };
 	State<bool> modelBoundingBox{ false };
 

@@ -219,16 +219,31 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		} );
 		ImGui::TableNextRow();
 
-        ImGui::TableNextColumn();
+		ImGui::TableNextColumn();
 		ImGui::Text( "Wireframe Overlay" );
 		ImGui::TableNextColumn();
 		bool wireframeOverlay = std::all_of( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
-            return state.GetValue();
-		} ) && appState.meshWireframeOverlay.size() > 0;
+									return state.GetValue();
+								} ) &&
+			appState.meshWireframeOverlay.size() > 0;
 		OnChange( ImGui::Checkbox( "##wireframecheckbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
-			std::for_each(appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
-                state.SetValue( wireframeOverlay );
-            });
+			std::for_each( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
+				state.SetValue( wireframeOverlay );
+			} );
+		} );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Audio Occlusion Mesh" );
+		ImGui::TableNextColumn();
+		bool audioOcclusion = std::all_of( appState.audioOcclusionMesh.begin(), appState.audioOcclusionMesh.end(), []( const State<bool>& state ) {
+								  return state.GetValue();
+							  } ) &&
+			appState.audioOcclusionMesh.size() > 0;
+		OnChange( ImGui::Checkbox( "##audioocclusioncheckbox", &audioOcclusion ), [&appState, &audioOcclusion]() {
+			std::for_each( appState.audioOcclusionMesh.begin(), appState.audioOcclusionMesh.end(), [audioOcclusion]( State<bool>& state ) {
+				state.SetValue( audioOcclusion );
+			} );
 		} );
 		ImGui::TableNextRow();
 
@@ -242,15 +257,15 @@ void UIRenderer::SetupMeshListView( const ModelUiState& modelState, AppState& ap
 
 	if( !modelState.meshes.empty() )
 	{
-	    std::string header = "Meshes (" + std::to_string( modelState.meshes.size() ) + ")";
-	    if( ImGui::CollapsingHeader( header.c_str(), &open, ImGuiTreeNodeFlags_DefaultOpen ) )
-	    {
+		std::string header = "Meshes (" + std::to_string( modelState.meshes.size() ) + ")";
+		if( ImGui::CollapsingHeader( header.c_str(), &open, ImGuiTreeNodeFlags_DefaultOpen ) )
+		{
 			for( const auto& mesh : modelState.meshes )
 			{
 				SetupMeshView( mesh, appState );
 			}
-	    }
-    }
+		}
+	}
 }
 
 
@@ -290,15 +305,15 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			bool display = mesh.display;
 			OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &mesh, &display]() {
 				appState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
-			} ); 
+			} );
 
-            ImGui::TableNextRow();
+			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Bounding Box" );
 			ImGui::SetItemTooltip( "Toggles the bounding box for \"%s\" mesh", mesh.name.c_str() );
 
-			ImGui::TableNextColumn(); 
-		    bool boundingBox = mesh.boundingBox;
+			ImGui::TableNextColumn();
+			bool boundingBox = mesh.boundingBox;
 			OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &mesh, &boundingBox]() {
 				appState.meshBoundingBox[mesh.meshIndex].SetValue( boundingBox );
 			} );
@@ -313,18 +328,32 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 				appState.meshWireframeOverlay[mesh.meshIndex].SetValue( wireframeOverlay );
 			} );
 			ImGui::TableNextRow();
+
+			ImGui::BeginDisabled( !mesh.hasAudioOcclusionMesh );
+			ImGui::TableNextColumn();
+			ImGui::Text( "Audio Occlusion Mesh" );
+			ImGui::SetItemTooltip( "Toggles the audio occlusion mesh rendering for the \"%s\" mesh", mesh.name.c_str() );
+			ImGui::TableNextColumn();
+			bool audioOcclusion = mesh.audioOcclusionMesh;
+			OnChange( ImGui::Checkbox( "##audioocclusionmeshcheckbox", &audioOcclusion ), [&appState, &mesh, &audioOcclusion]() {
+				appState.audioOcclusionMesh[mesh.meshIndex].SetValue( audioOcclusion );
+			} );
+			ImGui::EndDisabled();
+
+			ImGui::TableNextRow();
+
 			ImGui::EndTable();
 			if( !mesh.morphTargets.empty() )
 			{
-			    if( ImGui::CollapsingHeader( "Morph Targets" ) )
-			    { 
-				    uint32_t index = 0;
-				    for( const auto& morphTarget : mesh.morphTargets )
-				    {
-					    SetupMorphTarget( morphTarget, appState );
-				    } 
-			    }
-            }
+				if( ImGui::CollapsingHeader( "Morph Targets" ) )
+				{
+					uint32_t index = 0;
+					for( const auto& morphTarget : mesh.morphTargets )
+					{
+						SetupMorphTarget( morphTarget, appState );
+					}
+				}
+			}
 		}
 		ImGui::TreePop();
 	}
@@ -478,7 +507,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
 			if( meshIndex >= appState.meshVisibilityStates.size() )
-            {
+			{
 				break;
 			}
 			MeshUiState meshState{};
@@ -487,6 +516,8 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
 			meshState.display = appState.meshVisibilityStates[meshIndex].GetValue();
 			meshState.wireframeOverlay = appState.meshWireframeOverlay[meshIndex].GetValue();
+			meshState.audioOcclusionMesh = appState.audioOcclusionMesh[meshIndex].GetValue();
+			meshState.hasAudioOcclusionMesh = !mesh.audioOcclusionMesh.vertices.empty() && !mesh.audioOcclusionMesh.indices.empty();
 			meshState.boundingBox = appState.meshBoundingBox[meshIndex].GetValue();
 
 			for( const auto& lod : mesh.lods )
@@ -497,7 +528,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 			m_uiState.modelStates.totalVertexCount += meshState.vertexCount;
 			m_uiState.modelStates.totalIndexCount += meshState.indexCount;
-            		
+
 			for( const auto& morphTarget : mesh.morphTargets.targets )
 			{
 				if( morphIndex >= appState.morphTargetWeight.size() )

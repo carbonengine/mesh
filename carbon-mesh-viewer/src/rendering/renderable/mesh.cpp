@@ -10,6 +10,7 @@ MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std:
 	m_cmfMesh( cmfMesh ),
 	m_modelEffect( renderer ),
 	m_wireframeEffect( renderer ),
+	m_audioOcclusionRenderable( renderer, GetAudioOcclusionEffect( renderer ) ),
 	m_boundingBox( BoundingBox::Create( renderer, Vector3( 0.5, 0.5, 0.0 ) ) )
 {
 	for( const auto& decl : cmfMesh.decl )
@@ -51,6 +52,11 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 		m_wireframe = enabled;
 	} );
 
+	stateIndex = appState.audioOcclusionMesh.AddState();
+	appState.audioOcclusionMesh[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+		m_audioOcclusion = enabled;
+	} );
+
 	stateIndex = appState.meshBoundingBox.AddState();
 	appState.meshBoundingBox[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
 		m_showBoundingBox = enabled;
@@ -73,6 +79,19 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 		lod.Initialize( initializeCmd, morphTargetStateIndex );
 	}
 	m_boundingBox.Initialize();
+
+	if( !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
+	{
+		m_audioOcclusionRenderable.SetBufferData(
+			reinterpret_cast<const uint8_t*>( m_cmfMesh.audioOcclusionMesh.vertices.data() ),
+			uint32_t( m_cmfMesh.audioOcclusionMesh.vertices.size() * sizeof( Vector3 ) ),
+			sizeof( Vector3 ) );
+		m_audioOcclusionRenderable.SetIndexData(
+			reinterpret_cast<const uint8_t*>( m_cmfMesh.audioOcclusionMesh.indices.data() ),
+			uint32_t( m_cmfMesh.audioOcclusionMesh.indices.size() * sizeof( uint16_t ) ),
+			sizeof( uint16_t ) );
+		m_audioOcclusionRenderable.Initialize();
+	}
 }
 
 void MeshRenderable::Finalize()
@@ -116,6 +135,12 @@ void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appSt
 		auto vertexData = BoundingBox::VertexUBO{ camera.GetProjection(), camera.GetView(), m_boundingBoxTransform };
 		m_boundingBox.SetUniformData( 0, vertexData );
 		m_boundingBox.Render( commandBuffer );
+	}
+
+	if( m_audioOcclusion && !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
+	{
+		m_audioOcclusionRenderable.SetUniformData( 0, viewProj );
+		m_audioOcclusionRenderable.Render( commandBuffer );
 	}
 }
 
@@ -161,4 +186,22 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 		m_wireframeEffect.Initialize();
 	}
 	return VK_SUCCESS;
+}
+
+Effect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer )
+{
+	auto config = Effect::Config();
+	config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	config.polygonMode = VK_POLYGON_MODE_FILL;
+	config.cullMode = VK_CULL_MODE_NONE;
+	config.blend = false;
+	config.vertexStride = sizeof( Vector3 );
+	config.vertexDescriptions.push_back( { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 } );
+
+	Effect effect( renderer );
+	effect.SetShaderName( "facenormal" );
+	effect.SetConfig( config );
+	effect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+
+	return effect;
 }

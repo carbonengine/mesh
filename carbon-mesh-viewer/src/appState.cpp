@@ -26,6 +26,7 @@ void AppState::CallStateCallbacks()
 	morphTargetWeight.CallCallbacks( *this );
 	morphTargetEnabled.CallCallbacks( *this );
 	meshWireframeOverlay.CallCallbacks( *this );
+	audioOcclusionMesh.CallCallbacks( *this );
 	meshBoundingBox.CallCallbacks( *this );
 	modelBoundingBox.CallCallbacks( *this );
 }

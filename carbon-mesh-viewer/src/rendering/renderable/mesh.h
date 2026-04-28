@@ -21,6 +21,8 @@ public:
 	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
+	static Effect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer );
+
 	std::vector<MeshLodRenderable> m_lods;
 	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions;
 	std::shared_ptr<const Renderer> m_renderer;
@@ -43,6 +45,9 @@ private:
 	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
+
+	bool m_audioOcclusion{ false };
+	PrimitiveRenderable m_audioOcclusionRenderable;
 
 	cmf::Mesh m_cmfMesh{};
 };

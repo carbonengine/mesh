@@ -45,13 +45,36 @@ struct SimplygonLodOptions
 	float vertexColorImportance = 1.f;
 	// Multiplier for screen size thresholds for reported LOD threshold. The larger the number the more aggressive the LOD reduction will be.
 	float screenSizeFactor = 2.f;
-	// Name of the vertex color channel containing "locked" vertex flags. If specified, vertices with a non-zero red value in this channel will be 
-    // locked and not moved during LOD generation. 
+	// Name of the vertex color channel containing "locked" vertex flags. If specified, vertices with a non-zero red value in this channel will be
+	// locked and not moved during LOD generation.
 	std::string lockVertexChannel;
 };
 
 void from_json( const nlohmann::json& j, SimplygonLodOptions& p );
 void to_json( nlohmann::json& j, const SimplygonLodOptions& p );
+
+enum class SimplygonHoleFilling
+{
+	Disabled,
+	Low,
+	Medium,
+	High,
+};
+
+void from_json( const nlohmann::json& j, SimplygonHoleFilling& p );
+void to_json( nlohmann::json& j, const SimplygonHoleFilling& p );
+
+struct SimplygonAudioOcclusionMeshOptions
+{
+	// Target screen size in pixels for the generated audio occlusion mesh. The larger the screen size, the more detailed the generated mesh will be,
+	// but it will also have more triangles and be more expensive to use for audio occlusion calculations.
+	uint32_t screenSize = 20;
+	// Hole filling mode to use for the generated audio occlusion mesh: hint for Simplygon on how aggressive it should be with filling holes in the source mesh.
+	SimplygonHoleFilling holeFilling = SimplygonHoleFilling::Medium;
+};
+
+void from_json( const nlohmann::json& j, SimplygonAudioOcclusionMeshOptions& p );
+void to_json( nlohmann::json& j, const SimplygonAudioOcclusionMeshOptions& p );
 
 enum class LodGenerationMethod
 {
@@ -71,6 +94,23 @@ struct LodOptions
 void from_json( const nlohmann::json& j, LodOptions& p );
 void to_json( nlohmann::json& j, const LodOptions& p );
 
+enum class AudioOcclusionMeshGenerationMethod
+{
+	Simplygon,
+};
+
+void from_json( const nlohmann::json& j, AudioOcclusionMeshGenerationMethod& p );
+void to_json( nlohmann::json& j, const AudioOcclusionMeshGenerationMethod& p );
+
+struct AudioOcclusionMeshOptions
+{
+	bool generate = false;
+	AudioOcclusionMeshGenerationMethod method = AudioOcclusionMeshGenerationMethod::Simplygon;
+	SimplygonAudioOcclusionMeshOptions simplygon;
+};
+
+void from_json( const nlohmann::json& j, AudioOcclusionMeshOptions& p );
+void to_json( nlohmann::json& j, const AudioOcclusionMeshOptions& p );
 
 struct MeshImportOptions
 {
@@ -109,6 +149,7 @@ struct MeshImportOptions
 
 	MorphTargetOptions morphTargets;
 	LodOptions lods;
+	AudioOcclusionMeshOptions audioOcclusionMesh;
 };
 
 void from_json( const nlohmann::json& j, MeshImportOptions& p );

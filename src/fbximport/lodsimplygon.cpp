@@ -597,6 +597,18 @@ void ValidateVertexDeclaration( const cmf::Mesh& mesh )
 		}
 	}
 }
+
+const cmf::MeshLod& FindSourceLodForAudioOcclusion( const cmf::Mesh& mesh, uint32_t screenSize )
+{
+	for( size_t i = 0; i < mesh.lods.size(); ++i )
+	{
+		if( i + 1 >= mesh.lods.size() || mesh.lods[i + 1].threshold < screenSize )
+		{
+			return mesh.lods[i];
+		}
+	}
+	throw std::runtime_error( "Mesh " + ToStdString( mesh.name ) + " does not have any LODs." );
+}
 }
 
 void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
@@ -635,8 +647,111 @@ void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options,
 	}
 }
 
+void SimplygonGenerateAudioOcclusionMesh( cmf::Mesh& mesh, const SimplygonAudioOcclusionMeshOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
+{
+	auto* positionElement = FindElement( mesh.decl, cmf::Usage::Position );
+	if( !positionElement )
+	{
+		throw std::runtime_error( "Mesh " + ToStdString( mesh.name ) + " doesn't have a position element, which is required for audio occlusion mesh generation." );
+	}
+
+	const auto* sg = SimplygonLibrary::Get();
+	const Simplygon::spGeometryData geomData = sg->CreateGeometryData();
+	const auto& srcLod = FindSourceLodForAudioOcclusion( mesh, options.screenSize );
+
+	geomData->SetVertexCount( srcLod.vb.size / srcLod.vb.stride );
+
+	geomData->SetTriangleCount( srcLod.ib.size / srcLod.ib.stride / 3 );
+	Enumerate( cmf::ConstIndexBufferStream( srcLod.ib, bufferAllocator ), [dataIndices = geomData->GetVertexIds()]( size_t idx, uint32_t vtx ) {
+		dataIndices->SetItem( Simplygon::rid( idx ), Simplygon::rid( vtx ) );
+	} );
+	Enumerate(
+		cmf::ConstBufferElementStream<Vector3>( *positionElement, srcLod.vb, bufferAllocator ),
+		[dataPositions = geomData->GetCoords()]( size_t idx, Vector3 pos ) {
+			dataPositions->SetTuple( Simplygon::rid( idx ), &pos.x );
+		} );
+
+	const Simplygon::spScene scene = sg->CreateScene();
+	const Simplygon::spSceneMesh sceneMesh = sg->CreateSceneMesh();
+	sceneMesh->SetGeometry( geomData );
+	scene->GetRootNode()->AddChild( sceneMesh );
+
+	const Simplygon::spRemeshingProcessor processor = sg->CreateRemeshingProcessor();
+	processor->SetScene( scene );
+
+	const Simplygon::spRemeshingSettings rs = processor->GetRemeshingSettings();
+
+	rs->SetRemeshingTarget( Simplygon::ERemeshingTarget::OnScreenSize );
+	rs->SetOnScreenSize( options.screenSize );
+	rs->SetRemeshingMode( Simplygon::ERemeshingMode::Outside );
+
+	Simplygon::EHoleFilling sgHf = Simplygon::EHoleFilling::High;
+	switch( options.holeFilling )
+	{
+	case SimplygonHoleFilling::Disabled:
+		sgHf = Simplygon::EHoleFilling::Disabled;
+		break;
+	case SimplygonHoleFilling::Low:
+		sgHf = Simplygon::EHoleFilling::Low;
+		break;
+	case SimplygonHoleFilling::Medium:
+		sgHf = Simplygon::EHoleFilling::Medium;
+		break;
+	default:
+		sgHf = Simplygon::EHoleFilling::High;
+		break;
+	}
+	rs->SetHoleFilling( sgHf );
+
+	AssertSimplygonError( processor->RunProcessing(), "Failed to run Simplygon processing" );
+
+	// Simplygon does not do re-meshing in-place. We need to find the mesh in the scene again after processing to retrieve the re-meshed geometry.
+	Simplygon::spSceneMesh resultMesh = Simplygon::spSceneMesh::SafeCast( scene->GetRootNode()->GetChild( 0 ) );
+	if( resultMesh.IsNull() )
+	{
+		const Simplygon::spSceneNode child = scene->GetRootNode()->GetChild( 0 );
+		if( child.NonNull() )
+		{
+			resultMesh = Simplygon::spSceneMesh::SafeCast( child->GetChild( 0 ) );
+		}
+	}
+	if( resultMesh.IsNull() )
+	{
+		throw std::runtime_error( "Failed to retrieve re-meshed geometry from Simplygon scene." );
+	}
+
+	auto packed = resultMesh->GetGeometry()->NewPackedCopy();
+	const uint32_t newVertexCount = packed->GetCoords()->GetTupleCount();
+	mesh.audioOcclusionMesh.vertices = allocator.AllocateSpan<Vector3>( newVertexCount );
+	for( uint32_t v = 0; v < newVertexCount; ++v )
+	{
+		auto src = packed->GetCoords()->GetTuple( Simplygon::rid( v ) );
+		mesh.audioOcclusionMesh.vertices[v] = Vector3( src.GetItem( 0 ), src.GetItem( 1 ), src.GetItem( 2 ) );
+	}
+	const uint32_t newIndexCount = packed->GetVertexIds()->GetTupleCount();
+	if( newIndexCount > std::numeric_limits<uint16_t>::max() )
+	{
+		throw std::runtime_error( "Simplygon generated an audio occlusion mesh with more vertices than supported by 16-bit indices." );
+	}
+	mesh.audioOcclusionMesh.indices = allocator.AllocateSpan<uint16_t>( newIndexCount );
+	for( uint32_t i = 0; i < newIndexCount; ++i )
+	{
+		mesh.audioOcclusionMesh.indices[i] = static_cast<uint16_t>( packed->GetVertexIds()->GetItem( Simplygon::rid( i ) ) );
+	}
+	mesh.audioOcclusionMesh.bounds = {};
+	for( const auto& vertex : mesh.audioOcclusionMesh.vertices )
+	{
+		mesh.audioOcclusionMesh.bounds.Include( vertex );
+	}
+}
+
 #else
 void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
+{
+	throw std::runtime_error( "Simplygon support is disabled in this build." );
+}
+
+void SimplygonGenerateAudioOcclusionMesh( cmf::Mesh& mesh, const SimplygonAudioOcclusionMeshOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
 {
 	throw std::runtime_error( "Simplygon support is disabled in this build." );
 }

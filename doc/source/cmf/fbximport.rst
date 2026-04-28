@@ -152,6 +152,22 @@ Mesh settings
   Type ``string``, default ``""``. The name of the vertex color set used as a "locked" vertex mask. Locked vertices are preserved by Simplygon when generating LODs.
   The program will set the locked flag based on the contents of the red channel in the vertex color: the vertex is locked if the red channel is not black.
 
+``mesh.audioOcclusionMesh.generate``
+  Type ``boolean``, default ``false``. Whether to generate an audio occlusion mesh for the mesh. The audio occlusion mesh is a simplified version of the original mesh 
+  that can be used for audio occlusion calculations in games. Audio occlusion mesh is an extremely low polygon mesh with just vertex positions. The mesh
+  may not have any degenerate triangles or T-junctions.
+
+``mesh.audioOcclusionMesh.method``
+  Type ``string``, default ``Simplygon``. Method/library used to generate audio occlusion meshes. Currently, the only method supported is Simplygon.
+
+``mesh.audioOcclusionMesh.simplygon.screenSize``
+    Type ``number``, default ``20``. Target screen size in pixels for audio occlusion mesh when using Simplygon. The smaller the value, the more aggressive the simplification is.
+    The number may not be less than 20.
+
+``mesh.audioOcclusionMesh.simplygon.holeFilling``
+  Type ``string``, default ``Medium``. Determines how aggressively Simplygon fills holes in the mesh when generating audio occlusion mesh. 
+  Possible values are ``Disabled``, ``Low``, ``Medium``, and ``High``. 
+
 
 Skeleton settings
 ^^^^^^^^^^^^^^^^^
