@@ -4,6 +4,7 @@ set(PROCESSOR_SOURCES
     commands.cpp
     commands.h
     dumpjson.cpp
+    extractlod.cpp
     hash.cpp
     main.cpp
     metadata.cpp

@@ -189,11 +189,13 @@ struct LodMorphTarget
 
 struct MeshLod
 {
+	static constexpr uint32_t MAX_THRESHOLD = 0xffffffff;
+
 	BufferView vb;
 	BufferView ib;
 	Span<LodMeshArea> areas;
 	Span<LodMorphTarget> morphTargets;
-	uint32_t threshold = 0xffffffff; // max visible diameter in pixels for this LOD
+	uint32_t threshold = MAX_THRESHOLD; // max visible diameter in pixels for this LOD
 
 	static constexpr std::string_view TypeName = "MeshLod";
 
