@@ -2,13 +2,13 @@
 
 #include "../renderer.h"
 #include "../vulkan/commandbuffer.h"
-#include "../vulkan/effect.h"
+#include "../vulkan/graphicseffect.h"
 
 
 class PrimitiveRenderable
 {
 public:
-	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, Effect effect );
+	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, GraphicsEffect&& effect );
 	~PrimitiveRenderable();
 
 	void SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride );
@@ -21,7 +21,7 @@ public:
 	}
 
 	VkResult Initialize();
-	void Render( CommandBuffer& commandBuffer );
+	void Render( GraphicsCommandBuffer& commandBuffer );
 
 private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
@@ -40,5 +40,5 @@ private:
 
 	uint32_t m_elements{ 0 };
 
-	Effect m_effect;
+	GraphicsEffect m_effect;
 };

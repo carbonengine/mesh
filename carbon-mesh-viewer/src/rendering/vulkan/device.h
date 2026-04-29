@@ -5,6 +5,7 @@
 struct QueueFamilyIndices
 {
 	std::optional<uint32_t> graphicsFamily;
+	std::optional<uint32_t> computeFamily;
 	std::optional<uint32_t> presentFamily;
 
 	bool isComplete()
@@ -37,6 +38,7 @@ public:
 
 	VkQueue GetGraphicsQueue() const;
 	VkQueue GetPresentQueue() const;
+	VkQueue GetComputeQueue() const;
 
 	VkPhysicalDeviceMemoryProperties GetMemoryProperties() const;
 
@@ -47,6 +49,7 @@ private:
 	VkPhysicalDevice m_physicalDevice;
 	VkQueue m_graphicsQueue;
 	VkQueue m_presentQueue;
+	VkQueue m_computeQueue;
 	VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
 	QueueFamilyIndices m_familyIndices;

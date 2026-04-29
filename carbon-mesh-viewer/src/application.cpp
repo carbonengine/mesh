@@ -104,8 +104,7 @@ void Application::Initialize()
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
-			app->m_appState.cmfPath.SetValue( std::string( paths[0] ) );
-			app->m_appState.cmfContent.SetValue( CmfContentLoader::LoadContentFromFile( paths[0] ) );
+			app->LoadCmfFile( std::string( paths[0] ) );
 		}
 	} );
 
@@ -165,6 +164,20 @@ void Application::Run()
 		float newTime = (float)glfwGetTime();
 		if( !m_minimized )
 		{
+			if( m_renderer->BeginCompute() != VK_SUCCESS )
+			{
+				Log::Error( "Failed to begin compute step" );
+				break;
+			}
+
+			m_sceneRenderer->PrePass();
+
+			if( m_renderer->EndCompute() != VK_SUCCESS )
+			{
+				Log::Error( "Failed to end compute step" );
+				break;
+			}
+
 			if( m_renderer->BeginRender() != VK_SUCCESS )
 			{
 				Log::Error( "Failed to begin render" );
@@ -207,14 +220,11 @@ void Application::Run()
 	glfwTerminate();
 }
 
-void Application::SetData( CmfContent* data )
+void Application::LoadCmfFile( const std::string& path )
 {
-	if( !data )
-	{
-		Log::Error( "Invalid CMF data. Ignoring" );
-		return;
-	}
-	m_appState.cmfContent.SetValue( data );
+	// load the cmf content from the path and set it in the app state
+	m_appState.cmfPath.SetValue( path );
+	m_appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( path ) );
 }
 
 void Application::Resize( uint32_t width, uint32_t height )

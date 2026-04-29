@@ -119,7 +119,7 @@ VkResult Device::createLogicalDevice( const VkAllocationCallbacks* allocator )
 	enabledDynamicRenderingFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
 	enabledDynamicRenderingFeaturesKHR.dynamicRendering = VK_TRUE;
 
-    VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR enabledFragmentShaderBarycentricFeaturesKHR{};
+	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR enabledFragmentShaderBarycentricFeaturesKHR{};
 	enabledFragmentShaderBarycentricFeaturesKHR.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR;
 	enabledFragmentShaderBarycentricFeaturesKHR.fragmentShaderBarycentric = VK_TRUE;
 	enabledDynamicRenderingFeaturesKHR.pNext = &enabledFragmentShaderBarycentricFeaturesKHR;
@@ -130,7 +130,14 @@ VkResult Device::createLogicalDevice( const VkAllocationCallbacks* allocator )
 
 	vkGetDeviceQueue( m_logicalDevice, m_familyIndices.graphicsFamily.value(), 0, &m_graphicsQueue );
 	vkGetDeviceQueue( m_logicalDevice, m_familyIndices.presentFamily.value(), 0, &m_presentQueue );
-
+	if( m_familyIndices.computeFamily.has_value() )
+	{
+		vkGetDeviceQueue( m_logicalDevice, m_familyIndices.computeFamily.value(), 0, &m_computeQueue );
+	}
+	else
+	{
+		vkGetDeviceQueue( m_logicalDevice, m_familyIndices.graphicsFamily.value(), 0, &m_computeQueue );
+	}
 	return VK_SUCCESS;
 }
 
@@ -183,6 +190,10 @@ QueueFamilyIndices Device::FindQueueFamilies( VkPhysicalDevice device, VkSurface
 		if( queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT )
 		{
 			indices.graphicsFamily = i;
+		}
+		if( queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT )
+		{
+			indices.computeFamily = i;
 		}
 
 		VkBool32 presentSupport = false;
@@ -279,6 +290,11 @@ VkQueue Device::GetGraphicsQueue() const
 VkQueue Device::GetPresentQueue() const
 {
 	return m_presentQueue;
+}
+
+VkQueue Device::GetComputeQueue() const
+{
+	return m_computeQueue;
 }
 
 VkPhysicalDeviceMemoryProperties Device::GetMemoryProperties() const

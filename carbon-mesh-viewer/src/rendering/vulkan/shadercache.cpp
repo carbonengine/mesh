@@ -1,20 +1,21 @@
 #include "shadercache.h"
 
-#include "vulkanerrors.h"
+#include <cmf/declutils.h>
 
-std::map<std::string, std::tuple<std::optional<Shader>, std::optional<Shader>>> ShaderCache::s_cache = {
+#include "vulkanerrors.h"
+#include "vulkanenums.h"
+
+std::map<std::string, ShaderContainer> ShaderCache::s_cache = {
 #include "generatedShaderCache.h"
 };
 bool ShaderCache::s_initialized = false;
 
-Shader::Shader() :
-	m_module( VK_NULL_HANDLE )
+Shader::Shader()
 {
 	Log::Error( "Default Shader constructor called. This is likely an error." );
 }
 
-Shader::Shader( std::vector<uint32_t> code ) :
-	m_module( VK_NULL_HANDLE )
+Shader::Shader( std::vector<uint32_t> code )
 {
 	m_code = code;
 }
@@ -43,16 +44,19 @@ VkResult Shader::Initialize( const Renderer* renderer, VkShaderStageFlagBits sha
 VkResult ShaderCache::InitializeShaders( const Renderer* renderer )
 {
 	assert( !s_initialized );
-	for( auto& [key, shaderTuple] : s_cache )
+	for( auto& [key, shaderContainer] : s_cache )
 	{
-		auto& [vertexOpt, fragmentOpt] = shaderTuple;
-		if( vertexOpt.has_value() )
+		if( shaderContainer.vertex.has_value() )
 		{
-			CR_RETURN( vertexOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
+			CR_RETURN( shaderContainer.vertex.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT ) );
 		}
-		if( fragmentOpt.has_value() )
+		if( shaderContainer.fragment.has_value() )
 		{
-			CR_RETURN( fragmentOpt.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
+			CR_RETURN( shaderContainer.fragment.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT ) );
+		}
+		if( shaderContainer.compute.has_value() )
+		{
+			CR_RETURN( shaderContainer.compute.value().Initialize( renderer, VkShaderStageFlagBits::VK_SHADER_STAGE_COMPUTE_BIT ) );
 		}
 	}
 	s_initialized = true;
@@ -65,34 +69,41 @@ void ShaderCache::ReleaseShaders( const Renderer* renderer )
 	auto allocator = renderer->GetAllocator();
 	auto logicalDevice = renderer->GetDevice()->GetLogicalDevice();
 
-	for( auto& [key, shaderTuple] : s_cache )
+	for( auto& [key, shaderContainer] : s_cache )
 	{
-		auto& [vertexOpt, fragmentOpt] = shaderTuple;
-		if( vertexOpt.has_value() && vertexOpt->m_module != VK_NULL_HANDLE )
+		if( shaderContainer.vertex.has_value() && shaderContainer.vertex->m_module != VK_NULL_HANDLE )
 		{
-			vkDestroyShaderModule( logicalDevice, vertexOpt->m_module, allocator );
+			vkDestroyShaderModule( logicalDevice, shaderContainer.vertex->m_module, allocator );
 		}
-		if( fragmentOpt.has_value() && fragmentOpt->m_module != VK_NULL_HANDLE )
+		if( shaderContainer.fragment.has_value() && shaderContainer.fragment->m_module != VK_NULL_HANDLE )
 		{
-			vkDestroyShaderModule( logicalDevice, fragmentOpt->m_module, allocator );
+			vkDestroyShaderModule( logicalDevice, shaderContainer.fragment->m_module, allocator );
+		}
+		if( shaderContainer.compute.has_value() && shaderContainer.compute->m_module != VK_NULL_HANDLE )
+		{
+			vkDestroyShaderModule( logicalDevice, shaderContainer.compute->m_module, allocator );
 		}
 	}
 	s_initialized = false;
 }
 
-VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shaderName, Effect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
+VkResult ShaderCache::CreateGraphicsPipeline( const Renderer* renderer, std::string shaderName, GraphicsEffect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
 {
 	assert( s_initialized );
 
 	auto it = s_cache.find( shaderName );
 	if( it == s_cache.end() )
 	{
-		Log::Error( "Shader %s not found in cache", shaderName.c_str() );
+		Log::Error( "Shader \"%s\" not found in cache", shaderName.c_str() );
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
-	auto& shaderTuple = it->second;
-	auto& [vertexOpt, fragmentOpt] = shaderTuple;
+	auto& shaderContainer = it->second;
+	if( !shaderContainer.vertex.has_value() || !shaderContainer.fragment.has_value() )
+	{
+		Log::Error( "Shader \"%s\" is missing a vertex or fragment shader", shaderName.c_str() );
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{};
 	inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -152,20 +163,24 @@ VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shad
 	dynamicState.dynamicStateCount = static_cast<uint32_t>( dynamicStateEnables.size() );
 	dynamicState.flags = 0;
 
-	VkVertexInputBindingDescription vertexInputBinding{};
-	vertexInputBinding.binding = 0;
-	vertexInputBinding.stride = config.vertexStride;
-	vertexInputBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	std::vector<VkVertexInputAttributeDescription> vertexDescriptions;
+	ShaderCache::GenerateVertexDescriptions( shaderName, config.availableVertexElements, &vertexDescriptions );
+
+	VkVertexInputBindingDescription bindingDecl{};
+	bindingDecl.binding = 0; // expected to be 0 since we only support one vertex buffer
+	bindingDecl.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	bindingDecl.stride = (uint32_t)config.stride;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState{};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputState.vertexBindingDescriptionCount = 1;
-	vertexInputState.pVertexBindingDescriptions = &vertexInputBinding;
-	vertexInputState.vertexAttributeDescriptionCount = (uint32_t)config.vertexDescriptions.size();
-	vertexInputState.pVertexAttributeDescriptions = config.vertexDescriptions.data();
+	vertexInputState.pVertexBindingDescriptions = &bindingDecl;
+	vertexInputState.vertexAttributeDescriptionCount = (uint32_t)vertexDescriptions.size();
+	vertexInputState.pVertexAttributeDescriptions = vertexDescriptions.data();
+
 
 	VkPipelineShaderStageCreateInfo shaderStages[2] = {
-		vertexOpt.value().m_stageInfo, fragmentOpt.value().m_stageInfo
+		shaderContainer.vertex.value().m_stageInfo, shaderContainer.fragment.value().m_stageInfo
 	};
 
 	VkGraphicsPipelineCreateInfo pipelineCI = {};
@@ -205,12 +220,116 @@ VkResult ShaderCache::CreatePipeline( const Renderer* renderer, std::string shad
 	return VK_SUCCESS;
 }
 
-std::vector<std::string> ShaderCache::GetAvailableShaderNames()
+VkResult ShaderCache::CreateComputePipeline( const Renderer* renderer, std::string shaderName, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
+{
+	assert( s_initialized );
+
+	auto it = s_cache.find( shaderName );
+	if( it == s_cache.end() )
+	{
+		Log::Error( "Shader \"%s\" not found in cache", shaderName.c_str() );
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
+	auto& shaderContainer = it->second;
+	if( !shaderContainer.compute.has_value() )
+	{
+		Log::Error( "Shader \"%s\" is missing a compute shader", shaderName.c_str() );
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
+	VkComputePipelineCreateInfo computePipelineCreateInfo = {};
+	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	computePipelineCreateInfo.stage = shaderContainer.compute.value().m_stageInfo;
+	computePipelineCreateInfo.layout = pipelineLayout;
+
+	// Create pipeline
+	CR_RETURN( vkCreateComputePipelines( renderer->GetDevice()->GetLogicalDevice(), VK_NULL_HANDLE, 1, &computePipelineCreateInfo, renderer->GetAllocator(), outPipeline ) );
+
+	return VK_SUCCESS;
+}
+
+std::vector<std::string> ShaderCache::GetAvailableShaderNames( const std::vector<cmf::VertexElement>& availableVertexElements )
 {
 	std::vector<std::string> result;
 	result.reserve( s_cache.size() );
-	std::for_each( s_cache.begin(), s_cache.end(), [&result]( const auto& keyValue ) {
+
+	std::vector<cmf::Usage> elements;
+	elements.reserve( availableVertexElements.size() );
+	std::transform(
+		availableVertexElements.begin(),
+		availableVertexElements.end(),
+		std::back_inserter( elements ),
+		[]( const cmf::VertexElement& element ) {
+			return element.usage;
+		} );
+
+	std::for_each( s_cache.begin(), s_cache.end(), [&result, &elements]( const auto& keyValue ) {
+		ShaderContainer shaderContainer = keyValue.second;
+		// only model shaders available
+		if( !shaderContainer.isModelShader )
+		{
+			return;
+		}
+
+		// check if there are any inputs that the shader expects that is not in the cmf vertex declaration
+		for( const auto& inputLayout : shaderContainer.inputLayout )
+		{
+			if( std::find( elements.begin(), elements.end(), inputLayout.usage ) == elements.end() )
+			{
+				return;
+			}
+		}
+
 		result.push_back( keyValue.first );
 	} );
 	return result;
+}
+
+std::vector<cmf::Usage> ShaderCache::GetShaderUsage( std::string shaderName )
+{
+	std::vector<cmf::Usage> usage{};
+	auto entry = s_cache.find( shaderName );
+
+	if( entry == s_cache.end() )
+	{
+		return usage;
+	}
+	auto shaderContainer = ( *entry ).second;
+	for( const auto& layout : shaderContainer.inputLayout )
+	{
+		usage.push_back( layout.usage );
+	}
+	return usage;
+}
+
+
+void ShaderCache::GenerateVertexDescriptions( std::string shaderName, const std::vector<cmf::VertexElement>& availableVertexElements, std::vector<VkVertexInputAttributeDescription>* outAttributeDescriptions )
+{
+	outAttributeDescriptions->clear();
+	auto entry = s_cache.find( shaderName );
+
+	if( entry == s_cache.end() )
+	{
+		return;
+	}
+	auto shaderContainer = ( *entry ).second;
+	// create the vulkan vertex input attribute description vector and the vertex input binding description vector based on the shader's expected input layout and the available vertex elements in the model
+	for( const auto& layout : shaderContainer.inputLayout )
+	{
+		auto foundElement = std::find_if( availableVertexElements.begin(), availableVertexElements.end(), [layout]( const cmf::VertexElement& element ) {
+			return element.usage == layout.usage;
+		} );
+
+		if( foundElement != availableVertexElements.end() )
+		{
+			auto& e = *foundElement;
+			VkVertexInputAttributeDescription decl{};
+			decl.format = VulkanEnums::ElementTypeToVkFormat( e.type, e.elementCount );
+			decl.offset = e.offset;
+			decl.location = layout.location; // use the location from the shader input layout
+			decl.binding = 0; // always use a single buffer, until something else is needed
+			outAttributeDescriptions->push_back( decl );
+		}
+	}
 }

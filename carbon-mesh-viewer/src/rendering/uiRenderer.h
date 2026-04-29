@@ -32,6 +32,13 @@ private:
 		void SetSelectedItemByValue( T value );
 	};
 
+	enum LoadStatus
+	{
+		FAILED,
+		SUCCESSFUL,
+		NOTHING_LOADED
+	};
+
 	struct MorphTargetUiState
 	{
 		std::string name{ "" };
@@ -58,7 +65,7 @@ private:
 	struct ModelUiState
 	{
 		std::vector<MeshUiState> meshes;
-		uint32_t selectedLod{ 0 };
+		CmfUiComboBox<uint32_t> lod;
 		uint32_t totalVertexCount{ 0 };
 		uint32_t totalIndexCount{ 0 };
 		bool boundingBox{ false };
@@ -73,10 +80,23 @@ private:
 		CmfUiComboBox<std::string> visualizationShaderComboBox;
 	};
 
+	struct Playback
+	{
+		float duration{ 0.0f };
+		float currentTime{ 0.0f };
+		bool playing{ false };
+		CmfUiComboBox<std::string> animationComboBox;
+	};
+
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
 	void SetupMorphTarget( const MorphTargetUiState& morphTarget, AppState& appState );
+	void SetupPlaybackControls( AppState& appState );
+	void SetupPopupWindows( AppState& appState );
+
+	const char* GetPlaybackButtonLabel() const;
+	void HandlePlaybackButtonPressed();
 
 	void OnChange( bool changed, std::function<void()> callback );
 
@@ -89,10 +109,11 @@ private:
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
 	std::shared_ptr<const Renderer> m_renderer;
-	CommandBuffer m_commandBuffer;
+	GraphicsCommandBuffer m_graphicsCommandBuffer;
 
 	UiState m_uiState{};
-	bool m_cmfFullReset{ false };
+	LoadStatus m_loadStatus{ NOTHING_LOADED };
+	Playback m_playback{};
 };
 
 

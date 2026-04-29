@@ -108,8 +108,11 @@ struct AppState
 	State<std::string> cmfPath{ "" };
 	// ui
 	State<uint32_t> selectedLod{ 0 };
-	State<std::string> visualizationShader{ "facenormal" };
+	State<std::string> visualizationShader{ "" };
+	State<std::vector<std::string>> availableShaders{ {} };
 	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
+	State<std::string> currentAnimation{ "" };
+	State<float> currentAnimationTime{ 0.0f };
 
 	StateCollection<bool> meshVisibilityStates{ true };
 	StateCollection<float> morphTargetWeight{ 0.0 };

@@ -8,10 +8,12 @@
 #include "vulkan/shadercache.h"
 #include "vulkan/vulkanerrors.h"
 
+const float MENU_BAR_HEIGHT = 18.0f;
+const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_commandBuffer( renderer.get() )
+	m_graphicsCommandBuffer( renderer.get() )
 {
 }
 
@@ -98,11 +100,43 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
-		m_commandBuffer.SetRenderSize( width, height );
+		m_graphicsCommandBuffer.SetRenderSize( width, height );
+	} );
+
+	state.cmfContent.RegisterCallback( [this]( CmfContent* content, AppState& appState ) {
+		if( content == nullptr )
+		{
+			m_loadStatus = LoadStatus::FAILED;
+		}
+		else
+		{
+			m_loadStatus = LoadStatus::SUCCESSFUL;
+		}
+	} );
+
+	state.currentAnimation.RegisterCallback( [this]( std::string animationName, AppState& appState ) {
+		m_playback.currentTime = 0.0f;
+		m_playback.playing = false;
+
+		if( animationName != "" && appState.cmfContent.GetValue() != nullptr )
+		{
+			for( const auto& animation : appState.cmfContent.GetValue()->m_cmfData->animations )
+			{
+				if( strcmp( animation.name.data(), animationName.data() ) == 0 )
+				{
+					m_playback.duration = animation.duration;
+					return;
+				}
+			}
+		}
+		else
+		{
+			m_playback.duration = 0.0f;
+		}
 	} );
 
 	auto [width, height] = state.windowSize.GetValue();
-	m_commandBuffer.SetRenderSize( width, height );
+	m_graphicsCommandBuffer.SetRenderSize( width, height );
 	UpdateUiState( state );
 }
 
@@ -119,7 +153,7 @@ void UIRenderer::FileOpenDialog( AppState& appState )
 
 	if( path != nullptr )
 	{
-		appState.cmfContent.SetValue( CmfContentLoader::LoadContentFromFile( path ) );
+		appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( path ) );
 		appState.cmfPath.SetValue( std::string( path ) );
 	}
 }
@@ -136,32 +170,42 @@ void UIRenderer::Render( AppState& appState )
 {
 	SetupMenubar( appState );
 	SetupUi( appState );
-	m_commandBuffer.Begin( m_renderer.get() );
+	m_graphicsCommandBuffer.Begin( m_renderer.get() );
 	ImGui::Render();
 
-	ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), m_renderer->GetCurrentVkCommandBuffer() );
-	m_commandBuffer.End();
+	ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), m_renderer->GetCurrentGraphicVkCommandBuffer() );
+	m_graphicsCommandBuffer.End();
 }
 
 void UIRenderer::SetupUi( AppState& appState )
 {
 	UpdateUiState( appState );
-	auto cmfContent = appState.cmfContent.GetValue();
+
 	bool open = true;
-	if( ImGui::Begin( "CMF Info", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar ) )
+
+	float width = (float)appState.windowSize.GetValue().first;
+	float height = (float)appState.windowSize.GetValue().second;
+
+	float ySize = height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1; // +1 so we get an  overlap of the borders
+
+	ImGui::SetNextWindowPos( ImVec2( 0, 18 ), ImGuiCond_Always );
+	ImGui::SetNextWindowSizeConstraints( ImVec2( 0, ySize ), ImVec2( width, ySize ) );
+	ImGui::SetNextWindowSize( ImVec2( width / 4.0f, ySize ), ImGuiCond_FirstUseEver );
+	if( ImGui::Begin( "CMF Info", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings ) )
 	{
-		ImGui::SetWindowPos( ImVec2( 0, 18 ), ImGuiCond_Always );
 		SetupGeneralView( appState );
 
 		SetupMeshListView( m_uiState.modelStates, appState );
-
-		ImGui::End();
 	}
+	ImGui::End();
+
+	SetupPlaybackControls( appState );
+
+	SetupPopupWindows( appState );
 }
 
 void UIRenderer::SetupGeneralView( AppState& appState )
 {
-	bool open = true;
 	ImGui::SeparatorText( "General" );
 	if( ImGui::BeginTable( "##table", 2 ) )
 	{
@@ -172,11 +216,11 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Path" );
 		ImGui::TableNextColumn();
+		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		ImGui::InputText( "##label", m_uiState.filePath.data(), m_uiState.filePath.size(), ImGuiInputTextFlags_ReadOnly );
 		ImGui::SetItemTooltip( "%s", m_uiState.filePath.data() );
 
 		ImGui::TableNextRow();
-
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Vertices" );
@@ -201,12 +245,14 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Polygon Mode" );
 		ImGui::TableNextColumn();
+		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		SetupCombo( "##polygonmode", m_uiState.polygonModeComboBox, appState.polygonMode );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Visualization" );
 		ImGui::TableNextColumn();
+		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
 		ImGui::TableNextRow();
 
@@ -280,9 +326,10 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextRow();
 
 			ImGui::TableNextColumn();
-			ImGui::Text( "LOD Count" );
+			ImGui::Text( "LOD" );
 			ImGui::TableNextColumn();
-			ImGui::Text( "%d", mesh.lodCount );
+			ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+			SetupCombo( "##selectedlod", m_uiState.modelStates.lod, appState.selectedLod );
 
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
@@ -365,7 +412,7 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 
 	if( ImGui::BeginTable( "##table", 3 ) )
 	{
-		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, 50 );
 		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
 		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, 30.0 );
 		ImGui::TableNextRow();
@@ -373,6 +420,7 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 		ImGui::TableNextColumn();
 		ImGui::Text( "Weight" );
 		ImGui::TableNextColumn();
+		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		float weight = morphTarget.weight;
 		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight]() {
 			appState.morphTargetWeight[morphTarget.index].SetValue( weight );
@@ -443,6 +491,107 @@ void UIRenderer::SetupMenubar( AppState& appState )
 	}
 }
 
+const char* UIRenderer::GetPlaybackButtonLabel() const
+{
+	if( m_playback.playing )
+	{
+		return "Pause";
+	}
+	return "Play";
+}
+
+void UIRenderer::HandlePlaybackButtonPressed()
+{
+	m_playback.playing = !m_playback.playing;
+	if( m_playback.currentTime == m_playback.duration )
+	{
+		m_playback.currentTime = 0.0f;
+	}
+}
+
+void UIRenderer::SetupPlaybackControls( AppState& appState )
+{
+	float width = (float)appState.windowSize.GetValue().first;
+	float height = (float)appState.windowSize.GetValue().second;
+
+	// update the current time
+	if( m_playback.playing )
+	{
+		m_playback.currentTime += ImGui::GetIO().DeltaTime;
+		appState.currentAnimationTime.SetValue( m_playback.currentTime );
+		if( m_playback.currentTime >= m_playback.duration )
+		{
+			m_playback.currentTime = m_playback.duration;
+			m_playback.playing = false;
+		}
+	}
+
+	// animation player
+	ImGui::SetNextWindowPos( ImVec2( 0, height - ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
+	ImGui::SetNextWindowSize( ImVec2( width, ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
+	bool open = true;
+	if( ImGui::Begin( "Animation", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize ) )
+	{
+		bool disabled = m_playback.animationComboBox.selectedItemValue == "";
+		if( disabled )
+		{
+			ImGui::BeginDisabled();
+		}
+		OnChange( ImGui::Button( GetPlaybackButtonLabel(), ImVec2( 64.0f, 18.0f ) ), [this]() { HandlePlaybackButtonPressed(); } );
+
+		ImGui::SameLine();
+		float availableWidth = ImGui::GetContentRegionAvail().x;
+		ImGui::PushItemWidth( availableWidth - 128.0f );
+		ImGui::SliderFloat( "##playbackSlider", &m_playback.currentTime, 0.0f, m_playback.duration );
+		ImGui::SetItemTooltip( "%.3fs / %.3fs", m_playback.currentTime, m_playback.duration );
+
+		if( disabled )
+		{
+			ImGui::EndDisabled();
+		}
+		ImGui::SameLine();
+
+		ImGui::PushItemWidth( 120.0f );
+		// selection box to the right
+		SetupCombo( "##animation", m_playback.animationComboBox, appState.currentAnimation );
+	}
+	ImGui::End();
+}
+
+void UIRenderer::SetupPopupWindows( AppState& appState )
+{
+
+	if( m_loadStatus == LoadStatus::FAILED )
+	{
+		ImGui::OpenPopup( "Error" );
+		bool open = true;
+		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2( 0.5f, 0.5f ) );
+
+		if( ImGui::BeginPopupModal( "Error", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse ) )
+		{
+			auto filePath = appState.cmfPath.GetValue();
+			ImGui::Text( "Failed to load" );
+			ImGui::Text( "%s", filePath.c_str() );
+			// At some point I can add the failure reason here...
+			ImGui::Separator();
+			ImGui::NewLine();
+			ImVec2 availableSize = ImGui::GetContentRegionAvail();
+			ImGui::SameLine( availableSize.x / 2.0f - 50.0f );
+
+			if( ImGui::Button( "Ok", ImVec2( 100.0, 24 ) ) )
+			{
+				m_loadStatus = LoadStatus::NOTHING_LOADED;
+			}
+			ImGui::EndPopup();
+		}
+	}
+	else
+	{
+		m_loadStatus = LoadStatus::NOTHING_LOADED;
+	}
+}
+
 void UIRenderer::UpdateInputs( AppState& appState )
 {
 	auto io = ImGui::GetIO();
@@ -474,11 +623,13 @@ void UIRenderer::UpdateInputs( AppState& appState )
 
 void UIRenderer::UpdateUiState( AppState& appState )
 {
-
-	if( m_cmfFullReset )
+	if( m_loadStatus == LoadStatus::SUCCESSFUL )
 	{
 		// reset all appStae items related to cmf
 		appState.selectedLod.SetValue( 0 );
+		appState.currentAnimation.SetValue( "" );
+		appState.currentAnimationTime.SetValue( 0.0f );
+		m_playback = Playback{};
 	}
 
 	m_uiState = UiState{};
@@ -495,15 +646,9 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		};
 		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.polygonMode.GetValue() );
 
-		// visualization shader selection
-		for( const auto& shaderName : ShaderCache::GetAvailableShaderNames() )
-		{
-			m_uiState.visualizationShaderComboBox.items.push_back( { shaderName, shaderName } );
-		}
-		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.visualizationShader.GetValue() );
-
 		size_t meshIndex = 0;
 		size_t morphIndex = 0;
+		size_t maxLod = 0;
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
 			if( meshIndex >= appState.meshVisibilityStates.size() )
@@ -512,13 +657,15 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			}
 			MeshUiState meshState{};
 			meshState.meshIndex = meshIndex;
-			meshState.name = mesh.name.data();
+			meshState.name = cmf::ToStdString( mesh.name );
 			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
 			meshState.display = appState.meshVisibilityStates[meshIndex].GetValue();
 			meshState.wireframeOverlay = appState.meshWireframeOverlay[meshIndex].GetValue();
 			meshState.audioOcclusionMesh = appState.audioOcclusionMesh[meshIndex].GetValue();
 			meshState.hasAudioOcclusionMesh = !mesh.audioOcclusionMesh.vertices.empty() && !mesh.audioOcclusionMesh.indices.empty();
 			meshState.boundingBox = appState.meshBoundingBox[meshIndex].GetValue();
+
+			maxLod = std::max( maxLod, mesh.lods.size() );
 
 			for( const auto& lod : mesh.lods )
 			{
@@ -536,7 +683,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 					break;
 				}
 				MorphTargetUiState morphTargetState{};
-				morphTargetState.name = morphTarget.name.data();
+				morphTargetState.name = cmf::ToStdString( morphTarget.name );
 				morphTargetState.weight = appState.morphTargetWeight[morphIndex].GetValue();
 				morphTargetState.enabled = appState.morphTargetEnabled[morphIndex].GetValue();
 				morphTargetState.index = morphIndex++;
@@ -546,11 +693,54 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			m_uiState.modelStates.meshes.push_back( meshState );
 			meshIndex++;
 		}
-		m_uiState.modelStates.selectedLod = appState.selectedLod.GetValue();
-		m_uiState.modelStates.boundingBox = appState.modelBoundingBox.GetValue();
-	}
 
-	m_cmfFullReset = false;
+		// visualization shader selection
+		for( const auto& shaderName : appState.availableShaders.GetValue() )
+		{
+			m_uiState.visualizationShaderComboBox.items.push_back( { shaderName, shaderName } );
+		}
+		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.visualizationShader.GetValue() );
+
+		for( uint32_t lod = 0; lod < maxLod; ++lod )
+		{
+			m_uiState.modelStates.lod.items.push_back( std::make_pair( "Lod " + std::to_string( lod ), lod ) );
+		}
+
+		m_uiState.modelStates.lod.SetSelectedItemByValue( appState.selectedLod.GetValue() );
+		m_uiState.modelStates.boundingBox = appState.modelBoundingBox.GetValue();
+
+		if( m_playback.animationComboBox.items.empty() )
+		{
+			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
+			for( const auto& animation : cmfContent->m_cmfData->animations )
+			{
+				auto animationName = cmf::ToStdString( animation.name );
+				m_playback.animationComboBox.items.push_back( std::make_pair( animationName, animationName ) );
+			}
+			m_playback.animationComboBox.SetSelectedItemByValue( appState.currentAnimation.GetValue() );
+		}
+	}
+	else
+	{
+		// default uninitialized values
+		if( m_playback.animationComboBox.items.empty() )
+		{
+			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
+			m_playback.animationComboBox.SetSelectedItemByValue( appState.currentAnimation.GetValue() );
+		}
+
+		// polygon mode selection
+		m_uiState.polygonModeComboBox.items = {
+			{ "Fill", VK_POLYGON_MODE_FILL },
+			{ "Line", VK_POLYGON_MODE_LINE },
+			{ "Point", VK_POLYGON_MODE_POINT }
+		};
+		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.polygonMode.GetValue() );
+		m_uiState.filePath = "No file loaded";
+
+		// visualization shader selection
+		m_uiState.visualizationShaderComboBox.items.push_back( { "", "" } );
+	}
 }
 
 void UIRenderer::OnChange( bool changed, std::function<void()> callback )

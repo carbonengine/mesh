@@ -1,23 +1,15 @@
 #include "orientationGizmoRenderer.h"
 
 #include "models/axis.h"
-#include "renderable/mesh.h"
-#include "renderable/meshlod.h"
-#include "renderable/model.h"
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 
 OrientationGizmoRenderer::OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_commandBuffer( renderer.get() ),
+	m_graphicsCommandBuffer( renderer.get() ),
 	m_axis( Axis::Create( renderer ) )
 {
-	m_commandBuffer.SetClearDepth( 1.0f );
-}
-
-OrientationGizmoRenderer::~OrientationGizmoRenderer()
-{
-	m_commandBuffer.Release( m_renderer.get() );
+	m_graphicsCommandBuffer.SetClearDepth( 1.0f );
 }
 
 void OrientationGizmoRenderer::Initialize( AppState& state )
@@ -38,21 +30,21 @@ void OrientationGizmoRenderer::SetSize( uint32_t width, uint32_t height )
 	auto minWidth = std::min( 100u, width );
 	auto minHeight = std::min( 100u, height );
 	auto gizmoSize = std::min( minWidth, minHeight );
-	this->m_commandBuffer.SetRenderSize( gizmoSize, gizmoSize );
-	this->m_commandBuffer.SetRenderOffset( width - gizmoSize - 10, height - gizmoSize - 10 );
+	this->m_graphicsCommandBuffer.SetRenderSize( gizmoSize, gizmoSize );
+	this->m_graphicsCommandBuffer.SetRenderOffset( width - gizmoSize - 10, height - gizmoSize - 10 );
 	m_size = (float)gizmoSize;
 }
 
-VkResult OrientationGizmoRenderer::Render( const AppState& state, const Camera& camera )
+void OrientationGizmoRenderer::Render( const AppState& state, const Camera& camera )
 {
-	CR_RETURN( m_commandBuffer.Begin( m_renderer.get() ) );
+	m_graphicsCommandBuffer.Begin( m_renderer.get() );
 
 	PerFrameData perFrameData{};
 	perFrameData.proj = OrthoMatrix( 5.0f, 5.0f, 0.01f, 100.f );
 	perFrameData.view = camera.GetRotation() * TranslationMatrix( 0.0f, 0.0f, -10.0f );
 
 	m_axis.SetUniformData( 0, perFrameData );
-	m_axis.Render( m_commandBuffer );
+	m_axis.Render( m_graphicsCommandBuffer );
 
-	return m_commandBuffer.End();
+	m_graphicsCommandBuffer.End();
 }

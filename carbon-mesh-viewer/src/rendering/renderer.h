@@ -27,10 +27,15 @@ public:
 	VkResult BeginRender();
 	VkResult EndRender();
 
+	VkResult BeginCompute();
+	VkResult EndCompute();
+
 	bool IsValid() const;
 
 	VkInstance GetVulkanInstance() const;
-	VkCommandBuffer GetCurrentVkCommandBuffer() const;
+	VkCommandBuffer GetCurrentGraphicVkCommandBuffer() const;
+	VkCommandBuffer GetCurrentComputeVkCommandBuffer() const;
+
 	const Texture* GetCurrentSwapchainFrameTexture() const;
 	const Texture* GetDepthTexture() const;
 	void CreateFrameFence() const;
@@ -52,6 +57,8 @@ public:
 
 	VkSurfaceKHR* GetSurface();
 
+	bool HasDedicatedComputeQueue() const;
+
 private:
 	uint32_t m_imageIndex;
 
@@ -69,15 +76,23 @@ private:
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 	uint32_t m_currentFrame{ 0 };
 	uint32_t m_currentSemaphore{ 0 };
+	uint32_t m_lastSemaphore{ 0 };
 
 	Texture* m_depthTarget{ nullptr };
-	VkCommandPool m_commandPool{ VK_NULL_HANDLE };
-	std::array<VkCommandBuffer, RenderingConsts::MAX_FRAMES_IN_FLIGHT> m_commandBuffers{};
+
+	VkCommandPool m_graphicsCommandPool{ VK_NULL_HANDLE };
+	std::array<VkCommandBuffer, RenderingConsts::MAX_FRAMES_IN_FLIGHT> m_graphicsCommandBuffers{};
+
+	VkCommandPool m_computeCommandPool{ VK_NULL_HANDLE };
+	std::array<VkCommandBuffer, RenderingConsts::MAX_FRAMES_IN_FLIGHT> m_computeCommandBuffers{};
 
 	// fences and semaphores
 	std::vector<VkSemaphore> m_imageAvailableSemaphores;
 	std::vector<VkSemaphore> m_renderFinishedSemaphores;
-	std::vector<VkFence> m_inFlightFences;
+	std::vector<VkSemaphore> m_computeFinishedSemaphores;
+	std::vector<VkSemaphore> m_computeReadySemaphores;
+	std::vector<VkFence> m_inFlightGraphicsFence;
+	std::vector<VkFence> m_inFlightComputeFence;
 
 	uint32_t m_width{ 0 };
 	uint32_t m_height{ 0 };

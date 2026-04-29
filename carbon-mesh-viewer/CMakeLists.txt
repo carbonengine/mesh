@@ -56,6 +56,9 @@ file(GLOB_RECURSE SOURCES
 add_executable(CarbonMeshViewer ${SOURCES} ${GENERATED_SHADER_DIR})
 set_build_flavor(CarbonMeshViewer)
 
+set_property(TARGET CarbonMeshViewer PROPERTY COMPILE_WARNING_AS_ERROR ON)
+ccp_enable_vs_analizers(CarbonMeshViewer)
+
 set(COMPILED_SHADERS "")
 
 foreach( SHADER_PATH ${SHADERS} )
@@ -78,12 +81,14 @@ endforeach()
 
 add_custom_command( 
     OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
-    DEPENDS ${SHADERS} ${COMPILED_SHADERS}
-    COMMAND ${PYTHON_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    DEPENDS ${SHADERS} ${COMPILED_SHADERS} ${SHADER_BINARY_TO_SHADER_CACHE}
+    COMMAND ${PYTHON_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/" "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     COMMENT "Generating shader cache header ${GENERATED_SHADER_DIR}/generatedShaderCache.h"
 )
 
 list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/generatedShaderCache.h" )
+
+message(STATUS "generated files: ${GENERATED_FILES}")
 
 add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 add_dependencies(CarbonMeshViewer CompileShaders)
@@ -144,6 +149,11 @@ install(
         LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
         ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
         RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+)
+
+set_directory_properties(
+    PROPERTIES
+    ADDITIONAL_MAKE_CLEAN_FILES "${GENERATED_SHADER_DIR}"
 )
 
 install(

@@ -59,7 +59,8 @@ Renderer::~Renderer()
 			m_swapchain = nullptr;
 		}
 
-		vkDestroyCommandPool( logicalDevice, m_commandPool, m_allocator );
+		vkDestroyCommandPool( logicalDevice, m_graphicsCommandPool, m_allocator );
+		vkDestroyCommandPool( logicalDevice, m_computeCommandPool, m_allocator );
 		for( auto& semaphore : m_renderFinishedSemaphores )
 		{
 			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
@@ -68,9 +69,18 @@ Renderer::~Renderer()
 		{
 			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
 		}
+		for( auto& semaphore : m_computeFinishedSemaphores )
+		{
+			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
+		}
+		for( auto& semaphore : m_computeReadySemaphores )
+		{
+			vkDestroySemaphore( logicalDevice, semaphore, m_allocator );
+		}
 		for( uint32_t i = 0; i < RenderingConsts::MAX_FRAMES_IN_FLIGHT; ++i )
 		{
-			vkDestroyFence( logicalDevice, m_inFlightFences[i], m_allocator );
+			vkDestroyFence( logicalDevice, m_inFlightGraphicsFence[i], m_allocator );
+			vkDestroyFence( logicalDevice, m_inFlightComputeFence[i], m_allocator );
 		}
 		vkDestroyDevice( logicalDevice, m_allocator );
 		vkDestroyInstance( m_instance, m_allocator );
@@ -159,19 +169,36 @@ void Renderer::Initialize()
 	ON_ERROR_LOG_AND_RETURN( CreateCommandPool(), "Could not create command pool" );
 	ON_ERROR_LOG_AND_RETURN( CreateSyncObjects(), "Could not create sync objects" );
 	ON_ERROR_LOG_AND_RETURN( CreateCommandBuffers(), "Could not create command buffers" );
+	m_lastSemaphore = m_swapchain->GetImageCount() - 1;
 
+	// Signal first used compute ready semaphore
+	VkSubmitInfo computeSubmitInfo{};
+	computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	computeSubmitInfo.signalSemaphoreCount = 1;
+	computeSubmitInfo.pSignalSemaphores = &m_computeReadySemaphores[m_lastSemaphore];
+	ON_ERROR_LOG_AND_RETURN( vkQueueSubmit( m_device->GetComputeQueue(), 1, &computeSubmitInfo, VK_NULL_HANDLE ), "Could not submit compute queue" );
 	m_valid = true;
 }
 
 VkResult Renderer::CreateCommandBuffers()
 {
-	VkCommandBufferAllocateInfo cmdBufAllocateInfo;
-	cmdBufAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-	cmdBufAllocateInfo.commandPool = m_commandPool;
-	cmdBufAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cmdBufAllocateInfo.pNext = nullptr;
-	cmdBufAllocateInfo.commandBufferCount = static_cast<uint32_t>( m_commandBuffers.size() );
-	return vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &cmdBufAllocateInfo, m_commandBuffers.data() );
+	VkCommandBufferAllocateInfo graphicsCommandBufferAllocateInfo;
+	graphicsCommandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+	graphicsCommandBufferAllocateInfo.commandPool = m_graphicsCommandPool;
+	graphicsCommandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	graphicsCommandBufferAllocateInfo.pNext = nullptr;
+	graphicsCommandBufferAllocateInfo.commandBufferCount = static_cast<uint32_t>( m_graphicsCommandBuffers.size() );
+	CR_RETURN( vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &graphicsCommandBufferAllocateInfo, m_graphicsCommandBuffers.data() ) );
+
+	VkCommandBufferAllocateInfo computeComandBufferAllocateInfo;
+	computeComandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+	computeComandBufferAllocateInfo.commandPool = m_computeCommandPool;
+	computeComandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	computeComandBufferAllocateInfo.pNext = nullptr;
+	computeComandBufferAllocateInfo.commandBufferCount = static_cast<uint32_t>( m_computeCommandBuffers.size() );
+	CR_RETURN( vkAllocateCommandBuffers( m_device->GetLogicalDevice(), &computeComandBufferAllocateInfo, m_computeCommandBuffers.data() ) );
+
+	return VK_SUCCESS;
 }
 
 void Renderer::PreResize()
@@ -222,18 +249,18 @@ VkResult Renderer::BeginRender()
 {
 	VkDevice device = m_device->GetLogicalDevice();
 
-	vkWaitForFences( device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX );
-	CR( vkResetFences( device, 1, &m_inFlightFences[m_currentFrame] ) );
+	vkWaitForFences( device, 1, &m_inFlightGraphicsFence[m_currentFrame], VK_TRUE, UINT64_MAX );
+	CR( vkResetFences( device, 1, &m_inFlightGraphicsFence[m_currentFrame] ) );
 
-	VkResult result = vkAcquireNextImageKHR( device,
-											 m_swapchain->GetVulkanSwapchain(),
-											 UINT64_MAX,
-											 m_imageAvailableSemaphores[m_currentSemaphore],
-											 VK_NULL_HANDLE,
-											 &m_imageIndex );
+	VkResult imageAquisitionResult = vkAcquireNextImageKHR( device,
+															m_swapchain->GetVulkanSwapchain(),
+															UINT64_MAX,
+															m_imageAvailableSemaphores[m_currentSemaphore],
+															VK_NULL_HANDLE,
+															&m_imageIndex );
 
 
-	VkCommandBuffer cmdBuffer = GetCurrentVkCommandBuffer();
+	VkCommandBuffer cmdBuffer = GetCurrentGraphicVkCommandBuffer();
 
 	VkCommandBufferBeginInfo cmdBufInfo{};
 	cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -244,7 +271,7 @@ VkResult Renderer::BeginRender()
 	CreateFrameFence();
 	CreateDepthFence();
 
-	if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR )
+	if( imageAquisitionResult != VK_SUCCESS && imageAquisitionResult != VK_SUBOPTIMAL_KHR && imageAquisitionResult != VK_ERROR_OUT_OF_DATE_KHR )
 	{
 		throw std::runtime_error( "failed to acquire swap chain image!" );
 	}
@@ -254,26 +281,25 @@ VkResult Renderer::BeginRender()
 
 VkResult Renderer::EndRender()
 {
-	auto cmdBuffer = GetCurrentVkCommandBuffer();
+	auto cmdBuffer = GetCurrentGraphicVkCommandBuffer();
 	// This set of barriers prepares the color image for presentation, we don't need to care for the depth image
 	PresentFence();
 
 	CR_RETURN( vkEndCommandBuffer( cmdBuffer ) );
+	VkPipelineStageFlags waitDstStageMask[2] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT };
+	VkSemaphore waitSemaphores[2] = { m_imageAvailableSemaphores[m_currentSemaphore], m_computeFinishedSemaphores[m_currentSemaphore] };
+	VkSemaphore signalSemaphores[2] = { m_renderFinishedSemaphores[m_currentSemaphore], m_computeReadySemaphores[m_currentSemaphore] };
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &m_imageAvailableSemaphores[m_currentSemaphore];
-	submitInfo.pWaitDstStageMask = waitStages;
-
+	submitInfo.waitSemaphoreCount = 2;
+	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.pWaitDstStageMask = waitDstStageMask;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cmdBuffer;
-
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &m_renderFinishedSemaphores[m_currentSemaphore];
-
-	CR_RETURN( vkQueueSubmit( m_device->GetGraphicsQueue(), 1, &submitInfo, m_inFlightFences[m_currentFrame] ) );
+	submitInfo.pCommandBuffers = &m_graphicsCommandBuffers[m_currentFrame];
+	submitInfo.signalSemaphoreCount = 2;
+	submitInfo.pSignalSemaphores = signalSemaphores;
+	CR_RETURN( vkQueueSubmit( m_device->GetGraphicsQueue(), 1, &submitInfo, m_inFlightGraphicsFence[m_currentFrame] ) );
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -281,15 +307,16 @@ VkResult Renderer::EndRender()
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &m_renderFinishedSemaphores[m_currentSemaphore];
 
-	VkSwapchainKHR swapChains[] = { m_swapchain->GetVulkanSwapchain() };
+	VkSwapchainKHR swapChain = m_swapchain->GetVulkanSwapchain();
 	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = swapChains;
+	presentInfo.pSwapchains = &swapChain;
 
 	presentInfo.pImageIndices = &m_imageIndex;
 
 	auto result = vkQueuePresentKHR( m_device->GetPresentQueue(), &presentInfo );
 
 	m_currentFrame = ( m_currentFrame + 1 ) % RenderingConsts::MAX_FRAMES_IN_FLIGHT;
+	m_lastSemaphore = m_currentSemaphore;
 	m_currentSemaphore = ( m_currentSemaphore + 1 ) % m_swapchain->GetImageCount();
 
 	if( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR )
@@ -300,15 +327,64 @@ VkResult Renderer::EndRender()
 	return VK_SUCCESS;
 }
 
+VkResult Renderer::BeginCompute()
+{
+	VkDevice device = m_device->GetLogicalDevice();
+
+	vkWaitForFences( device, 1, &m_inFlightComputeFence[m_currentFrame], VK_TRUE, UINT64_MAX );
+	CR( vkResetFences( device, 1, &m_inFlightComputeFence[m_currentFrame] ) );
+
+	VkCommandBuffer cmdBuffer = GetCurrentComputeVkCommandBuffer();
+	VkCommandBufferBeginInfo cmdBufInfo{};
+	cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	CR_RETURN( vkBeginCommandBuffer( cmdBuffer, &cmdBufInfo ) );
+	return VK_SUCCESS;
+}
+
+VkResult Renderer::EndCompute()
+{
+	auto cmdBuffer = GetCurrentComputeVkCommandBuffer();
+	CR_RETURN( vkEndCommandBuffer( cmdBuffer ) );
+
+
+	VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+	VkSubmitInfo computeSubmitInfo{};
+	computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	computeSubmitInfo.commandBufferCount = 1;
+	computeSubmitInfo.pCommandBuffers = &cmdBuffer;
+	computeSubmitInfo.waitSemaphoreCount = 1;
+	computeSubmitInfo.pWaitSemaphores = &m_computeReadySemaphores[m_lastSemaphore];
+	computeSubmitInfo.pWaitDstStageMask = &waitDstStageMask;
+	computeSubmitInfo.signalSemaphoreCount = 1;
+	computeSubmitInfo.pSignalSemaphores = &m_computeFinishedSemaphores[m_currentSemaphore];
+
+	CR_RETURN( vkQueueSubmit( m_device->GetComputeQueue(), 1, &computeSubmitInfo, m_inFlightComputeFence[m_currentFrame] ) );
+
+	return VK_SUCCESS;
+}
+
 VkResult Renderer::CreateCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = m_device->GetQueueFamilyIndices();
-	VkCommandPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+	VkCommandPoolCreateInfo graphicPoolInfo{};
+	graphicPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	graphicPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	graphicPoolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+	CR_RETURN( vkCreateCommandPool( m_device->GetLogicalDevice(), &graphicPoolInfo, m_allocator, &m_graphicsCommandPool ) );
 
-	CR_RETURN( vkCreateCommandPool( m_device->GetLogicalDevice(), &poolInfo, nullptr, &m_commandPool ) );
+	VkCommandPoolCreateInfo computePoolInfo{};
+	computePoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	computePoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	if( queueFamilyIndices.computeFamily.has_value() )
+	{
+		computePoolInfo.queueFamilyIndex = queueFamilyIndices.computeFamily.value();
+	}
+	else
+	{
+		computePoolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+	}
+	CR_RETURN( vkCreateCommandPool( m_device->GetLogicalDevice(), &computePoolInfo, m_allocator, &m_computeCommandPool ) );
 
 	return VK_SUCCESS;
 }
@@ -329,7 +405,7 @@ VkResult Renderer::CreateDescriptorPool()
 
 	// Set the max. number of descriptor sets that can be requested from this pool (requesting beyond this limit will result in an error)
 	descriptorPoolCI.maxSets = RenderingConsts::MAX_FRAMES_IN_FLIGHT;
-	CR_RETURN( vkCreateDescriptorPool( m_device->GetLogicalDevice(), &descriptorPoolCI, nullptr, &m_descriptorPool ) );
+	CR_RETURN( vkCreateDescriptorPool( m_device->GetLogicalDevice(), &descriptorPoolCI, m_allocator, &m_descriptorPool ) );
 	return VK_SUCCESS;
 }
 
@@ -338,7 +414,10 @@ VkResult Renderer::CreateSyncObjects()
 	size_t images = m_swapchain->GetImageCount();
 	m_imageAvailableSemaphores.resize( images );
 	m_renderFinishedSemaphores.resize( images );
-	m_inFlightFences.resize( images );
+	m_computeFinishedSemaphores.resize( images );
+	m_computeReadySemaphores.resize( images );
+	m_inFlightGraphicsFence.resize( images );
+	m_inFlightComputeFence.resize( images );
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	VkFenceCreateInfo fenceInfo{};
@@ -346,16 +425,19 @@ VkResult Renderer::CreateSyncObjects()
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 	for( size_t i = 0; i < images; i++ )
 	{
-		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i] ), "Failed to create semaphores for a frame" );
-		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i] ), "Failed to create semaphores for a frame" );
-		RETURN_LOG_ERROR( vkCreateFence( m_device->GetLogicalDevice(), &fenceInfo, nullptr, &m_inFlightFences[i] ), "Failed to create fence for a frame" );
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, m_allocator, &m_imageAvailableSemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, m_allocator, &m_renderFinishedSemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, m_allocator, &m_computeFinishedSemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateSemaphore( m_device->GetLogicalDevice(), &semaphoreInfo, m_allocator, &m_computeReadySemaphores[i] ), "Failed to create semaphores for a frame" );
+		RETURN_LOG_ERROR( vkCreateFence( m_device->GetLogicalDevice(), &fenceInfo, m_allocator, &m_inFlightGraphicsFence[i] ), "Failed to create fence for rendering" );
+		RETURN_LOG_ERROR( vkCreateFence( m_device->GetLogicalDevice(), &fenceInfo, m_allocator, &m_inFlightComputeFence[i] ), "Failed to create fence for compute" );
 	}
 	return VK_SUCCESS;
 }
 
 void Renderer::CreateFrameFence() const
 {
-	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+	VkCommandBuffer commandBuffer = GetCurrentGraphicVkCommandBuffer();
 	const Texture* swapchainFrameTexture = m_swapchain->GetFrameTexture( m_imageIndex );
 
 	VkImageMemoryBarrier imageMemoryBarrier{};
@@ -382,7 +464,7 @@ void Renderer::CreateFrameFence() const
 
 void Renderer::PresentFence() const
 {
-	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+	VkCommandBuffer commandBuffer = GetCurrentGraphicVkCommandBuffer();
 	const Texture* swapchainFrameTexture = m_swapchain->GetFrameTexture( m_imageIndex );
 
 	VkImageMemoryBarrier imageMemoryBarrier{};
@@ -409,7 +491,7 @@ void Renderer::PresentFence() const
 
 void Renderer::CreateDepthFence() const
 {
-	VkCommandBuffer commandBuffer = GetCurrentVkCommandBuffer();
+	VkCommandBuffer commandBuffer = GetCurrentGraphicVkCommandBuffer();
 
 	VkImageMemoryBarrier imageMemoryBarrier{};
 	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -495,12 +577,18 @@ VkInstance Renderer::GetVulkanInstance() const
 
 VkCommandPool Renderer::GetCommandPool() const
 {
-	return m_commandPool;
+	return m_graphicsCommandPool;
 }
 
-VkCommandBuffer Renderer::GetCurrentVkCommandBuffer() const
+VkCommandBuffer Renderer::GetCurrentGraphicVkCommandBuffer() const
 {
-	return m_commandBuffers[m_currentFrame];
+	return m_graphicsCommandBuffers[m_currentFrame];
+}
+
+
+VkCommandBuffer Renderer::GetCurrentComputeVkCommandBuffer() const
+{
+	return m_computeCommandBuffers[m_currentFrame];
 }
 
 const Texture* Renderer::GetCurrentSwapchainFrameTexture() const
@@ -541,4 +629,10 @@ VkSurfaceKHR* Renderer::GetSurface()
 const Swapchain* Renderer::GetSwapchain() const
 {
 	return m_swapchain;
+}
+
+bool Renderer::HasDedicatedComputeQueue() const
+{
+	const QueueFamilyIndices indices = m_device->GetQueueFamilyIndices();
+	return indices.computeFamily.has_value() && indices.computeFamily != indices.graphicsFamily;
 }

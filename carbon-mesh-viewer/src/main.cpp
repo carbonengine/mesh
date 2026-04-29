@@ -13,12 +13,16 @@ void SetVulkanEnvironmentVariables()
 #endif
 }
 
-int main()
+int main( int argc, char** argv )
 {
 	SetVulkanEnvironmentVariables();
 	Application app;
 
 	app.Initialize();
+	if( argc > 1 )
+	{
+		app.LoadCmfFile( argv[1] );
+	}
 	app.Run();
 
 	return EXIT_SUCCESS;

@@ -15,7 +15,7 @@ public:
 
 	void Initialize();
 	void Run();
-	void SetData( CmfContent* data );
+	void LoadCmfFile( const std::string& path );
 
 private:
 	void OnMouseButton( int button, int action, int mods );

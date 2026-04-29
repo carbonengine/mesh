@@ -1,7 +1,9 @@
 #include "effect.h"
 #include "vulkanerrors.h"
-#include "shadercache.h"
 
+Effect::Effect()
+{
+}
 
 Effect::Effect( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer )
@@ -10,35 +12,46 @@ Effect::Effect( std::shared_ptr<const Renderer> renderer ) :
 
 Effect::~Effect()
 {
-	auto device = m_renderer->GetDevice()->GetLogicalDevice();
-	auto allocator = m_renderer->GetAllocator();
-
-	if( m_pipeline != VK_NULL_HANDLE )
+	if( m_initialized )
 	{
-		vkDestroyPipeline( device, m_pipeline, allocator );
-	}
-	if( m_pipelineLayout != VK_NULL_HANDLE )
-	{
-		vkDestroyPipelineLayout( device, m_pipelineLayout, allocator );
-	}
-
-	for( auto& uniformBuffer : m_uniformBuffers )
-	{
-		for( auto& uniformBufferMemory : uniformBuffer.buffers )
+		auto device = m_renderer->GetDevice()->GetLogicalDevice();
+		auto allocator = m_renderer->GetAllocator();
+		if( m_pipeline != VK_NULL_HANDLE )
 		{
-			vkDestroyBuffer( device, uniformBufferMemory.buffer, allocator );
-			vkFreeMemory( device, uniformBufferMemory.memory, allocator );
+			vkDestroyPipeline( device, m_pipeline, allocator );
 		}
-	}
+		if( m_pipelineLayout != VK_NULL_HANDLE )
+		{
+			vkDestroyPipelineLayout( device, m_pipelineLayout, allocator );
+		}
 
-	if( m_descriptorSetLayout != VK_NULL_HANDLE )
-	{
-		vkDestroyDescriptorSetLayout( device, m_descriptorSetLayout, allocator );
-	}
+		for( auto& uniformBuffer : m_uniformBuffers )
+		{
+			for( auto& uniformBufferMemory : uniformBuffer.buffers )
+			{
+				if( uniformBufferMemory.buffer != VK_NULL_HANDLE )
+				{
+					vkDestroyBuffer( device, uniformBufferMemory.buffer, allocator );
+					uniformBufferMemory.buffer = VK_NULL_HANDLE;
+				}
+				if( uniformBufferMemory.memory != VK_NULL_HANDLE )
+				{
+					vkUnmapMemory( device, uniformBufferMemory.memory );
+					vkFreeMemory( device, uniformBufferMemory.memory, allocator );
+					uniformBufferMemory.memory = VK_NULL_HANDLE;
+				}
+			}
+		}
 
-	if( m_descriptorPool != VK_NULL_HANDLE )
-	{
-		vkDestroyDescriptorPool( device, m_descriptorPool, allocator );
+		if( m_descriptorSetLayout != VK_NULL_HANDLE )
+		{
+			vkDestroyDescriptorSetLayout( device, m_descriptorSetLayout, allocator );
+		}
+
+		if( m_descriptorPool != VK_NULL_HANDLE )
+		{
+			vkDestroyDescriptorPool( device, m_descriptorPool, allocator );
+		}
 	}
 }
 
@@ -64,15 +77,22 @@ VkResult Effect::InitializeDescriptors()
 	auto allocator = m_renderer->GetAllocator();
 
 
-	std::vector<VkDescriptorPoolSize> poolSizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)( RenderingConsts::MAX_FRAMES_IN_FLIGHT * m_uniformBuffers.size() ) }
-	};
+	std::vector<VkDescriptorPoolSize> poolSizes = {};
+
+	if( !m_uniformBuffers.empty() )
+	{
+		poolSizes.push_back( { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)( RenderingConsts::MAX_FRAMES_IN_FLIGHT * m_uniformBuffers.size() ) } );
+	}
+	if( !m_storageBuffers.empty() )
+	{
+		poolSizes.push_back( { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)( RenderingConsts::MAX_FRAMES_IN_FLIGHT * m_storageBuffers.size() ) } );
+	}
 
 	VkDescriptorPoolCreateInfo descriptorPoolInfo{};
 	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolInfo.pPoolSizes = poolSizes.data();
 	descriptorPoolInfo.poolSizeCount = (uint32_t)poolSizes.size();
-	descriptorPoolInfo.maxSets = (uint32_t)RenderingConsts::MAX_FRAMES_IN_FLIGHT;
+	descriptorPoolInfo.maxSets = (uint32_t)( RenderingConsts::MAX_FRAMES_IN_FLIGHT * poolSizes.size() );
 	RETURN_LOG_ERROR( vkCreateDescriptorPool( device, &descriptorPoolInfo, allocator, &m_descriptorPool ), "Could not initialize descriptor pool" );
 
 	// layout
@@ -84,6 +104,16 @@ VkResult Effect::InitializeDescriptors()
 		setLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		setLayoutBinding.stageFlags = uniformBuffer.stage;
 		setLayoutBinding.binding = uniformBuffer.layoutBindingIndex;
+		setLayoutBinding.descriptorCount = 1;
+		setLayoutBindings.push_back( setLayoutBinding );
+	}
+
+	for( auto& storageBuffer : m_storageBuffers )
+	{
+		VkDescriptorSetLayoutBinding setLayoutBinding{};
+		setLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		setLayoutBinding.stageFlags = storageBuffer.stage;
+		setLayoutBinding.binding = storageBuffer.layoutBindingIndex;
 		setLayoutBinding.descriptorCount = 1;
 		setLayoutBindings.push_back( setLayoutBinding );
 	}
@@ -117,6 +147,18 @@ VkResult Effect::InitializeDescriptors()
 			uniformBuffer.buffers[i].descriptor.range = uniformBuffer.expectedSize;
 
 			writeDescriptorSet.pBufferInfo = &uniformBuffer.buffers[i].descriptor;
+			writeDescriptorSet.descriptorCount = 1;
+			writeDescriptorSets.push_back( writeDescriptorSet );
+		}
+		for( auto& storageBuffer : m_storageBuffers )
+		{
+			auto& bufferInfo = storageBuffer.buffer->GetDescriptorBufferInfo();
+			VkWriteDescriptorSet writeDescriptorSet{};
+			writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSet.dstSet = m_descriptorSets[i];
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			writeDescriptorSet.dstBinding = storageBuffer.layoutBindingIndex;
+			writeDescriptorSet.pBufferInfo = &bufferInfo;
 			writeDescriptorSet.descriptorCount = 1;
 			writeDescriptorSets.push_back( writeDescriptorSet );
 		}
@@ -178,9 +220,9 @@ VkResult Effect::InitializePipeline()
 	pipelineLayoutCI.pSetLayouts = setLayouts.data();
 	pipelineLayoutCI.pushConstantRangeCount = 0;
 	pipelineLayoutCI.pPushConstantRanges = nullptr;
-	RETURN_LOG_ERROR( vkCreatePipelineLayout( device, &pipelineLayoutCI, nullptr, &m_pipelineLayout ), "Failed to create pipeline layout" );
+	RETURN_LOG_ERROR( vkCreatePipelineLayout( device, &pipelineLayoutCI, allocator, &m_pipelineLayout ), "Failed to create pipeline layout" );
 
-	RETURN_LOG_ERROR( ShaderCache::CreatePipeline( m_renderer.get(), m_shaderName, m_config, m_pipelineLayout, &m_pipeline ), "Failed to create pipeline" );
+	RETURN_LOG_ERROR( CreatePipeline(), "Failed to create pipeline" );
 	return VK_SUCCESS;
 }
 
@@ -195,17 +237,6 @@ VkResult Effect::RecreatePipeline()
 	return VK_SUCCESS;
 }
 
-
-void Effect::SetConfig( Effect::Config config )
-{
-	m_config = config;
-
-	if( m_initialized )
-	{
-		m_initialized = RecreatePipeline() == VK_SUCCESS;
-	}
-}
-
 void Effect::SetShaderName( std::string name )
 {
 	m_shaderName = name;
@@ -214,6 +245,12 @@ void Effect::SetShaderName( std::string name )
 	{
 		m_initialized = RecreatePipeline() == VK_SUCCESS;
 	}
+}
+
+void Effect::RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, Buffer* buffer )
+{
+	assert( !m_initialized );
+	m_storageBuffers.push_back( { buffer, layoutBindingIndex, stage } );
 }
 
 void Effect::RegisterUniformData( VkShaderStageFlagBits stages, uint32_t layoutBindingIndex, const uint8_t* initialData, size_t dataSize )
@@ -247,15 +284,4 @@ void Effect::SetUniformData( uint32_t layoutBindingIndex, const uint8_t* data, s
 
 	auto mapped = foundElement->buffers[m_renderer->GetCurrentFrame()].mapped;
 	memcpy( mapped, data, dataSize );
-}
-
-void Effect::Bind( VkCommandBuffer commandBuffer, uint32_t currentFrameIndex )
-{
-	assert( m_initialized );
-
-	vkCmdSetLineWidth( commandBuffer, m_config.lineWidth );
-
-	vkCmdBindDescriptorSets( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[currentFrameIndex], 0, nullptr );
-
-	vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline );
 }

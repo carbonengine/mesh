@@ -10,10 +10,9 @@ class OrientationGizmoRenderer
 {
 public:
 	OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer );
-	~OrientationGizmoRenderer();
 
 	void Initialize( AppState& state );
-	VkResult Render( const AppState& state, const Camera& camera );
+	void Render( const AppState& state, const Camera& camera );
 
 private:
 	struct PerFrameData
@@ -28,6 +27,6 @@ private:
 
 	PrimitiveRenderable m_axis;
 
-	CommandBuffer m_commandBuffer;
+	GraphicsCommandBuffer m_graphicsCommandBuffer;
 	float m_size{ 0 };
 };

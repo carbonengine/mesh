@@ -4,28 +4,34 @@
 
 #include "../camera.h"
 #include "../vulkan/commandbuffer.h"
-#include "meshlod.h"
+#include "../vulkan/graphicseffect.h"
+#include "geometryprepass.h"
 #include "primitive.h"
 
 class MeshRenderable
 {
 public:
 	MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer );
-	~MeshRenderable();
 
-	void Initialize( AppState& appState, VkCommandBuffer initializeCmd );
-	void Finalize();
+	void Initialize( AppState& appState );
 
-	void Render( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera, uint32_t lodIndex );
-
+	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
+	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
 	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
-	static Effect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer );
+	void Draw( GraphicsCommandBuffer& commandBuffer );
+	void DrawIndexed( GraphicsCommandBuffer& commandBuffer );
+	void SetLod( uint32_t lodLevel );
 
-	std::vector<MeshLodRenderable> m_lods;
+	struct Area
+	{
+		uint32_t firstElement = 0;
+		uint32_t elementCount = 0;
+	};
+	GraphicsEffect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh );
+
 	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions;
-	std::shared_ptr<const Renderer> m_renderer;
 
 	struct VertexUboData
 	{
@@ -33,15 +39,25 @@ private:
 		Matrix view;
 	};
 
+	std::vector<cmf::VertexElement> m_availableVertexElements;
+	std::shared_ptr<const Renderer> m_renderer;
+
 	uint32_t m_stride{ 0 };
+	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
+	std::string m_shaderName{ "" };
+
 	bool m_display{ true };
 	bool m_wireframe{ false };
-	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 
-	Effect m_modelEffect;
-	Effect m_wireframeEffect;
+	// effects
+	GraphicsEffect m_modelEffect;
+	GraphicsEffect m_wireframeEffect;
 
+	// geometry prepass
+	GeometryPrePass m_prepass;
+
+	// bounding box
 	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
@@ -50,4 +66,6 @@ private:
 	PrimitiveRenderable m_audioOcclusionRenderable;
 
 	cmf::Mesh m_cmfMesh{};
+
+	std::vector<Area> m_areas{};
 };

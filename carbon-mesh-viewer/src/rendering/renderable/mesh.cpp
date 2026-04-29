@@ -10,36 +10,19 @@ MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std:
 	m_cmfMesh( cmfMesh ),
 	m_modelEffect( renderer ),
 	m_wireframeEffect( renderer ),
-	m_audioOcclusionRenderable( renderer, GetAudioOcclusionEffect( renderer ) ),
+	m_prepass( renderer, data, cmfMesh ),
+	m_audioOcclusionRenderable( renderer, GetAudioOcclusionEffect( renderer, cmfMesh ) ),
 	m_boundingBox( BoundingBox::Create( renderer, Vector3( 0.5, 0.5, 0.0 ) ) )
 {
-	for( const auto& decl : cmfMesh.decl )
+	for( const auto& vertexElement : m_cmfMesh.decl )
 	{
-		// Generate a predictable location so that shaders can find the attribute.
-		uint32_t location = (uint32_t)decl.usage * 4u + decl.usageIndex;
-
-		VkVertexInputAttributeDescription attrDesc{};
-		attrDesc.binding = 0;
-		attrDesc.location = location;
-		attrDesc.offset = decl.offset;
-		attrDesc.format = VulkanEnums::ElementTypeToVkFormat( decl.type, decl.elementCount );
-		m_vertexDescriptions.push_back( attrDesc );
+		m_availableVertexElements.push_back( vertexElement );
 	}
-
-	for( const auto& cmfLod : cmfMesh.lods )
-	{
-		m_lods.push_back( { data, cmfMesh, cmfLod, renderer } );
-		m_stride = std::max( m_stride, cmfLod.vb.stride );
-	}
-
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
+	m_stride = m_cmfMesh.lods[0].vb.stride;
 }
 
-MeshRenderable::~MeshRenderable()
-{
-}
-
-void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeCmd )
+void MeshRenderable::Initialize( AppState& appState )
 {
 	// Register mesh visibility state
 	size_t stateIndex = appState.meshVisibilityStates.AddState();
@@ -62,24 +45,15 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 		m_showBoundingBox = enabled;
 	} );
 
-	size_t morphTargetStateIndex = 0;
-	// go through the morph targets so we can register to the morph weight and display flags
-	for( size_t i = 0; i < m_cmfMesh.morphTargets.targets.size(); i++ )
-	{
-		auto index = appState.morphTargetEnabled.AddState();
-		if( i == 0 )
-		{
-			morphTargetStateIndex = index;
-		}
-		appState.morphTargetWeight.AddState();
-	}
-
-	for( auto& lod : m_lods )
-	{
-		lod.Initialize( initializeCmd, morphTargetStateIndex );
-	}
 	m_boundingBox.Initialize();
 
+	appState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
+		SetLod( lodIndex );
+	} );
+
+	SetLod( appState.selectedLod.GetValue() );
+
+	m_prepass.Initialize( appState );
 	if( !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
 	{
 		m_audioOcclusionRenderable.SetBufferData(
@@ -94,40 +68,66 @@ void MeshRenderable::Initialize( AppState& appState, VkCommandBuffer initializeC
 	}
 }
 
-void MeshRenderable::Finalize()
+void MeshRenderable::SetLod( uint32_t lodLevel )
 {
-	for( auto& lod : m_lods )
+	if( lodLevel >= m_cmfMesh.lods.size() )
 	{
-		lod.Finalize();
+		Log::Error( "Invalid LOD level %d for mesh %s. It only has %zu", lodLevel, ToStdString( m_cmfMesh.name ).c_str(), m_cmfMesh.lods.size() );
+		return;
+	}
+	auto cmfLod = m_cmfMesh.lods[lodLevel];
+	m_areas.clear();
+	for( const auto& area : cmfLod.areas )
+	{
+		m_areas.push_back( { area.firstElement * 3, area.elementCount * 3 } );
 	}
 }
 
-void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera, uint32_t lodIndex )
+void MeshRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera )
 {
-	if( !m_display )
+	if( !m_display || !m_modelEffect.IsInitialized() )
 	{
-		return;
-	}
-	if( lodIndex >= m_lods.size() )
-	{
-		// maybe this is not an error, we should just skip rendering. But for now, log an error.
-		Log::Error( "Lod index out of bounds in Mesh::Render (%d requested, %d available)", lodIndex, (uint32_t)m_lods.size() );
 		return;
 	}
 
-	m_lods[lodIndex].UpdateGeo( appState );
+	const Buffer indexBuffer = m_prepass.GetIndexBuffer();
+
+	auto vertexBuffer = m_prepass.GetVertexBuffer();
+
+	commandBuffer.BindVertexBuffer( vertexBuffer.GetGpuBuffer() );
+	if( indexBuffer.IsValid() )
+	{
+		commandBuffer.BindIndexBuffer( m_prepass.GetIndexBuffer() );
+	}
+
 	auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
 
 	m_modelEffect.SetUniformData( 0, viewProj );
 
 	commandBuffer.BindEffect( m_modelEffect );
-	m_lods[lodIndex].Render( commandBuffer );
+	if( indexBuffer.IsValid() )
+	{
+		DrawIndexed( commandBuffer );
+	}
+	else
+	{
+		Draw( commandBuffer );
+	}
+
 	if( m_polygonMode != VK_POLYGON_MODE_LINE && m_wireframeEffect.IsInitialized() && m_wireframe )
 	{
 		m_wireframeEffect.SetUniformData( 0, viewProj );
-
+		commandBuffer.BindVertexBuffer( vertexBuffer.GetGpuBuffer() );
 		commandBuffer.BindEffect( m_wireframeEffect );
-		m_lods[lodIndex].Render( commandBuffer );
+		if( indexBuffer.IsValid() )
+		{
+			commandBuffer.BindIndexBuffer( m_prepass.GetIndexBuffer() );
+			DrawIndexed( commandBuffer );
+		}
+		else
+		{
+			Draw( commandBuffer );
+		}
 	}
 
 	if( m_showBoundingBox )
@@ -144,21 +144,50 @@ void MeshRenderable::Render( CommandBuffer& commandBuffer, const AppState& appSt
 	}
 }
 
+void MeshRenderable::PrepareMesh( ComputeCommandBuffer& commandBuffer )
+{
+	if( !m_display )
+	{
+		return;
+	}
+	m_prepass.Process( commandBuffer );
+}
+
+void MeshRenderable::Draw( GraphicsCommandBuffer& commandBuffer )
+{
+	for( uint32_t i = 0; i < m_areas.size(); i++ )
+	{
+		auto area = m_areas[i];
+		commandBuffer.Draw( area.firstElement, area.elementCount );
+	}
+}
+
+void MeshRenderable::DrawIndexed( GraphicsCommandBuffer& commandBuffer )
+{
+	for( uint32_t i = 0; i < m_areas.size(); i++ )
+	{
+		auto area = m_areas[i];
+		commandBuffer.DrawIndexed( area.firstElement, area.elementCount );
+	}
+}
+
 VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode )
 {
 	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
 
 	m_polygonMode = polygonMode;
+	m_shaderName = shaderName;
 
 	CR_RETURN( vkDeviceWaitIdle( logicalDevice ) );
 
-	auto config = Effect::Config();
+	auto config = GraphicsEffect::Config();
 	config.topology = m_topology;
 	config.polygonMode = polygonMode;
 	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
-	config.vertexStride = m_stride;
-	config.vertexDescriptions = m_vertexDescriptions;
-	m_modelEffect.SetShaderName( shaderName );
+	config.availableVertexElements = m_availableVertexElements;
+	config.stride = m_stride;
+
+	m_modelEffect.SetShaderName( m_shaderName );
 	m_modelEffect.SetConfig( config );
 	if( !m_modelEffect.IsInitialized() )
 	{
@@ -168,7 +197,7 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 
 	if( !m_wireframeEffect.IsInitialized() )
 	{
-		auto wireframeConfig = Effect::Config();
+		auto wireframeConfig = GraphicsEffect::Config();
 		wireframeConfig.topology = m_topology;
 		// use fill mode even though we are rendering wireframe
 		// The reason is when we rasterize the lines we will get issues with the depth buffer where some lines
@@ -178,8 +207,9 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 		wireframeConfig.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 		wireframeConfig.cullMode = VK_CULL_MODE_NONE;
 		wireframeConfig.blend = true;
-		wireframeConfig.vertexStride = m_stride;
-		wireframeConfig.vertexDescriptions = m_vertexDescriptions;
+		wireframeConfig.availableVertexElements = m_availableVertexElements;
+		wireframeConfig.stride = m_stride;
+
 		m_wireframeEffect.SetShaderName( "wireframeoverlay" );
 		m_wireframeEffect.SetConfig( wireframeConfig );
 		m_wireframeEffect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
@@ -188,18 +218,25 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 	return VK_SUCCESS;
 }
 
-Effect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer )
+GraphicsEffect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh )
 {
-	auto config = Effect::Config();
+	auto config = GraphicsEffect::Config();
 	config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	config.polygonMode = VK_POLYGON_MODE_FILL;
 	config.cullMode = VK_CULL_MODE_NONE;
 	config.blend = false;
-	config.vertexStride = sizeof( Vector3 );
-	config.vertexDescriptions.push_back( { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 } );
+	config.stride = sizeof( Vector3 );
+	config.availableVertexElements = {
+		cmf::VertexElement{
+			cmf::Usage::Position,
+			0,
+			cmf::ElementType::Float32,
+			3,
+			0 }
+	};
 
-	Effect effect( renderer );
-	effect.SetShaderName( "facenormal" );
+	GraphicsEffect effect( renderer );
+	effect.SetShaderName( "Face Normal" );
 	effect.SetConfig( config );
 	effect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 

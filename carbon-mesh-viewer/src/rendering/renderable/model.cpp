@@ -24,9 +24,6 @@ ModelRenderable::~ModelRenderable()
 
 VkResult ModelRenderable::Initialize( AppState& appState )
 {
-	// Buffer copies have to be submitted to a queue, so we need a command buffer for them
-	VkCommandBuffer copyCmd;
-
 	appState.meshVisibilityStates.Clear();
 	appState.morphTargetEnabled.Clear();
 	appState.morphTargetWeight.Clear();
@@ -38,17 +35,9 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 		m_showBoundingBox = value;
 	} );
 
-	m_renderer->CreateCopyCommandBuffer( &copyCmd );
 	for( auto& mesh : m_meshes )
 	{
-		mesh.Initialize( appState, copyCmd );
-	}
-
-	RETURN_ERROR( m_renderer->EndCopyCommandBuffer( copyCmd ) );
-
-	for( auto& mesh : m_meshes )
-	{
-		mesh.Finalize();
+		mesh.Initialize( appState );
 	}
 
 	m_boundingBox.Initialize();
@@ -56,12 +45,11 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 	return VK_SUCCESS;
 }
 
-void ModelRenderable::RenderMesh( CommandBuffer& commandBuffer, const AppState& state, const Camera& camera )
+void ModelRenderable::RenderMesh( GraphicsCommandBuffer& commandBuffer, const AppState& state, const Camera& camera )
 {
-	uint32_t lod = state.selectedLod.GetValue();
 	for( auto& mesh : m_meshes )
 	{
-		mesh.Render( commandBuffer, state, camera, lod );
+		mesh.Render( commandBuffer, state, camera );
 	}
 
 	if( m_showBoundingBox )
@@ -71,6 +59,16 @@ void ModelRenderable::RenderMesh( CommandBuffer& commandBuffer, const AppState& 
 		m_boundingBox.Render( commandBuffer );
 	}
 }
+
+VkResult ModelRenderable::PrepareModel( ComputeCommandBuffer& computeCommandBuffer )
+{
+	for( auto& mesh : m_meshes )
+	{
+		mesh.PrepareMesh( computeCommandBuffer );
+	}
+	return VK_SUCCESS;
+}
+
 
 VkResult ModelRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode )
 {

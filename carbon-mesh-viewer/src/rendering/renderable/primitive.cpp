@@ -2,7 +2,7 @@
 
 #include "../vulkan/vulkanerrors.h"
 
-PrimitiveRenderable::PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, Effect effect ) :
+PrimitiveRenderable::PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, GraphicsEffect&& effect ) :
 	m_renderer( renderer ),
 	m_effect( effect )
 {
@@ -62,8 +62,17 @@ VkResult PrimitiveRenderable::Initialize()
 	return VK_SUCCESS;
 }
 
-void PrimitiveRenderable::Render( CommandBuffer& commandBuffer )
+void PrimitiveRenderable::Render( GraphicsCommandBuffer& commandBuffer )
 {
 	commandBuffer.BindEffect( m_effect );
-	commandBuffer.Render( m_vertexBuffer, m_indexBuffer, 0, m_elements );
+	commandBuffer.BindVertexBuffer( m_vertexBuffer->GetGpuBuffer() );
+	if( m_indexBuffer )
+	{
+		commandBuffer.BindIndexBuffer( *m_indexBuffer );
+		commandBuffer.DrawIndexed( 0, m_elements );
+	}
+	else
+	{
+		commandBuffer.Draw( 0, m_elements );
+	}
 }

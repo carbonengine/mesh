@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cmf/cmf.h>
-
 #include "device.h"
 #include "rendering/renderer.h"
 
@@ -9,9 +7,10 @@
 enum class BufferType
 {
 	Vertex,
-	Index
+	Index,
+	Storage,
+	Undefined
 };
-
 
 // Simple buffer object.
 // Holds on to the memory and buffer
@@ -25,17 +24,20 @@ public:
 	VkResult Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride );
 
 	VkBuffer GetGpuBuffer() const;
+	VkDescriptorBufferInfo& GetDescriptorBufferInfo();
 
 	bool IsValid() const;
 
 	void CopyFromStaging( VkCommandBuffer commandBuffer );
 	void ReleaseStaging( const Renderer* renderer );
-
+	VkResult SetData( const Renderer* renderer, const uint8_t* data, uint32_t size );
 	uint32_t size() const;
 	uint32_t stride() const;
 
+
 private:
 	VkResult CreateBuffer( const Renderer* renderer, BufferType type, const uint8_t* data );
+	VkResult CreateStorageBuffer( const Renderer* renderer, const uint8_t* data );
 	VkDeviceMemory m_memory;
 	VkBuffer m_buffer;
 	uint32_t m_size;
@@ -43,6 +45,8 @@ private:
 
 	VkDeviceMemory m_stagingMemory;
 	VkBuffer m_stagingBuffer;
+	BufferType m_type{ BufferType::Undefined };
+	VkDescriptorBufferInfo m_descriptorInfo{ VK_NULL_HANDLE, 0, VK_WHOLE_SIZE };
 
 	bool m_isValid;
 };

@@ -22,9 +22,6 @@ include(cmake/CcpBuildConfigurations.cmake)
 include(cmake/CcpTargetConfigurations.cmake)
 include(GenerateExportHeader)
 
-add_subdirectory( carbon-mesh-viewer )
-add_subdirectory( carbon-mesh-optimizer )
-
 set(PUBLIC_HEADER_FILES
     include/cmf/animation.h
     include/cmf/bounds.h
@@ -162,6 +159,8 @@ endif()
 
 
 add_subdirectory (src/fbximport) 
+add_subdirectory( carbon-mesh-viewer )
+add_subdirectory( carbon-mesh-optimizer )
 add_subdirectory( src/processor )
 
 add_subdirectory (src/cmf/test) 

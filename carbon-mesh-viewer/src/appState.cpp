@@ -21,6 +21,7 @@ void AppState::CallStateCallbacks()
 
 	selectedLod.CallCallbacks( *this );
 	visualizationShader.CallCallbacks( *this );
+	availableShaders.CallCallbacks( *this );
 	polygonMode.CallCallbacks( *this );
 	meshVisibilityStates.CallCallbacks( *this );
 	morphTargetWeight.CallCallbacks( *this );
@@ -29,4 +30,6 @@ void AppState::CallStateCallbacks()
 	audioOcclusionMesh.CallCallbacks( *this );
 	meshBoundingBox.CallCallbacks( *this );
 	modelBoundingBox.CallCallbacks( *this );
+	currentAnimation.CallCallbacks( *this );
+	currentAnimationTime.CallCallbacks( *this );
 }

@@ -1,0 +1,326 @@
+#version 450
+
+// mapping to CMF ElementType
+const uint FLOAT32_TYPE = 0;
+const uint FLOAT16_TYPE = 1;
+const uint UINT16NORM_TYPE = 2;
+const uint UINT16_TYPE = 3;
+const uint INT16NORM_TYPE = 4;
+const uint INT16_TYPE = 5;
+const uint UINT8NORM_TYPE = 6;
+const uint UINT8_TYPE = 7;
+const uint INT8NORM_TYPE = 8;
+const uint INT8_TYPE = 9;
+
+// The buffers are all 4 byte aligned
+// meaning we can safely cast things from float to the desired type and back to float
+
+layout (binding = 0) uniform UBO 
+{
+    uint morphJobCount; // number of morph jobs
+	uint vertexCount; // number of vertices in the vertex buffer
+	uint vertexStride; // single vertex buffer stride
+    uint morphBufferCount; // number of morph target buffers
+    uint morphBufferStride; // stride of a single morph target buffer
+	uint morphVertexStride; // single morph vertex stride
+} params;
+
+struct MorphJob {
+	uint sourceElementIndex; // index into the source vertex declaration for this morph job
+	uint morphElementIndex; // index into the morph target vertex declaration for this morph job
+};
+
+struct Element {
+    uint type; // the format of the element, float32 = 0, float16 = 1, uint16 = 2, int16 = 3, uint8 = 4, int8 = 5
+    uint count; // 1-4 , how many components does this element have
+    uint offset; // the offset of this element in the vertex
+    uint normalized; // 0 = not normalized, 1 = normalized
+};
+
+layout(std430, binding = 1) buffer VertexIn {
+	float vertexIn[ ];
+};
+
+layout(std430, binding = 2) buffer VertexOut {
+	float vertexOut[ ];
+};
+
+layout(std430, binding = 3) buffer MorphBuffers {
+	float morphedVertexIn[ ];
+};
+
+layout(std430, binding = 4) buffer MorphJobs {
+	MorphJob morphJobs[ ];
+};
+
+layout(std430, binding = 5) buffer Elements {
+	Element elements[ ];
+};
+
+layout(std430, binding = 6) buffer Weights {
+	float weights[ ];
+};
+
+// Initializes the output vertex with the values in the source 
+void InitializeOutput( uint vertexIndex )
+{
+    uint vertexStart = vertexIndex * params.vertexStride;
+    for( uint i = 0; i < params.vertexStride; ++i )
+    {
+        vertexOut[ vertexStart + i ] = vertexIn[ vertexStart + i ];
+    }
+}
+
+// Convert a float container value to the desired type and return it as a vec4
+vec4 FloatAsVec4( float value, Element element )
+{
+    uint valueAsUint = floatBitsToUint( value );
+    vec4 result = vec4( 0.0f );
+    switch( element.type )
+    {
+    case FLOAT32_TYPE:
+        result.x = value;
+        break;
+    case FLOAT16_TYPE:
+        result.xy = unpackHalf2x16( valueAsUint );
+        break;
+    case UINT16NORM_TYPE:
+        result.xy = unpackUnorm2x16( valueAsUint );
+        break;
+    case UINT16_TYPE:
+        result.xy = unpackUnorm2x16( valueAsUint ) * 65535.0f;
+        break;
+    case INT16NORM_TYPE:
+        result.xy = unpackSnorm2x16( valueAsUint );
+        break;
+    case INT16_TYPE:
+        result.xy = unpackSnorm2x16( valueAsUint ) * 32767.0f;
+        break;
+    case UINT8NORM_TYPE:
+        result = unpackUnorm4x8( valueAsUint );
+        break;
+    case UINT8_TYPE:
+        result = unpackUnorm4x8( valueAsUint ) * 255.0f;
+        break;
+    case INT8NORM_TYPE:
+        result = unpackSnorm4x8( valueAsUint );
+        break;
+    case INT8_TYPE:
+        result = unpackSnorm4x8( valueAsUint ) * 127.0f;
+        break;
+    default:
+        break;
+    }
+    return result;
+}
+
+float Vec4AsFloat( vec4 value, Element element )
+{
+    uint result = 0;
+    switch( element.type )
+    {
+    case FLOAT32_TYPE:
+        result = floatBitsToUint( value.x );
+        break;
+    case FLOAT16_TYPE:
+        result = packHalf2x16( value.xy );
+        break;
+    case UINT16NORM_TYPE:
+        result = packUnorm2x16( value.xy );
+        break;
+    case UINT16_TYPE:
+        result = packUnorm2x16( value.xy / 65535.0f );
+        break;
+    case INT16NORM_TYPE:
+        result = packSnorm2x16( value.xy );
+        break;
+    case INT16_TYPE:
+        result = packSnorm2x16( value.xy / 32767.0f );
+        break;
+    case UINT8NORM_TYPE:
+        result = packUnorm4x8( value );
+        break;
+    case UINT8_TYPE:
+        result = packUnorm4x8( value / 255.0f );
+        break;
+    case INT8NORM_TYPE:
+        result = packSnorm4x8( value );
+        break;
+    case INT8_TYPE:
+        result = packSnorm4x8( value / 127.0f );
+        break;
+    default:
+        break;
+    }
+    return uintBitsToFloat( result );
+}
+
+// Returns the morph value as the correct type
+vec4 GetMorphValue( uint indexInMorphBuffer, Element element )
+{
+    vec4 result = vec4( 0.0f );
+    switch( element.type )
+    {
+    case FLOAT32_TYPE:
+        for( uint i = 0; i < element.count; ++i )
+        {
+            result[i] = morphedVertexIn[ indexInMorphBuffer + i ];
+        }
+        break;
+    case FLOAT16_TYPE:
+    case UINT16NORM_TYPE:
+    case UINT16_TYPE:
+    case INT16NORM_TYPE:
+    case INT16_TYPE:
+        // 4 16byte values can be packed in 2 float values
+        result.xy = FloatAsVec4( morphedVertexIn[ indexInMorphBuffer ], element ).xy;
+        if( element.count > 2 )
+        {
+            result.zw = FloatAsVec4( morphedVertexIn[ indexInMorphBuffer + 1 ], element ).xy;
+        }
+        break;
+    case UINT8NORM_TYPE:
+    case UINT8_TYPE:
+    case INT8NORM_TYPE:
+    case INT8_TYPE:
+        // 4 8byte values can be packed in a single float value
+        result = FloatAsVec4( morphedVertexIn[ indexInMorphBuffer ], element );
+        break;
+    default:
+        break;
+    }
+    return result;
+}
+
+// Returns the source value as the correct type
+vec4 GetSourceValue( uint indexInVertexBuffer, Element element ) 
+{
+    vec4 result = vec4( 0.0f );
+    switch( element.type )
+    {
+    case FLOAT32_TYPE:
+        for( uint i = 0; i < element.count; ++i )
+        {
+            result[i] = vertexIn[ indexInVertexBuffer + i ];
+        }
+        break;
+    case FLOAT16_TYPE:
+    case UINT16NORM_TYPE:
+    case UINT16_TYPE:
+    case INT16NORM_TYPE:
+    case INT16_TYPE:
+        // 4 16byte values can be packed in 2 float values
+        result.xy = FloatAsVec4( vertexIn[ indexInVertexBuffer ], element ).xy;
+        if( element.count > 2 )
+        {
+            result.zw = FloatAsVec4( vertexIn[ indexInVertexBuffer + 1 ], element ).xy;
+        }
+        break;
+    case UINT8NORM_TYPE:
+    case UINT8_TYPE:
+    case INT8NORM_TYPE:
+    case INT8_TYPE:
+        // 4 8byte values can be packed in a single float value
+        result = FloatAsVec4( vertexIn[ indexInVertexBuffer ], element );
+        break;
+    default:
+        break;
+    }
+    return result;
+}
+
+vec4 ApplyWeight( float weight, const Element sourceElement, const Element morphElement, uint vertexIndex, uint morphBufferIndex )
+{
+    uint sourceIndexStart = vertexIndex * params.vertexStride + sourceElement.offset;
+    uint morphIndexStart = morphBufferIndex * params.morphBufferStride + vertexIndex * params.morphVertexStride + morphElement.offset;
+
+    vec4 sourceValueAsFloat = GetSourceValue( sourceIndexStart, sourceElement );
+    vec4 morphValueAsFloat = GetMorphValue( morphIndexStart, morphElement );
+    return weight * ( morphValueAsFloat - sourceValueAsFloat );
+}
+
+void WriteOut( vec4 modifiedValue, const Element element, uint vertexAttributeIndex )
+{
+    switch( element.type )
+    {
+    case FLOAT32_TYPE:
+        for( uint i = 0; i < element.count; ++i )
+        {
+            vertexOut[ vertexAttributeIndex + i ] = modifiedValue[i];
+        }
+        break;
+    case FLOAT16_TYPE:
+    case UINT16NORM_TYPE:
+    case UINT16_TYPE:
+    case INT16NORM_TYPE:
+    case INT16_TYPE:
+        // convert the vec4 modified value to max 2 sets of vec2
+        vertexOut[ vertexAttributeIndex ] = Vec4AsFloat( vec4( modifiedValue.xy, 0.0f, 0.0f ), element );
+        if( element.count > 2 )
+        {
+            vertexOut[ vertexAttributeIndex + 1 ] = Vec4AsFloat( vec4( modifiedValue.zw, 0.0f, 0.0f ), element );
+        }
+        break;
+    case UINT8NORM_TYPE:
+    case UINT8_TYPE:
+    case INT8NORM_TYPE:
+    case INT8_TYPE:
+        // convert the float value to a vec4, set the new value, and convert back to float
+        vertexOut[ vertexAttributeIndex ] = Vec4AsFloat( modifiedValue, element );
+        break;
+    default:
+        break;
+    }
+}
+
+// one vertex is processed at a time using one morphjob (which goes over all morph targets)
+void main()
+{
+	uvec3 id = gl_GlobalInvocationID; 
+
+	uint vertexIndex = id.x;
+	if( vertexIndex >= params.vertexCount ) 
+    {
+		return;
+    }
+
+    // reset the out value
+    InitializeOutput( vertexIndex );
+
+    for( uint morphJobIndex = 0; morphJobIndex < params.morphJobCount; ++morphJobIndex ) 
+    {
+        vec4 change = vec4( 0.0f );
+        MorphJob morphJob = morphJobs[ morphJobIndex ];
+        Element sourceElement = elements[ morphJob.sourceElementIndex ];
+        Element morphElement = elements[ morphJob.morphElementIndex ];
+
+        // step 1. morphing
+        for( uint morphIndex = 0; morphIndex < params.morphBufferCount; ++morphIndex ) 
+        {
+            float weight = weights[morphIndex];
+            if( weight == 0.0f ) 
+            {
+                continue;
+            }
+
+            change += ApplyWeight( weight, sourceElement, morphElement, vertexIndex, morphIndex );
+        }
+        
+        uint vertexAttributeIndex = vertexIndex * params.vertexStride + sourceElement.offset;
+
+        // step 2. apply the morphing to the source value
+        vec4 modifiedValue = GetSourceValue( vertexAttributeIndex, sourceElement ) + change;
+        
+        // step 3. normalization if needed
+        if( sourceElement.normalized == 1 ) 
+        {
+            modifiedValue = normalize( modifiedValue );
+        }
+   
+        // step 4. write the modified value back to the output
+        WriteOut( modifiedValue, sourceElement, vertexAttributeIndex );
+    }
+
+    // step 5. bone animation
+
+}

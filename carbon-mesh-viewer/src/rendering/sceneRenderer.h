@@ -10,17 +10,20 @@
 class SceneRenderer
 {
 public:
-	SceneRenderer( std::shared_ptr<const Renderer> renderer );
+	SceneRenderer( std::shared_ptr<Renderer> renderer );
 	~SceneRenderer();
 
 	VkResult Initialize( AppState& state );
-	VkResult Render( const AppState& state, const Camera& camera );
+
+	void PrePass();
+	void Render( const AppState& state, const Camera& camera );
 	void SetData( CmfContent* data, AppState& appState );
 
 private:
 	void ReleaseModel();
 
-	CommandBuffer m_commandBuffer;
+	GraphicsCommandBuffer m_graphicsCommandBuffer;
+	ComputeCommandBuffer m_computeCommandBuffer{};
 	std::unique_ptr<ModelRenderable> m_model{ nullptr };
-	std::shared_ptr<const Renderer> m_renderer{ nullptr };
+	std::shared_ptr<Renderer> m_renderer{ nullptr };
 };

@@ -2,48 +2,85 @@
 #include "vulkanerrors.h"
 #include "../renderingConsts.h"
 
-CommandBuffer::CommandBuffer( const Renderer* renderer )
+
+void CommandBuffer::BindEffect( Effect& effect )
+{
+	effect.Bind( m_activeCommandBuffer, m_currentIndex );
+}
+
+void CommandBuffer::BindVertexBuffer( VkBuffer buffer )
+{
+	VkDeviceSize offset = { 0 };
+	vkCmdBindVertexBuffers( m_activeCommandBuffer, 0, 1, &buffer, &offset );
+}
+
+void CommandBuffer::BindVertexBuffers( const std::vector<VkBuffer>& buffers )
+{
+	std::vector<VkDeviceSize> offsets;
+	for( size_t i = 0; i < buffers.size(); i++ )
+	{
+		offsets.push_back( 0 );
+	}
+	vkCmdBindVertexBuffers( m_activeCommandBuffer, 0, static_cast<uint32_t>( buffers.size() ), buffers.data(), offsets.data() );
+}
+
+VkCommandBuffer CommandBuffer::GetActiveCommandBuffer() const
+{
+	return m_activeCommandBuffer;
+}
+
+// Graphics command buffer implementation
+GraphicsCommandBuffer::GraphicsCommandBuffer( const Renderer* renderer ) :
+	CommandBuffer()
 {
 	auto device = renderer->GetDevice()->GetLogicalDevice();
 	vkCmdBeginRenderingKHR = reinterpret_cast<PFN_vkCmdBeginRenderingKHR>( vkGetDeviceProcAddr( device, "vkCmdBeginRenderingKHR" ) );
 	vkCmdEndRenderingKHR = reinterpret_cast<PFN_vkCmdEndRenderingKHR>( vkGetDeviceProcAddr( device, "vkCmdEndRenderingKHR" ) );
 }
 
-void CommandBuffer::SetClearColor( float r, float g, float b )
+void GraphicsCommandBuffer::SetClearColor( float r, float g, float b )
 {
 	m_clearColor = Vector3( r, g, b );
 }
 
-void CommandBuffer::SetClearDepth( float depth )
+void GraphicsCommandBuffer::SetClearDepth( float depth )
 {
 	m_clearDepth = depth;
 }
 
-void CommandBuffer::SetRenderSize( uint32_t width, uint32_t height )
+void GraphicsCommandBuffer::SetRenderSize( uint32_t width, uint32_t height )
 {
 	m_size = { width, height };
 }
 
-void CommandBuffer::SetRenderOffset( int32_t x, int32_t y )
+void GraphicsCommandBuffer::SetRenderOffset( int32_t x, int32_t y )
 {
 	m_offset = { x, y };
 }
 
-void CommandBuffer::SetLineWidth( float lineWidth )
+void GraphicsCommandBuffer::SetLineWidth( float lineWidth )
 {
 	vkCmdSetLineWidth( m_activeCommandBuffer, lineWidth );
 }
 
-VkResult CommandBuffer::Begin( const Renderer* renderer )
+
+void GraphicsCommandBuffer::BindIndexBuffer( const Buffer& indexBuffer )
+{
+	auto ib = indexBuffer.GetGpuBuffer();
+
+	vkCmdBindIndexBuffer( m_activeCommandBuffer, ib, 0, indexBuffer.stride() == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32 );
+}
+
+void GraphicsCommandBuffer::Begin( const Renderer* renderer )
 {
 	if( vkCmdBeginRenderingKHR == nullptr || vkCmdEndRenderingKHR == nullptr )
 	{
 		Log::Error( "Dynamic rendering functions not loaded" );
-		return VK_ERROR_INITIALIZATION_FAILED;
+		return;
 	}
 
 	// At this point, the current command buffer has been begun by the renderer
-	m_activeCommandBuffer = renderer->GetCurrentVkCommandBuffer();
+	m_activeCommandBuffer = renderer->GetCurrentGraphicVkCommandBuffer();
 	m_currentIndex = renderer->GetCurrentFrame();
 
 	auto swapchainFrameTexture = renderer->GetCurrentSwapchainFrameTexture();
@@ -99,52 +136,45 @@ VkResult CommandBuffer::Begin( const Renderer* renderer )
 	scissor.extent.height = m_size.height;
 
 	vkCmdSetScissor( m_activeCommandBuffer, 0, 1, &scissor );
-	return VK_SUCCESS;
 }
 
-void CommandBuffer::BindEffect( Effect& effect )
-{
-	effect.Bind( m_activeCommandBuffer, m_currentIndex );
-}
-
-void CommandBuffer::Render( Buffer* vertexBuffer, Buffer* indexBuffer, uint32_t firstElement, uint32_t elementCount )
-{
-	auto vb = vertexBuffer->GetGpuBuffer();
-	VkDeviceSize offsets[] = { 0 };
-	vkCmdBindVertexBuffers( m_activeCommandBuffer, 0, 1, &vb, offsets );
-
-	if( indexBuffer )
-	{
-		auto ib = indexBuffer->GetGpuBuffer();
-
-		vkCmdBindIndexBuffer( m_activeCommandBuffer, ib, 0, indexBuffer->stride() == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32 );
-	}
-
-	if( indexBuffer )
-	{
-		vkCmdDrawIndexed( m_activeCommandBuffer, elementCount, 1, firstElement, 0, 0 );
-	}
-	else
-	{
-		vkCmdDraw( m_activeCommandBuffer, elementCount, 1, firstElement, 0 );
-	}
-}
-
-VkResult CommandBuffer::End()
+void GraphicsCommandBuffer::End()
 {
 	vkCmdEndRenderingKHR( m_activeCommandBuffer );
 	m_activeCommandBuffer = VK_NULL_HANDLE;
-	return VK_SUCCESS;
 }
 
-void CommandBuffer::Release( const Renderer* renderer )
+void GraphicsCommandBuffer::DrawIndexed( uint32_t firstElement, uint32_t elementCount )
 {
-	auto logicalDevice = renderer->GetDevice()->GetLogicalDevice();
-	auto allocator = renderer->GetAllocator();
+	vkCmdDrawIndexed( m_activeCommandBuffer, elementCount, 1, firstElement, 0, 0 );
+}
 
-	if( m_descriptorPool != VK_NULL_HANDLE )
-	{
-		vkDestroyDescriptorPool( logicalDevice, m_descriptorPool, allocator );
-		m_descriptorPool = VK_NULL_HANDLE;
-	}
+void GraphicsCommandBuffer::Draw( uint32_t firstElement, uint32_t elementCount )
+{
+	vkCmdDraw( m_activeCommandBuffer, elementCount, 1, firstElement, 0 );
+}
+
+// Compute command buffer implementation
+void ComputeCommandBuffer::Begin( const Renderer* renderer )
+{
+	m_activeCommandBuffer = renderer->GetCurrentComputeVkCommandBuffer();
+}
+
+void ComputeCommandBuffer::End()
+{
+	m_activeCommandBuffer = VK_NULL_HANDLE;
+}
+
+void ComputeCommandBuffer::Dispatch( uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ )
+{
+	vkCmdDispatch( m_activeCommandBuffer, groupCountX, groupCountY, groupCountZ );
+}
+
+void ComputeCommandBuffer::Copy( const Buffer& src, const Buffer& dst )
+{
+	VkBufferCopy copyRegion{};
+	copyRegion.srcOffset = 0;
+	copyRegion.dstOffset = 0;
+	copyRegion.size = std::min( src.size(), dst.size() );
+	vkCmdCopyBuffer( m_activeCommandBuffer, src.GetGpuBuffer(), dst.GetGpuBuffer(), 1, &copyRegion );
 }

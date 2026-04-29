@@ -12,7 +12,9 @@ public:
 	~ModelRenderable();
 
 	VkResult Initialize( AppState& appState );
-	void RenderMesh( CommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
+	VkResult PrepareModel( ComputeCommandBuffer& computeCommandBuffer );
+
+	void RenderMesh( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
