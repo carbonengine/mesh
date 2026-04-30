@@ -17,6 +17,10 @@ template <typename T>
 void BuildBufferIndexRemap( T& obj, std::vector<BufferRecord>& indices )
 {
 	auto remapBuffer = [&indices]( cmf::BufferView& view, cmf::SectionCompression compression ) {
+		if( view.size == 0 )
+		{
+			return; // Empty buffer, skip it
+		}
 		auto found = find_if( begin( indices ), end( indices ), [&view]( const BufferRecord& record ) {
 			return record.index == view.index;
 		} );

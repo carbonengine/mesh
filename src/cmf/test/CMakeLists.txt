@@ -2,6 +2,7 @@ set(CMF_TEST_SOURCES
     animation.cpp
     main.cpp
     transforms.cpp
+    writer.cpp
 )
     
 find_package(GTest CONFIG REQUIRED)

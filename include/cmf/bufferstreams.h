@@ -104,6 +104,19 @@ private:
 	Converter m_conversion;
 };
 
+inline static uint32_t GetStreamElementCount( const BufferView& view )
+{
+	if( view.size == 0 )
+	{
+		return 0;
+	}
+	if( view.stride == 0 )
+	{
+		// Avoid division by zero; treat as a single element stream
+		return 1;
+	}
+	return view.size / view.stride;
+}
 
 template <typename T, typename P>
 class BaseBufferElementStream : public BaseDataStream<T, P>
@@ -119,7 +132,7 @@ public:
 	}
 
 	BaseBufferElementStream( const VertexElement& element, P* buffer, const BufferView& view ) :
-		BaseBufferElementStream( element, static_cast<typename BaseDataStream<T, P>::Byte*>( buffer ) + view.offset, view.size / view.stride, view.stride )
+		BaseBufferElementStream( element, static_cast<typename BaseDataStream<T, P>::Byte*>( buffer ) + view.offset, GetStreamElementCount( view ), view.stride )
 	{
 	}
 
@@ -150,7 +163,7 @@ class BaseIndexBufferStream : public BaseDataStream<uint32_t, P, IndexConverter>
 
 public:
 	BaseIndexBufferStream( P* data, const BufferView& view ) :
-		Base( IndexConverter( view.stride ), static_cast<typename Base::Byte*>( data ) + view.offset, view.size / view.stride, view.stride )
+		Base( IndexConverter( view.stride ), static_cast<typename Base::Byte*>( data ) + view.offset, GetStreamElementCount( view ), view.stride )
 	{
 	}
 
