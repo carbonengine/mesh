@@ -141,6 +141,7 @@ private:
 	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 

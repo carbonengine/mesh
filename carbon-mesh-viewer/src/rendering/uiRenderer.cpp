@@ -320,6 +320,11 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 			RenderMorphDataTab( cmfContent, mesh, lod );
 			ImGui::EndTabItem();
 		}
+		if( ImGui::BeginTabItem( "Bones" ) )
+		{
+			RenderBonesTab( cmfContent, mesh );
+			ImGui::EndTabItem();
+		}
 		ImGui::EndTabBar();
 	}
 
@@ -1224,4 +1229,150 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 	}
 
 	RenderAttributeTable( "##morphdata", vbData, vertexCount, morphLod.vb.stride, filteredAttributes, -1 );
+}
+
+void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
+{
+	const auto& skeletons = cmfContent->m_cmfData->skeletons;
+	bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
+	bool hasBoneBindings = !mesh.boneBindings.empty();
+
+	if( !hasSkeleton && !hasBoneBindings )
+	{
+		ImGui::Text( "No bone data" );
+		return;
+	}
+
+	if( hasBoneBindings )
+	{
+		if( hasSkeleton )
+			ImGui::SeparatorText( "Bone Bindings" );
+		ImGui::Text( "Bindings: %u", (uint32_t)mesh.boneBindings.size() );
+
+		float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+		float contentHeight = (float)( mesh.boneBindings.size() + 1 ) * lineHeight;
+		float halfWindowHeight = ImGui::GetContentRegionAvail().y * 0.5f;
+		float bindingsHeight = hasSkeleton
+			? std::min( contentHeight, halfWindowHeight )
+			: ImGui::GetContentRegionAvail().y;
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		if( ImGui::BeginTable( "##bonebindingstable", 2, tableFlags, ImVec2( 0.0f, bindingsHeight ) ) )
+		{
+			ImGui::TableSetupScrollFreeze( 0, 1 );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "Name", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)mesh.boneBindings.size() );
+			while( clipper.Step() )
+			{
+				for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+				{
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex( 0 );
+					ImGui::Text( "%d", i );
+					ImGui::TableSetColumnIndex( 1 );
+					ImGui::TextUnformatted( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() );
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
+	}
+
+	if( hasSkeleton )
+	{
+		const auto& skeleton = skeletons[mesh.skeleton];
+		std::string skelName = cmf::ToStdString( skeleton.name );
+		ImGui::Text( "Skeleton: %s   Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
+
+		static const char* paramNames[] = { "Parent", "Position", "Rotation", "Scale" };
+		const int paramsPerBone = 4;
+		int totalRows = (int)skeleton.bones.size() * paramsPerBone;
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		if( ImGui::BeginTable( "##boneslist", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+		{
+			ImGui::TableSetupScrollFreeze( 0, 1 );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "Parameter", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( totalRows );
+			while( clipper.Step() )
+			{
+				for( int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row )
+				{
+					int bi = row / paramsPerBone;
+					int pi = row % paramsPerBone;
+
+					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
+					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
+
+					ImGui::TableNextRow();
+					ImGuiCol bgCol = bi % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt;
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( bgCol ) );
+
+					ImGui::TableSetColumnIndex( 0 );
+					if( pi == 0 )
+						ImGui::Text( "%d", bi );
+
+					ImGui::TableSetColumnIndex( 1 );
+					ImGui::TextUnformatted( paramNames[pi] );
+
+					ImGui::TableSetColumnIndex( 2 );
+					char buf[128];
+					switch( pi )
+					{
+					case 0:
+						if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
+							ImGui::TextUnformatted( "-" );
+						else
+							ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[parentIdx] ).c_str() );
+						break;
+					case 1:
+						if( hasTransform )
+						{
+							const auto& p = skeleton.restTransforms[bi].position;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					case 2:
+						if( hasTransform )
+						{
+							const auto& r = skeleton.restTransforms[bi].rotation;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					case 3:
+						if( hasTransform )
+						{
+							const auto& s = skeleton.restTransforms[bi].scale;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					}
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
+	}
+
 }
