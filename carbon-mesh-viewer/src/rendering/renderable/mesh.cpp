@@ -5,7 +5,7 @@
 #include "../vulkan/vulkanenums.h"
 #include "../vulkan/vulkanerrors.h"
 
-MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
+MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
 	m_cmfMesh( cmfMesh ),
 	m_modelEffect( renderer ),
@@ -20,40 +20,89 @@ MeshRenderable::MeshRenderable( CmfContent* data, const cmf::Mesh& cmfMesh, std:
 	}
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
 	m_stride = m_cmfMesh.lods[0].vb.stride;
+
+	if( data->m_cmfData->skeletons.size() > m_cmfMesh.skeleton )
+	{
+		m_baseSkeleton = std::make_unique<cmf::Skeleton>( data->m_cmfData->skeletons[m_cmfMesh.skeleton] );
+		cmf::RestPose( m_currentPose, *m_baseSkeleton.get() );
+	}
+}
+
+void MeshRenderable::InitializeAnimationData( std::shared_ptr<CmfContent> data )
+{
+	if( data->m_cmfData->skeletons.size() > m_cmfMesh.skeleton )
+	{
+		m_animationSkeleton = std::make_unique<cmf::Skeleton>( data->m_cmfData->skeletons[m_cmfMesh.skeleton] );
+	}
+	m_animations = data->m_cmfData->animations;
+	m_prepass.InitializeAnimationData( m_animationSkeleton.get(), m_baseSkeleton.get() );
+	SetAnimation( "" );
 }
 
 void MeshRenderable::Initialize( AppState& appState )
 {
 	// Register mesh visibility state
-	size_t stateIndex = appState.meshVisibilityStates.AddState();
-	appState.meshVisibilityStates[stateIndex].RegisterCallback( [this]( bool visible, AppState& appState ) {
+	size_t stateIndex = appState.modelState.meshVisibilityStates.AddState();
+	appState.modelState.meshVisibilityStates[stateIndex].RegisterCallback( [this]( bool visible, AppState& appState ) {
 		m_display = visible;
 	} );
 
-	stateIndex = appState.meshWireframeOverlay.AddState();
-	appState.meshWireframeOverlay[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+	stateIndex = appState.modelState.meshWireframeOverlay.AddState();
+	appState.modelState.meshWireframeOverlay[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
 		m_wireframe = enabled;
 	} );
 
-	stateIndex = appState.audioOcclusionMesh.AddState();
-	appState.audioOcclusionMesh[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+	stateIndex = appState.modelState.audioOcclusionMesh.AddState();
+	appState.modelState.audioOcclusionMesh[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
 		m_audioOcclusion = enabled;
 	} );
 
-	stateIndex = appState.meshBoundingBox.AddState();
-	appState.meshBoundingBox[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
+	stateIndex = appState.modelState.meshBoundingBox.AddState();
+	appState.modelState.meshBoundingBox[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
 		m_showBoundingBox = enabled;
 	} );
 
-	m_boundingBox.Initialize();
+	appState.modelState.currentAnimation.RegisterCallback( [this]( std::string animationName, AppState& appState ) {
+		SetAnimation( animationName );
+	} );
 
-	appState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
+	appState.modelState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
 		SetLod( lodIndex );
 	} );
 
-	SetLod( appState.selectedLod.GetValue() );
+	appState.modelState.currentAnimationTime.RegisterCallback( [this]( float animationTime, AppState& appState ) {
+		if( m_animationPlayer )
+		{
+			for( const auto& [curveIndex, morphIndex] : m_morphCurveToTargetMapping )
+			{
+				float weight = cmf::SampleScalarCurve( m_currentAnimation->curves[curveIndex], animationTime );
+
+				m_prepass.SetMorphWeight( morphIndex, weight );
+				// the line above is the one that updates the morph target weight in the prepass, but we also need to update the app state so that the UI reflects the current weight
+				appState.modelState.morphTargetWeight[morphIndex].SetValueNoCallback( weight );
+			}
+
+			m_animationPlayer->Sample( m_currentPose, animationTime );
+
+			m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
+		}
+	} );
+
+	appState.modelState.animationOverride.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
+		auto contentToUse = content != nullptr ? content : appState.cmfContent.GetValue();
+		if( contentToUse != nullptr )
+		{
+			InitializeAnimationData( contentToUse );
+		}
+	} );
+
+	m_boundingBox.Initialize();
+	SetLod( appState.modelState.selectedLod.GetValue() );
 
 	m_prepass.Initialize( appState );
+
+	InitializeAnimationData( appState.cmfContent.GetValue() );
+
 	if( !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
 	{
 		m_audioOcclusionRenderable.SetBufferData(
@@ -80,6 +129,60 @@ void MeshRenderable::SetLod( uint32_t lodLevel )
 	for( const auto& area : cmfLod.areas )
 	{
 		m_areas.push_back( { area.firstElement * 3, area.elementCount * 3 } );
+	}
+}
+
+void MeshRenderable::SetAnimation( std::string animationName )
+{
+	if( m_animationSkeleton == nullptr || m_baseSkeleton == nullptr )
+	{
+		return;
+	}
+	m_morphCurveToTargetMapping.clear();
+	if( animationName.empty() )
+	{
+		m_animationPlayer.reset();
+		cmf::RestPose( m_currentPose, *m_animationSkeleton );
+		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
+		return;
+	}
+
+	auto foundAnimation = std::find_if( m_animations.begin(), m_animations.end(), [animationName]( const cmf::Animation& animation ) {
+		return cmf::ToStdString( animation.name ) == animationName;
+	} );
+
+	if( foundAnimation != m_animations.end() )
+	{
+		m_currentAnimation.reset( new cmf::Animation( *foundAnimation ) );
+		// check if there are any morph curves that we need to handle explicitly
+		for( const auto animationChannel : m_currentAnimation->channels )
+		{
+			if( animationChannel.targetType == cmf::AnimationChannelTargetType::MorphTarget )
+			{
+				auto foundMorphTarget = std::find_if( m_cmfMesh.morphTargets.targets.begin(), m_cmfMesh.morphTargets.targets.end(), [animationChannel]( const cmf::MorphTarget& morphTarget ) {
+					return morphTarget.name == animationChannel.target;
+				} );
+
+				if( foundMorphTarget != m_cmfMesh.morphTargets.targets.end() )
+				{
+					// register the mapping between the animation curve and the morph target index
+					uint32_t morphTargetIndex = uint32_t( std::distance( m_cmfMesh.morphTargets.targets.begin(), foundMorphTarget ) );
+					m_morphCurveToTargetMapping.push_back( { animationChannel.curveIndex, morphTargetIndex } );
+				}
+			}
+		}
+		// create the player
+		m_animationPlayer = std::make_unique<cmf::AnimationPlayer>( *m_animationSkeleton, *m_currentAnimation );
+
+		cmf::RestPose( m_currentPose, *m_animationSkeleton );
+		m_animationPlayer.get()->Sample( m_currentPose, 0 );
+		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
+	}
+	else
+	{
+		m_animationPlayer.reset();
+		cmf::RestPose( m_currentPose, *m_animationSkeleton );
+		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
 	}
 }
 
@@ -150,6 +253,7 @@ void MeshRenderable::PrepareMesh( ComputeCommandBuffer& commandBuffer )
 	{
 		return;
 	}
+
 	m_prepass.Process( commandBuffer );
 }
 
