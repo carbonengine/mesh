@@ -1,5 +1,6 @@
 #include "uiRenderer.h"
 
+#include <cmf/converters.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <tinyfiledialogs/tinyfiledialogs.h>
@@ -181,6 +182,16 @@ void UIRenderer::SetupUi( AppState& appState )
 {
 	UpdateUiState( appState );
 
+	CMFInfoWindow( appState );
+	MeshDetailsWindow( appState );
+
+	SetupPlaybackControls( appState );
+
+	SetupPopupWindows( appState );
+}
+
+void UIRenderer::CMFInfoWindow( AppState& appState )
+{
 	bool open = true;
 
 	float width = (float)appState.windowSize.GetValue().first;
@@ -198,10 +209,121 @@ void UIRenderer::SetupUi( AppState& appState )
 		SetupMeshListView( m_uiState.modelStates, appState );
 	}
 	ImGui::End();
+}
 
-	SetupPlaybackControls( appState );
+void UIRenderer::MeshDetailsWindow( AppState& appState )
+{
+	bool open = true;
 
-	SetupPopupWindows( appState );
+	float width = (float)appState.windowSize.GetValue().first;
+	float height = (float)appState.windowSize.GetValue().second;
+
+	float ySize = height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1; // +1 so we get an overlap of the borders
+
+	// Pivot (1,0) anchors the top-right corner to the right edge of the viewport
+	ImGui::SetNextWindowPos( ImVec2( width, MENU_BAR_HEIGHT ), ImGuiCond_Always, ImVec2( 1.0f, 0.0f ) );
+	ImGui::SetNextWindowSizeConstraints( ImVec2( 0, ySize ), ImVec2( width, ySize ) );
+	ImGui::SetNextWindowSize( ImVec2( width / 4.0f, ySize ), ImGuiCond_FirstUseEver );
+	if( !ImGui::Begin( "Mesh Details", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings ) )
+	{
+		ImGui::End();
+		return;
+	}
+
+	auto* cmfContent = appState.cmfContent.GetValue();
+	if( cmfContent == nullptr || cmfContent->m_cmfData == nullptr )
+	{
+		ImGui::Text( "No CMF loaded" );
+		ImGui::End();
+		return;
+	}
+
+	const auto& meshes = cmfContent->m_cmfData->meshes;
+	if( meshes.empty() )
+	{
+		ImGui::Text( "No meshes" );
+		ImGui::End();
+		return;
+	}
+
+	m_meshDetailsState.selectedMeshIndex = std::min( m_meshDetailsState.selectedMeshIndex, (int)meshes.size() - 1 );
+	const auto& mesh = meshes[m_meshDetailsState.selectedMeshIndex];
+
+	ImGui::Text( "Mesh" );
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+	auto meshName = cmf::ToStdString( mesh.name );
+	if( ImGui::BeginCombo( "##meshselect", meshName.c_str() ) )
+	{
+		for( int i = 0; i < (int)meshes.size(); ++i )
+		{
+			auto name = cmf::ToStdString( meshes[i].name );
+			bool selected = ( i == m_meshDetailsState.selectedMeshIndex );
+			if( ImGui::Selectable( name.c_str(), selected ) )
+			{
+				m_meshDetailsState.selectedMeshIndex = i;
+				m_meshDetailsState.selectedLodIndex = 0;
+				m_meshDetailsState.selectedMorphTargetIndex = 0;
+				m_meshDetailsState.vertexAttributeFilter.clear();
+				m_meshDetailsState.morphAttributeFilter.clear();
+			}
+			if( selected )
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	if( mesh.lods.empty() )
+	{
+		ImGui::Text( "No LODs" );
+		ImGui::End();
+		return;
+	}
+
+	m_meshDetailsState.selectedLodIndex = std::min( m_meshDetailsState.selectedLodIndex, (int)mesh.lods.size() - 1 );
+
+	ImGui::Text( "LOD" );
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+	std::string lodPreview = "LOD " + std::to_string( m_meshDetailsState.selectedLodIndex );
+	if( ImGui::BeginCombo( "##lodselect", lodPreview.c_str() ) )
+	{
+		for( int i = 0; i < (int)mesh.lods.size(); ++i )
+		{
+			std::string label = "LOD " + std::to_string( i );
+			bool selected = ( i == m_meshDetailsState.selectedLodIndex );
+			if( ImGui::Selectable( label.c_str(), selected ) )
+				m_meshDetailsState.selectedLodIndex = i;
+			if( selected )
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	const auto& lod = mesh.lods[m_meshDetailsState.selectedLodIndex];
+
+	if( ImGui::BeginTabBar( "##viewtabs" ) )
+	{
+		ImGuiTabItemFlags vtdFlags = m_meshDetailsState.scrollToLinkedVertex ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+		if( ImGui::BeginTabItem( "Vertex Data", nullptr, vtdFlags ) )
+		{
+			RenderVertexDataTab( cmfContent, mesh, lod );
+			ImGui::EndTabItem();
+		}
+		if( ImGui::BeginTabItem( "Index Data" ) )
+		{
+			RenderIndexDataTab( cmfContent, mesh, lod );
+			ImGui::EndTabItem();
+		}
+		if( ImGui::BeginTabItem( "Morph Data" ) )
+		{
+			RenderMorphDataTab( cmfContent, mesh, lod );
+			ImGui::EndTabItem();
+		}
+		ImGui::EndTabBar();
+	}
+
+	ImGui::End();
 }
 
 void UIRenderer::SetupGeneralView( AppState& appState )
@@ -749,4 +871,357 @@ void UIRenderer::OnChange( bool changed, std::function<void()> callback )
 	{
 		callback();
 	}
+}
+
+std::string UIRenderer::GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex )
+{
+	std::string name;
+	switch( usage )
+	{
+	case cmf::Usage::Position:            name = "Position"; break;
+	case cmf::Usage::Normal:              name = "Normal"; break;
+	case cmf::Usage::Tangent:             name = "Tangent"; break;
+	case cmf::Usage::Binormal:            name = "Binormal"; break;
+	case cmf::Usage::TexCoord:            name = "TexCoord"; break;
+	case cmf::Usage::Color:               name = "Color"; break;
+	case cmf::Usage::BoneIndices:         name = "Bone Indices"; break;
+	case cmf::Usage::BoneWeights:         name = "Bone Weights"; break;
+	case cmf::Usage::PackedTangent:       name = "Packed Tangent"; break;
+	case cmf::Usage::PackedTangentLegacy: name = "Packed Tangent (Legacy)"; break;
+	default:                              name = "Unknown"; break;
+	}
+	if( usageIndex > 0 )
+		name += std::to_string( usageIndex );
+	return name;
+}
+
+void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex )
+{
+	if( attributes.empty() )
+	{
+		ImGui::Text( "No readable vertex attributes" );
+		return;
+	}
+
+	ImGuiTableFlags tableFlags =
+		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_ScrollY |
+		ImGuiTableFlags_SizingFixedFit;
+
+	int totalRows = (int)vertexCount * (int)attributes.size();
+	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+	if( ImGui::BeginTable( tableId, 3, tableFlags, outerSize ) )
+	{
+		if( scrollToVertex >= 0 )
+		{
+			float targetY = (float)( scrollToVertex * (int)attributes.size() ) * ImGui::GetTextLineHeightWithSpacing();
+			ImGui::SetScrollY( targetY );
+		}
+
+		ImGui::TableSetupScrollFreeze( 0, 1 );
+		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+		ImGui::TableSetupColumn( "Attribute", ImGuiTableColumnFlags_WidthFixed, 150.0f );
+		ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableHeadersRow();
+
+		ImGuiListClipper clipper;
+		clipper.Begin( totalRows );
+		while( clipper.Step() )
+		{
+			for( int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row )
+			{
+				int vi = row / (int)attributes.size();
+				int ai = row % (int)attributes.size();
+				const auto& attr = attributes[ai];
+				const uint8_t* vertexPtr = vbData + (size_t)vi * stride;
+
+				ImGui::TableNextRow();
+				ImGuiCol bgCol = ( vi == m_meshDetailsState.linkedVertexIndex )
+					? ImGuiCol_Header
+					: ( vi % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt );
+				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( bgCol ) );
+
+				ImGui::TableSetColumnIndex( 0 );
+				if( ai == 0 )
+					ImGui::Text( "%d", vi );
+
+				ImGui::TableSetColumnIndex( 1 );
+				ImGui::TextUnformatted( attr.name.c_str() );
+
+				ImGui::TableSetColumnIndex( 2 );
+				for( uint8_t c = 0; c < attr.elementCount; ++c )
+				{
+					const uint8_t* compPtr = vertexPtr + attr.byteOffset + c * attr.conv.second;
+					ImGui::Text( "%f", attr.conv.first.to( compPtr ) );
+					if( c + 1 < attr.elementCount )
+					{
+						ImGui::SameLine();
+					}
+				}
+			}
+		}
+		clipper.End();
+		ImGui::EndTable();
+	}
+}
+
+void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+{
+	if( mesh.decl.empty() )
+	{
+		ImGui::Text( "No vertex declaration" );
+		return;
+	}
+	if( lod.vb.stride == 0 || lod.vb.size == 0 )
+	{
+		ImGui::Text( "Empty vertex buffer" );
+		return;
+	}
+
+	uint32_t vertexCount = lod.vb.size / lod.vb.stride;
+	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, lod.vb.stride );
+	const uint8_t* vbData = cmfContent->Index( lod.vb.index, 0 ) + lod.vb.offset;
+
+    // Get the lables for the vertex atributes
+	auto allAttributes = BuildAttributes( mesh.decl );
+
+	for( const auto& attr : allAttributes )
+	{
+		if( m_meshDetailsState.vertexAttributeFilter.find( attr.name ) == m_meshDetailsState.vertexAttributeFilter.end() )
+			m_meshDetailsState.vertexAttributeFilter[attr.name] = true;
+	}
+
+    // Vertex atribute filter list
+	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
+	{
+		for( const auto& attr : allAttributes )
+		{
+			bool enabled = m_meshDetailsState.vertexAttributeFilter[attr.name];
+			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
+				m_meshDetailsState.vertexAttributeFilter[attr.name] = enabled;
+		}
+	}
+
+	std::vector<AttributeInfo> filteredAttributes;
+	for( const auto& attr : allAttributes )
+	{
+		if( m_meshDetailsState.vertexAttributeFilter[attr.name] )
+			filteredAttributes.push_back( attr );
+	}
+
+	int scrollTarget = -1;
+	if( m_meshDetailsState.scrollToLinkedVertex )
+	{
+		scrollTarget = m_meshDetailsState.linkedVertexIndex;
+		m_meshDetailsState.scrollToLinkedVertex = false;
+	}
+
+	RenderAttributeTable( "##vertexdata", vbData, vertexCount, lod.vb.stride, filteredAttributes, scrollTarget );
+}
+
+void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+{
+	if( lod.ib.stride == 0 || lod.ib.size == 0 )
+	{
+		ImGui::Text( "Empty index buffer" );
+		return;
+	}
+
+	uint32_t indexCount = lod.ib.size / lod.ib.stride;
+	const uint8_t* ibData = cmfContent->Index( lod.ib.index, 0 ) + lod.ib.offset;
+	cmf::IndexConverter indexConv( lod.ib.stride );
+	bool isTriangleList = mesh.topology == cmf::MeshTopology::TriangleList;
+
+	if( isTriangleList )
+	{
+		ImGui::RadioButton( "Raw", &m_meshDetailsState.indexViewMode, 1 );
+		ImGui::SameLine();
+		ImGui::RadioButton( "Triangles", &m_meshDetailsState.indexViewMode, 0 );
+	}
+
+	auto indexSelectable = [&]( uint32_t vertexIdx, int uniqueId )
+	{
+		char buf[16];
+		snprintf( buf, sizeof( buf ), "%u", vertexIdx );
+		ImGui::PushID( uniqueId );
+		bool isSelected = ( (int)vertexIdx == m_meshDetailsState.selectedIndexValue );
+		ImGui::Selectable( buf, isSelected, ImGuiSelectableFlags_None );
+		if( ImGui::IsItemClicked( ImGuiMouseButton_Left ) )
+			m_meshDetailsState.selectedIndexValue = (int)vertexIdx;
+		if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+		{
+			m_meshDetailsState.linkedVertexIndex = (int)vertexIdx;
+			m_meshDetailsState.scrollToLinkedVertex = true;
+		}
+		ImGui::PopID();
+	};
+
+	if( isTriangleList && m_meshDetailsState.indexViewMode == 0 )
+	{
+		uint32_t triangleCount = indexCount / 3;
+		ImGui::Text( "Triangles: %u   Indices: %u", triangleCount, indexCount );
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+		if( ImGui::BeginTable( "##indexdata", 4, tableFlags, outerSize ) )
+		{
+			ImGui::TableSetupScrollFreeze( 0, 1 );
+			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 72.0f );
+			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)triangleCount );
+			while( clipper.Step() )
+			{
+				for( int ti = clipper.DisplayStart; ti < clipper.DisplayEnd; ++ti )
+				{
+					const uint8_t* base = ibData + (size_t)ti * 3 * lod.ib.stride;
+					uint32_t v0 = indexConv( base );
+					uint32_t v1 = indexConv( base + lod.ib.stride );
+					uint32_t v2 = indexConv( base + 2 * lod.ib.stride );
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex( 0 );
+					ImGui::Text( "%d", ti );
+					ImGui::TableSetColumnIndex( 1 );
+					indexSelectable( v0, ti * 3 );
+					ImGui::TableSetColumnIndex( 2 );
+					indexSelectable( v1, ti * 3 + 1 );
+					ImGui::TableSetColumnIndex( 3 );
+					indexSelectable( v2, ti * 3 + 2 );
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
+	}
+	else
+	{
+		ImGui::Text( "Indices: %u", indexCount );
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+		if( ImGui::BeginTable( "##indexdataraw", 2, tableFlags, outerSize ) )
+		{
+			ImGui::TableSetupScrollFreeze( 0, 1 );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 72.0f );
+			ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)indexCount );
+			while( clipper.Step() )
+			{
+				for( int ii = clipper.DisplayStart; ii < clipper.DisplayEnd; ++ii )
+				{
+					uint32_t v = indexConv( ibData + (size_t)ii * lod.ib.stride );
+
+					ImGui::TableNextRow();
+					if( (int)v == m_meshDetailsState.selectedIndexValue )
+						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg1, ImGui::GetColorU32( ImGuiCol_Header ) );
+
+					ImGui::TableSetColumnIndex( 0 );
+					ImGui::Text( "%d", ii );
+					ImGui::TableSetColumnIndex( 1 );
+					indexSelectable( v, ii );
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
+	}
+}
+
+void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+{
+	const auto& morphTargets = mesh.morphTargets;
+	if( morphTargets.targets.empty() )
+	{
+		ImGui::Text( "No morph targets" );
+		return;
+	}
+	if( morphTargets.decl.empty() )
+	{
+		ImGui::Text( "No morph target vertex declaration" );
+		return;
+	}
+
+	m_meshDetailsState.selectedMorphTargetIndex = std::min(
+		m_meshDetailsState.selectedMorphTargetIndex,
+		(int)morphTargets.targets.size() - 1 );
+
+	auto morphName = cmf::ToStdString( morphTargets.targets[m_meshDetailsState.selectedMorphTargetIndex].name );
+	ImGui::Text( "Morph Target" );
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+	if( ImGui::BeginCombo( "##morphselect", morphName.c_str() ) )
+	{
+		for( int i = 0; i < (int)morphTargets.targets.size(); ++i )
+		{
+			auto name = cmf::ToStdString( morphTargets.targets[i].name );
+			bool selected = ( i == m_meshDetailsState.selectedMorphTargetIndex );
+			if( ImGui::Selectable( name.c_str(), selected ) )
+				m_meshDetailsState.selectedMorphTargetIndex = i;
+			if( selected )
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	if( m_meshDetailsState.selectedMorphTargetIndex >= (int)lod.morphTargets.size() )
+	{
+		ImGui::Text( "No LOD morph data for this morph target" );
+		return;
+	}
+
+	const auto& morphLod = lod.morphTargets[m_meshDetailsState.selectedMorphTargetIndex];
+	if( morphLod.vb.stride == 0 || morphLod.vb.size == 0 )
+	{
+		ImGui::Text( "Empty morph target buffer" );
+		return;
+	}
+
+	uint32_t vertexCount = morphLod.vb.size / morphLod.vb.stride;
+	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, morphLod.vb.stride );
+	const uint8_t* vbData = cmfContent->Index( morphLod.vb.index, 0 ) + morphLod.vb.offset;
+
+	auto allAttributes = BuildAttributes( morphTargets.decl );
+
+	for( const auto& attr : allAttributes )
+	{
+		if( m_meshDetailsState.morphAttributeFilter.find( attr.name ) == m_meshDetailsState.morphAttributeFilter.end() )
+			m_meshDetailsState.morphAttributeFilter[attr.name] = true;
+	}
+
+	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
+	{
+		for( const auto& attr : allAttributes )
+		{
+			bool enabled = m_meshDetailsState.morphAttributeFilter[attr.name];
+			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
+				m_meshDetailsState.morphAttributeFilter[attr.name] = enabled;
+		}
+	}
+
+	std::vector<AttributeInfo> filteredAttributes;
+	for( const auto& attr : allAttributes )
+	{
+		if( m_meshDetailsState.morphAttributeFilter[attr.name] )
+			filteredAttributes.push_back( attr );
+	}
+
+	RenderAttributeTable( "##morphdata", vbData, vertexCount, morphLod.vb.stride, filteredAttributes, -1 );
 }

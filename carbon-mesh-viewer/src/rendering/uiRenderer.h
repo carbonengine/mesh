@@ -1,5 +1,8 @@
 
 #include <imgui.h>
+#include <unordered_map>
+
+#include <cmf/converters.h>
 
 #include "appState.h"
 #include "rendering/renderer.h"
@@ -18,6 +21,8 @@ public:
 	void Render( AppState& appState );
 
 	void SetupUi( AppState& appState );
+	void CMFInfoWindow( AppState& appState );
+	void MeshDetailsWindow( AppState& appState );
 	void SetupMenubar( AppState& appState );
 	void UpdateInputs( AppState& state );
 
@@ -88,6 +93,19 @@ private:
 		CmfUiComboBox<std::string> animationComboBox;
 	};
 
+	struct MeshDetailsState
+	{
+		int selectedMeshIndex{ 0 };
+		int selectedLodIndex{ 0 };
+		int selectedMorphTargetIndex{ 0 };
+		int indexViewMode{ 1 }; // 0 = triangles, 1 = raw
+		std::unordered_map<std::string, bool> vertexAttributeFilter;
+		std::unordered_map<std::string, bool> morphAttributeFilter;
+		int linkedVertexIndex{ -1 };
+		bool scrollToLinkedVertex{ false };
+		int selectedIndexValue{ -1 };
+	};
+
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
@@ -106,6 +124,24 @@ private:
 	void UpdateUiState( AppState& appState );
 	void FileOpenDialog( AppState& appState );
 
+	struct AttributeInfo
+	{
+		std::string name;
+		uint32_t byteOffset;
+		uint8_t elementCount;
+		std::pair<cmf::ConversionFunction<float>, size_t> conv;
+	};
+
+	static std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex );
+
+	template<typename Decl>
+	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
+
+	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex );
+	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
 	std::shared_ptr<const Renderer> m_renderer;
@@ -114,6 +150,7 @@ private:
 	UiState m_uiState{};
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	Playback m_playback{};
+	MeshDetailsState m_meshDetailsState{};
 };
 
 
