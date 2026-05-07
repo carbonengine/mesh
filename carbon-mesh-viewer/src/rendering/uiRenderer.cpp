@@ -266,6 +266,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 				m_meshDetailsState.selectedMorphTargetIndex = 0;
 				m_meshDetailsState.vertexAttributeFilter.clear();
 				m_meshDetailsState.morphAttributeFilter.clear();
+				m_meshDetailsState.boneColumnFilter.clear();
 			}
 			if( selected )
 				ImGui::SetItemDefaultFocus();
@@ -910,58 +911,79 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 
 	ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_ScrollX |
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	int totalRows = (int)vertexCount * (int)attributes.size();
+	int colCount = (int)attributes.size() + 1;
 	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
-	if( ImGui::BeginTable( tableId, 3, tableFlags, outerSize ) )
+	if( ImGui::BeginTable( tableId, colCount, tableFlags, outerSize ) )
 	{
 		if( scrollToVertex >= 0 )
 		{
-			float targetY = (float)( scrollToVertex * (int)attributes.size() ) * ImGui::GetTextLineHeightWithSpacing();
+			float targetY = (float)scrollToVertex * ImGui::GetTextLineHeightWithSpacing();
 			ImGui::SetScrollY( targetY );
 		}
 
-		ImGui::TableSetupScrollFreeze( 0, 1 );
+		ImGui::TableSetupScrollFreeze( 1, 1 );
 		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-		ImGui::TableSetupColumn( "Attribute", ImGuiTableColumnFlags_WidthFixed, 150.0f );
-		ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
+		for( const auto& attr : attributes )
+			ImGui::TableSetupColumn( attr.name.c_str(), ImGuiTableColumnFlags_WidthStretch );
 		ImGui::TableHeadersRow();
 
 		ImGuiListClipper clipper;
-		clipper.Begin( totalRows );
+		clipper.Begin( (int)vertexCount );
 		while( clipper.Step() )
 		{
-			for( int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row )
+			for( int vi = clipper.DisplayStart; vi < clipper.DisplayEnd; ++vi )
 			{
-				int vi = row / (int)attributes.size();
-				int ai = row % (int)attributes.size();
-				const auto& attr = attributes[ai];
 				const uint8_t* vertexPtr = vbData + (size_t)vi * stride;
 
 				ImGui::TableNextRow();
-				ImGuiCol bgCol = ( vi == m_meshDetailsState.linkedVertexIndex )
-					? ImGuiCol_Header
-					: ( vi % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt );
-				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( bgCol ) );
+				if( vi == m_meshDetailsState.linkedVertexIndex )
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
 
 				ImGui::TableSetColumnIndex( 0 );
-				if( ai == 0 )
-					ImGui::Text( "%d", vi );
+				ImGui::Text( "%d", vi );
 
-				ImGui::TableSetColumnIndex( 1 );
-				ImGui::TextUnformatted( attr.name.c_str() );
-
-				ImGui::TableSetColumnIndex( 2 );
-				for( uint8_t c = 0; c < attr.elementCount; ++c )
+				for( int ai = 0; ai < (int)attributes.size(); ++ai )
 				{
-					const uint8_t* compPtr = vertexPtr + attr.byteOffset + c * attr.conv.second;
-					ImGui::Text( "%f", attr.conv.first.to( compPtr ) );
-					if( c + 1 < attr.elementCount )
+					const auto& attr = attributes[ai];
+					ImGui::TableSetColumnIndex( ai + 1 );
+
+					if( attr.name.find( "Color" ) == 0 )
 					{
+						float c[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+						for( uint8_t i = 0; i < attr.elementCount && i < 4; ++i )
+						{
+							const uint8_t* compPtr = vertexPtr + attr.byteOffset + i * attr.conv.second;
+							float v = attr.conv.first.to( compPtr );
+							c[i] = v < 0.0f ? 0.0f : ( v > 1.0f ? 1.0f : v );
+						}
+						float sz = ImGui::GetTextLineHeight();
+						ImVec2 p = ImGui::GetCursorScreenPos();
+						ImGui::GetWindowDrawList()->AddRectFilled(
+							p, ImVec2( p.x + sz, p.y + sz ),
+							IM_COL32( (int)( c[0] * 255 ), (int)( c[1] * 255 ), (int)( c[2] * 255 ), (int)( c[3] * 255 ) ) );
+						ImGui::Dummy( ImVec2( sz + 4.0f, sz ) );
 						ImGui::SameLine();
 					}
+
+					char valueBuf[128];
+					char* ptr = valueBuf;
+					char* end = valueBuf + sizeof( valueBuf );
+					for( uint8_t c = 0; c < attr.elementCount && ptr < end - 1; ++c )
+					{
+						if( c > 0 && ptr < end - 3 )
+						{
+							*ptr++ = ' ';
+							*ptr++ = ' ';
+						}
+						const uint8_t* compPtr = vertexPtr + attr.byteOffset + c * attr.conv.second;
+						ptr += snprintf( ptr, end - ptr, "%.4f", attr.conv.first.to( compPtr ) );
+					}
+					ImGui::TextUnformatted( valueBuf );
 				}
 			}
 		}
@@ -999,6 +1021,11 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
     // Vertex atribute filter list
 	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
 	{
+		if( ImGui::Button( "Reset##vf" ) )
+		{
+			for( auto& [name, enabled] : m_meshDetailsState.vertexAttributeFilter )
+				enabled = true;
+		}
 		for( const auto& attr : allAttributes )
 		{
 			bool enabled = m_meshDetailsState.vertexAttributeFilter[attr.name];
@@ -1213,6 +1240,11 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 
 	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
 	{
+		if( ImGui::Button( "Reset##mf" ) )
+		{
+			for( auto& [name, enabled] : m_meshDetailsState.morphAttributeFilter )
+				enabled = true;
+		}
 		for( const auto& attr : allAttributes )
 		{
 			bool enabled = m_meshDetailsState.morphAttributeFilter[attr.name];
@@ -1293,80 +1325,102 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 		std::string skelName = cmf::ToStdString( skeleton.name );
 		ImGui::Text( "Skeleton: %s   Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
 
-		static const char* paramNames[] = { "Parent", "Position", "Rotation", "Scale" };
-		const int paramsPerBone = 4;
-		int totalRows = (int)skeleton.bones.size() * paramsPerBone;
+		static const char* allBoneCols[] = { "Parent", "Position", "Rotation", "Scale" };
+		for( const auto& col : allBoneCols )
+		{
+			if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
+				m_meshDetailsState.boneColumnFilter[col] = true;
+		}
+
+		if( ImGui::CollapsingHeader( "Column Filters" ) )
+		{
+			if( ImGui::Button( "Reset##bf" ) )
+			{
+				for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
+					enabled = true;
+			}
+			for( const auto& col : allBoneCols )
+			{
+				bool enabled = m_meshDetailsState.boneColumnFilter[col];
+				if( ImGui::Checkbox( col, &enabled ) )
+					m_meshDetailsState.boneColumnFilter[col] = enabled;
+			}
+		}
+
+		std::vector<int> activeColIndices;
+		for( int i = 0; i < 4; ++i )
+		{
+			if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
+				activeColIndices.push_back( i );
+		}
 
 		ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollX |
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		if( ImGui::BeginTable( "##boneslist", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+		int colCount = (int)activeColIndices.size() + 1;
+		if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 		{
-			ImGui::TableSetupScrollFreeze( 0, 1 );
+			ImGui::TableSetupScrollFreeze( 1, 1 );
 			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-			ImGui::TableSetupColumn( "Parameter", ImGuiTableColumnFlags_WidthFixed, 80.0f );
-			ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
+			for( int ci : activeColIndices )
+				ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
 			ImGuiListClipper clipper;
-			clipper.Begin( totalRows );
+			clipper.Begin( (int)skeleton.bones.size() );
 			while( clipper.Step() )
 			{
-				for( int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row )
+				for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
 				{
-					int bi = row / paramsPerBone;
-					int pi = row % paramsPerBone;
-
 					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
 					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
 
 					ImGui::TableNextRow();
-					ImGuiCol bgCol = bi % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt;
-					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( bgCol ) );
 
 					ImGui::TableSetColumnIndex( 0 );
-					if( pi == 0 )
-						ImGui::Text( "%d", bi );
+					ImGui::Text( "%d", bi );
 
-					ImGui::TableSetColumnIndex( 1 );
-					ImGui::TextUnformatted( paramNames[pi] );
-
-					ImGui::TableSetColumnIndex( 2 );
 					char buf[128];
-					switch( pi )
+					for( int col = 0; col < (int)activeColIndices.size(); ++col )
 					{
-					case 0:
-						if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
-							ImGui::TextUnformatted( "-" );
-						else
-							ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[parentIdx] ).c_str() );
-						break;
-					case 1:
-						if( hasTransform )
+						ImGui::TableSetColumnIndex( col + 1 );
+						switch( activeColIndices[col] )
 						{
-							const auto& p = skeleton.restTransforms[bi].position;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
-							ImGui::TextUnformatted( buf );
+						case 0: // Parent
+							if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
+								ImGui::TextUnformatted( "-" );
+							else
+								ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[parentIdx] ).c_str() );
+							break;
+						case 1: // Position
+							if( hasTransform )
+							{
+								const auto& p = skeleton.restTransforms[bi].position;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
+						case 2: // Rotation
+							if( hasTransform )
+							{
+								const auto& r = skeleton.restTransforms[bi].rotation;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
+						case 3: // Scale
+							if( hasTransform )
+							{
+								const auto& s = skeleton.restTransforms[bi].scale;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
 						}
-						break;
-					case 2:
-						if( hasTransform )
-						{
-							const auto& r = skeleton.restTransforms[bi].rotation;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
-							ImGui::TextUnformatted( buf );
-						}
-						break;
-					case 3:
-						if( hasTransform )
-						{
-							const auto& s = skeleton.restTransforms[bi].scale;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
-							ImGui::TextUnformatted( buf );
-						}
-						break;
 					}
 				}
 			}

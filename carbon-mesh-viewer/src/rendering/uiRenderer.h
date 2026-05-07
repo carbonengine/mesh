@@ -101,6 +101,7 @@ private:
 		int indexViewMode{ 1 }; // 0 = triangles, 1 = raw
 		std::unordered_map<std::string, bool> vertexAttributeFilter;
 		std::unordered_map<std::string, bool> morphAttributeFilter;
+		std::unordered_map<std::string, bool> boneColumnFilter;
 		int linkedVertexIndex{ -1 };
 		bool scrollToLinkedVertex{ false };
 		int selectedIndexValue{ -1 };
