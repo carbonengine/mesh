@@ -102,9 +102,13 @@ private:
 		std::unordered_map<std::string, bool> vertexAttributeFilter;
 		std::unordered_map<std::string, bool> morphAttributeFilter;
 		std::unordered_map<std::string, bool> boneColumnFilter;
-		int linkedVertexIndex{ -1 };
-		bool scrollToLinkedVertex{ false };
+		int linkedVertexIndex{ 0 };
+		bool scrollToLinkedVertex{ true };
 		int selectedIndexValue{ -1 };
+		int linkedBoneIndex{ -1 };
+		bool scrollToLinkedBone{ false };
+		int linkedMorphTargetIndex{ -1 };
+		bool navigateToLinkedMorphTarget{ false };
 	};
 
 	void SetupGeneralView( AppState& appState );
@@ -143,6 +147,7 @@ private:
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
+	void RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
