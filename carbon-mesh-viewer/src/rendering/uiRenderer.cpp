@@ -333,6 +333,11 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 			RenderBonesTab( cmfContent, mesh );
 			ImGui::EndTabItem();
 		}
+		if( ImGui::BeginTabItem( "Animations" ) )
+		{
+			RenderAnimationsTab( cmfContent );
+			ImGui::EndTabItem();
+		}
 		ImGui::EndTabBar();
 	}
 
@@ -1671,4 +1676,193 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 	ImGui::TreePop(); // Mesh
 
 	ImGui::EndChild();
+}
+
+void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
+{
+	const auto& animations = cmfContent->m_cmfData->animations;
+	if( animations.empty() )
+	{
+		ImGui::Text( "No animations" );
+		return;
+	}
+
+	m_meshDetailsState.selectedAnimationIndex = std::min(
+		m_meshDetailsState.selectedAnimationIndex,
+		(int)animations.size() - 1 );
+
+	auto animName = cmf::ToStdString( animations[m_meshDetailsState.selectedAnimationIndex].name );
+	ImGui::Text( "Animation" );
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+	if( ImGui::BeginCombo( "##animselect", animName.c_str() ) )
+	{
+		for( int i = 0; i < (int)animations.size(); ++i )
+		{
+			auto name = cmf::ToStdString( animations[i].name );
+			bool selected = ( i == m_meshDetailsState.selectedAnimationIndex );
+			if( ImGui::Selectable( name.c_str(), selected ) )
+				m_meshDetailsState.selectedAnimationIndex = i;
+			if( selected )
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	const auto& anim = animations[m_meshDetailsState.selectedAnimationIndex];
+	ImGui::Text( "Duration: %.4f s", anim.duration );
+	ImGui::Text( "Channels: %u   Curves: %u", (uint32_t)anim.channels.size(), (uint32_t)anim.curves.size() );
+
+	ImGui::Separator();
+
+	static const char* elementTypeNames[] = {
+		"Float32", "Float16", "UInt16Norm", "UInt16",
+		"Int16Norm", "Int16", "UInt8Norm", "UInt8", "Int8Norm", "Int8"
+	};
+
+	if( ImGui::BeginTabBar( "##animsubtabs" ) )
+	{
+		if( ImGui::BeginTabItem( "Channels" ) )
+		{
+			if( anim.channels.empty() )
+			{
+				ImGui::Text( "No channels" );
+			}
+			else
+			{
+				ImGuiTableFlags tableFlags =
+					ImGuiTableFlags_Borders |
+					ImGuiTableFlags_RowBg |
+					ImGuiTableFlags_ScrollY |
+					ImGuiTableFlags_SizingFixedFit;
+
+				if( ImGui::BeginTable( "##channelstable", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+				{
+					ImGui::TableSetupScrollFreeze( 0, 1 );
+					ImGui::TableSetupColumn( "Target", ImGuiTableColumnFlags_WidthStretch );
+					ImGui::TableSetupColumn( "Type", ImGuiTableColumnFlags_WidthFixed, 120.0f );
+					ImGui::TableSetupColumn( "Curve", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+					ImGui::TableHeadersRow();
+
+					ImGuiListClipper clipper;
+					clipper.Begin( (int)anim.channels.size() );
+					while( clipper.Step() )
+					{
+						for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+						{
+							const auto& channel = anim.channels[i];
+
+							const char* typeName = "Unknown";
+							switch( channel.targetType )
+							{
+							case cmf::AnimationChannelTargetType::BonePosition: typeName = "Bone Position"; break;
+							case cmf::AnimationChannelTargetType::BoneRotation: typeName = "Bone Rotation"; break;
+							case cmf::AnimationChannelTargetType::BoneScale:    typeName = "Bone Scale";    break;
+							case cmf::AnimationChannelTargetType::MorphTarget:  typeName = "Morph Target";  break;
+							case cmf::AnimationChannelTargetType::Other:        typeName = "Other";         break;
+							}
+
+							ImGui::TableNextRow();
+							ImGui::TableSetColumnIndex( 0 );
+							ImGui::TextUnformatted( cmf::ToStdString( channel.target ).c_str() );
+							ImGui::TableSetColumnIndex( 1 );
+							ImGui::TextUnformatted( typeName );
+							ImGui::TableSetColumnIndex( 2 );
+							{
+								char curveBuf[16];
+								snprintf( curveBuf, sizeof( curveBuf ), "%u", channel.curveIndex );
+								ImGui::PushID( i );
+								ImGui::Selectable( curveBuf, false );
+								if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+								{
+									m_meshDetailsState.linkedCurveIndex = (int)channel.curveIndex;
+									m_meshDetailsState.navigateToLinkedCurve = true;
+								}
+								ImGui::PopID();
+							}
+						}
+					}
+					clipper.End();
+					ImGui::EndTable();
+				}
+			}
+			ImGui::EndTabItem();
+		}
+
+		ImGuiTabItemFlags curvesTabFlags = m_meshDetailsState.navigateToLinkedCurve ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+		if( ImGui::BeginTabItem( "Curves", nullptr, curvesTabFlags ) )
+		{
+			int scrollToCurve = -1;
+			if( m_meshDetailsState.navigateToLinkedCurve )
+			{
+				scrollToCurve = m_meshDetailsState.linkedCurveIndex;
+				m_meshDetailsState.navigateToLinkedCurve = false;
+			}
+
+			if( anim.curves.empty() )
+			{
+				ImGui::Text( "No curves" );
+			}
+			else
+			{
+				ImGuiTableFlags tableFlags =
+					ImGuiTableFlags_Borders |
+					ImGuiTableFlags_RowBg |
+					ImGuiTableFlags_ScrollY |
+					ImGuiTableFlags_SizingFixedFit;
+
+				if( ImGui::BeginTable( "##curvestable", 6, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+				{
+					if( scrollToCurve >= 0 )
+						ImGui::SetScrollY( (float)scrollToCurve * ImGui::GetTextLineHeightWithSpacing() );
+
+					ImGui::TableSetupScrollFreeze( 0, 1 );
+					ImGui::TableSetupColumn( "Index",         ImGuiTableColumnFlags_WidthFixed,   48.0f );
+					ImGui::TableSetupColumn( "Interpolation", ImGuiTableColumnFlags_WidthFixed,   80.0f );
+					ImGui::TableSetupColumn( "Knot Type",     ImGuiTableColumnFlags_WidthFixed,   80.0f );
+					ImGui::TableSetupColumn( "Value Type",    ImGuiTableColumnFlags_WidthFixed,   80.0f );
+					ImGui::TableSetupColumn( "Dimensions",    ImGuiTableColumnFlags_WidthFixed,   80.0f );
+					ImGui::TableSetupColumn( "Knots",         ImGuiTableColumnFlags_WidthStretch );
+					ImGui::TableHeadersRow();
+
+					ImGuiListClipper clipper;
+					clipper.Begin( (int)anim.curves.size() );
+					while( clipper.Step() )
+					{
+						for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+						{
+							const auto& curve = anim.curves[i];
+
+							const char* interp = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
+							int knotTypeIdx  = (int)curve.knotType;
+							int valueTypeIdx = (int)curve.valueType;
+							const char* knotTypeName  = ( knotTypeIdx  >= 0 && knotTypeIdx  < 10 ) ? elementTypeNames[knotTypeIdx]  : "Unknown";
+							const char* valueTypeName = ( valueTypeIdx >= 0 && valueTypeIdx < 10 ) ? elementTypeNames[valueTypeIdx] : "Unknown";
+
+							ImGui::TableNextRow();
+							if( i == m_meshDetailsState.linkedCurveIndex )
+								ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+							ImGui::TableSetColumnIndex( 0 );
+							ImGui::Text( "%d", i );
+							ImGui::TableSetColumnIndex( 1 );
+							ImGui::TextUnformatted( interp );
+							ImGui::TableSetColumnIndex( 2 );
+							ImGui::TextUnformatted( knotTypeName );
+							ImGui::TableSetColumnIndex( 3 );
+							ImGui::TextUnformatted( valueTypeName );
+							ImGui::TableSetColumnIndex( 4 );
+							ImGui::Text( "%u", (uint32_t)curve.valueDimension );
+							ImGui::TableSetColumnIndex( 5 );
+							ImGui::Text( "%u", curve.knotCount );
+						}
+					}
+					clipper.End();
+					ImGui::EndTable();
+				}
+			}
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
+	}
 }

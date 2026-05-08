@@ -109,6 +109,9 @@ private:
 		bool scrollToLinkedBone{ false };
 		int linkedMorphTargetIndex{ -1 };
 		bool navigateToLinkedMorphTarget{ false };
+		int selectedAnimationIndex{ 0 };
+		int linkedCurveIndex{ -1 };
+		bool navigateToLinkedCurve{ false };
 	};
 
 	void SetupGeneralView( AppState& appState );
@@ -148,6 +151,7 @@ private:
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 	void RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
+	void RenderAnimationsTab( CmfContent* cmfContent );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
