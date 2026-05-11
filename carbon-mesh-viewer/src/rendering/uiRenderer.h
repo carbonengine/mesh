@@ -144,6 +144,7 @@ private:
 	};
 
 	static std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex );
+	static const char* GetElementTypeName( cmf::ElementType type );
 
 	template<typename Decl>
 	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
@@ -155,6 +156,8 @@ private:
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 	void RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 	void RenderAnimationsTab( CmfContent* cmfContent );
+	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
+	void RenderAnimationCurvesSubTab( const cmf::Animation& anim );
 	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
