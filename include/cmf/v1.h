@@ -67,6 +67,7 @@ enum class ElementType : uint8_t
 	UInt8,
 	Int8Norm,
 	Int8,
+    Count
 };
 
 struct VertexElement

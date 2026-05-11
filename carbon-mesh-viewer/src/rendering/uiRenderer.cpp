@@ -12,6 +12,13 @@
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 
+enum class BoneColumn        { Name, Parent, Position, Rotation, Scale };
+enum class ChannelColumn     { Target, Type, Curve };
+enum class CurveColumn       { Interpolation, KnotType, ValueType, Dimensions, Knots };
+enum class AudioVertexColumn { X, Y, Z };
+
+const ImVec4 LINK_COLOR( 0.4f, 0.6f, 1.0f, 1.0f );
+
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
 	m_graphicsCommandBuffer( renderer.get() )
@@ -267,6 +274,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 				m_meshDetailsState.vertexAttributeFilter.clear();
 				m_meshDetailsState.morphAttributeFilter.clear();
 				m_meshDetailsState.boneColumnFilter.clear();
+				m_meshDetailsState.audioVertexColumnFilter.clear();
 			}
 			if( selected )
 				ImGui::SetItemDefaultFocus();
@@ -336,6 +344,11 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		if( ImGui::BeginTabItem( "Animations" ) )
 		{
 			RenderAnimationsTab( cmfContent );
+			ImGui::EndTabItem();
+		}
+		if( ImGui::BeginTabItem( "Audio Occluder" ) )
+		{
+			RenderAudioOccluderTab( mesh );
 			ImGui::EndTabItem();
 		}
 		ImGui::EndTabBar();
@@ -1031,7 +1044,7 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 	}
 
     // Vertex atribute filter list
-	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
+	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##vf" ) )
 		{
@@ -1089,7 +1102,9 @@ void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 		snprintf( buf, sizeof( buf ), "%u", vertexIdx );
 		ImGui::PushID( uniqueId );
 		bool isSelected = ( (int)vertexIdx == m_meshDetailsState.selectedIndexValue );
+		ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.4f, 0.6f, 1.0f, 1.0f ) );
 		ImGui::Selectable( buf, isSelected, ImGuiSelectableFlags_None );
+		ImGui::PopStyleColor();
 		if( ImGui::IsItemClicked( ImGuiMouseButton_Left ) )
 			m_meshDetailsState.selectedIndexValue = (int)vertexIdx;
 		if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
@@ -1256,7 +1271,7 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 			m_meshDetailsState.morphAttributeFilter[attr.name] = true;
 	}
 
-	if( ImGui::CollapsingHeader( "Attribute Filters" ) )
+	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##mf" ) )
 		{
@@ -1350,7 +1365,7 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 				m_meshDetailsState.boneColumnFilter[col] = true;
 		}
 
-		if( ImGui::CollapsingHeader( "Column Filters" ) )
+		if( ImGui::CollapsingHeader( "Filters" ) )
 		{
 			if( ImGui::Button( "Reset##bf" ) )
 			{
@@ -1432,7 +1447,9 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 							{
 								std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
 								ImGui::PushID( bi );
+								ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.4f, 0.6f, 1.0f, 1.0f ) );
 								ImGui::Selectable( parentName.c_str(), false );
+								ImGui::PopStyleColor();
 								if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
 								{
 									m_meshDetailsState.linkedBoneIndex = (int)parentIdx;
@@ -1531,7 +1548,9 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 					? ( ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen )
 					: ImGuiTreeNodeFlags_None;
 
+				ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
 				bool open = ImGui::TreeNodeEx( (void*)(intptr_t)bi, flags, "%s", boneName.c_str() );
+				ImGui::PopStyleColor();
 				if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
 				{
 					m_meshDetailsState.linkedBoneIndex = bi;
@@ -1567,7 +1586,7 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 				{
 					std::string attrName = GetUsageFlagLabel( elem.usage, elem.usageIndex );
 					int typeIdx = (int)elem.type;
-					const char* typeName = ( typeIdx >= 0 && typeIdx < 10 ) ? elementTypeNames[typeIdx] : "Unknown";
+					const char* typeName = typeIdx < (int)cmf::v1::ElementType::Count ? elementTypeNames[typeIdx] : "Unknown";
 					ImGui::TreeNodeEx( attrName.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen );
 					ImGui::SameLine();
 					ImGui::TextDisabled( "(%s x%u)", typeName, (uint32_t)elem.elementCount );
@@ -1579,7 +1598,9 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 			{
 				const auto& target = mesh.morphTargets.targets[ti];
 				std::string name = cmf::ToStdString( target.name );
+				ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
 				bool morphOpen = ImGui::TreeNode( name.c_str() );
+				ImGui::PopStyleColor();
 				if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
 				{
 					m_meshDetailsState.linkedMorphTargetIndex = ti;
@@ -1646,7 +1667,15 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 				else
 					lodLabel = "LOD " + std::to_string( i ) + " (threshold: " + std::to_string( lod.threshold ) + "px)";
 
-				if( ImGui::TreeNode( lodLabel.c_str() ) )
+				ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
+				bool lodOpen = ImGui::TreeNode( lodLabel.c_str() );
+				ImGui::PopStyleColor();
+				if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+				{
+					m_meshDetailsState.selectedLodIndex = i;
+					m_meshDetailsState.scrollToLinkedVertex = true;
+				}
+				if( lodOpen )
 				{
 					uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
 					uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
@@ -1730,60 +1759,103 @@ void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
 			}
 			else
 			{
-				ImGuiTableFlags tableFlags =
-					ImGuiTableFlags_Borders |
-					ImGuiTableFlags_RowBg |
-					ImGuiTableFlags_ScrollY |
-					ImGuiTableFlags_SizingFixedFit;
+				static const char* allChannelCols[] = { "Target", "Type", "Curve" };
+				for( const auto& col : allChannelCols )
+					if( m_meshDetailsState.channelColumnFilter.find( col ) == m_meshDetailsState.channelColumnFilter.end() )
+						m_meshDetailsState.channelColumnFilter[col] = true;
 
-				if( ImGui::BeginTable( "##channelstable", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+				if( ImGui::CollapsingHeader( "Filters" ) )
 				{
-					ImGui::TableSetupScrollFreeze( 0, 1 );
-					ImGui::TableSetupColumn( "Target", ImGuiTableColumnFlags_WidthStretch );
-					ImGui::TableSetupColumn( "Type", ImGuiTableColumnFlags_WidthFixed, 120.0f );
-					ImGui::TableSetupColumn( "Curve", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-					ImGui::TableHeadersRow();
-
-					ImGuiListClipper clipper;
-					clipper.Begin( (int)anim.channels.size() );
-					while( clipper.Step() )
+					if( ImGui::Button( "Reset##chf" ) )
+						for( auto& [name, enabled] : m_meshDetailsState.channelColumnFilter )
+							enabled = true;
+					for( const auto& col : allChannelCols )
 					{
-						for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+						bool enabled = m_meshDetailsState.channelColumnFilter[col];
+						if( ImGui::Checkbox( col, &enabled ) )
+							m_meshDetailsState.channelColumnFilter[col] = enabled;
+					}
+				}
+
+				std::vector<int> activeChannelCols;
+				for( int i = 0; i < 3; ++i )
+					if( m_meshDetailsState.channelColumnFilter[allChannelCols[i]] )
+						activeChannelCols.push_back( i );
+
+				if( !activeChannelCols.empty() )
+				{
+					ImGuiTableFlags tableFlags =
+						ImGuiTableFlags_Borders |
+						ImGuiTableFlags_RowBg |
+						ImGuiTableFlags_ScrollX |
+						ImGuiTableFlags_ScrollY |
+						ImGuiTableFlags_SizingFixedFit;
+
+					if( ImGui::BeginTable( "##channelstable", (int)activeChannelCols.size(), tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+					{
+						ImGui::TableSetupScrollFreeze( 0, 1 );
+						for( int ci : activeChannelCols )
 						{
-							const auto& channel = anim.channels[i];
+							if( ci == 0 )
+								ImGui::TableSetupColumn( allChannelCols[ci], ImGuiTableColumnFlags_WidthStretch );
+							else
+								ImGui::TableSetupColumn( allChannelCols[ci], ImGuiTableColumnFlags_WidthFixed, ci == 2 ? 48.0f : 120.0f );
+						}
+						ImGui::TableHeadersRow();
 
-							const char* typeName = "Unknown";
-							switch( channel.targetType )
+						ImGuiListClipper clipper;
+						clipper.Begin( (int)anim.channels.size() );
+						while( clipper.Step() )
+						{
+							for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
 							{
-							case cmf::AnimationChannelTargetType::BonePosition: typeName = "Bone Position"; break;
-							case cmf::AnimationChannelTargetType::BoneRotation: typeName = "Bone Rotation"; break;
-							case cmf::AnimationChannelTargetType::BoneScale:    typeName = "Bone Scale";    break;
-							case cmf::AnimationChannelTargetType::MorphTarget:  typeName = "Morph Target";  break;
-							case cmf::AnimationChannelTargetType::Other:        typeName = "Other";         break;
-							}
+								const auto& channel = anim.channels[i];
 
-							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex( 0 );
-							ImGui::TextUnformatted( cmf::ToStdString( channel.target ).c_str() );
-							ImGui::TableSetColumnIndex( 1 );
-							ImGui::TextUnformatted( typeName );
-							ImGui::TableSetColumnIndex( 2 );
-							{
-								char curveBuf[16];
-								snprintf( curveBuf, sizeof( curveBuf ), "%u", channel.curveIndex );
-								ImGui::PushID( i );
-								ImGui::Selectable( curveBuf, false );
-								if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+								const char* typeName = "Unknown";
+								switch( channel.targetType )
 								{
-									m_meshDetailsState.linkedCurveIndex = (int)channel.curveIndex;
-									m_meshDetailsState.navigateToLinkedCurve = true;
+								case cmf::AnimationChannelTargetType::BonePosition: typeName = "Bone Position"; break;
+								case cmf::AnimationChannelTargetType::BoneRotation: typeName = "Bone Rotation"; break;
+								case cmf::AnimationChannelTargetType::BoneScale:    typeName = "Bone Scale";    break;
+								case cmf::AnimationChannelTargetType::MorphTarget:  typeName = "Morph Target";  break;
+								case cmf::AnimationChannelTargetType::Other:        typeName = "Other";         break;
 								}
-								ImGui::PopID();
+
+								ImGui::TableNextRow();
+								for( int col = 0; col < (int)activeChannelCols.size(); ++col )
+								{
+									ImGui::TableSetColumnIndex( col );
+									switch( activeChannelCols[col] )
+									{
+									case 0:
+										ImGui::TextUnformatted( cmf::ToStdString( channel.target ).c_str() );
+										break;
+									case 1:
+										ImGui::TextUnformatted( typeName );
+										break;
+									case 2:
+									{
+										char curveBuf[16];
+										snprintf( curveBuf, sizeof( curveBuf ), "%u", channel.curveIndex );
+										ImGui::PushID( i );
+										ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
+										ImGui::Selectable( curveBuf, false );
+										ImGui::PopStyleColor();
+										if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+										{
+											m_meshDetailsState.linkedCurveIndex = (int)channel.curveIndex;
+											m_meshDetailsState.navigateToLinkedCurve = true;
+										}
+										ImGui::PopID();
+										break;
+									}
+									}
+								}
 							}
 						}
+						clipper.End();
+						ImGui::EndTable();
 					}
-					clipper.End();
-					ImGui::EndTable();
 				}
 			}
 			ImGui::EndTabItem();
@@ -1805,24 +1877,49 @@ void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
 			}
 			else
 			{
+				static const char* allCurveCols[] = { "Interpolation", "Knot Type", "Value Type", "Dimensions", "Knots" };
+				for( const auto& col : allCurveCols )
+					if( m_meshDetailsState.curveColumnFilter.find( col ) == m_meshDetailsState.curveColumnFilter.end() )
+						m_meshDetailsState.curveColumnFilter[col] = true;
+
+				if( ImGui::CollapsingHeader( "Filters" ) )
+				{
+					if( ImGui::Button( "Reset##cvf" ) )
+						for( auto& [name, enabled] : m_meshDetailsState.curveColumnFilter )
+							enabled = true;
+					for( const auto& col : allCurveCols )
+					{
+						bool enabled = m_meshDetailsState.curveColumnFilter[col];
+						if( ImGui::Checkbox( col, &enabled ) )
+							m_meshDetailsState.curveColumnFilter[col] = enabled;
+					}
+				}
+
+				std::vector<int> activeCurveCols;
+				for( int i = 0; i < 5; ++i )
+					if( m_meshDetailsState.curveColumnFilter[allCurveCols[i]] )
+						activeCurveCols.push_back( i );
+
 				ImGuiTableFlags tableFlags =
 					ImGuiTableFlags_Borders |
 					ImGuiTableFlags_RowBg |
+					ImGuiTableFlags_ScrollX |
 					ImGuiTableFlags_ScrollY |
 					ImGuiTableFlags_SizingFixedFit;
 
-				if( ImGui::BeginTable( "##curvestable", 6, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+				int colCount = (int)activeCurveCols.size() + 1;
+				if( ImGui::BeginTable( "##curvestable", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 				{
 					if( scrollToCurve >= 0 )
 						ImGui::SetScrollY( (float)scrollToCurve * ImGui::GetTextLineHeightWithSpacing() );
 
-					ImGui::TableSetupScrollFreeze( 0, 1 );
-					ImGui::TableSetupColumn( "Index",         ImGuiTableColumnFlags_WidthFixed,   48.0f );
-					ImGui::TableSetupColumn( "Interpolation", ImGuiTableColumnFlags_WidthFixed,   80.0f );
-					ImGui::TableSetupColumn( "Knot Type",     ImGuiTableColumnFlags_WidthFixed,   80.0f );
-					ImGui::TableSetupColumn( "Value Type",    ImGuiTableColumnFlags_WidthFixed,   80.0f );
-					ImGui::TableSetupColumn( "Dimensions",    ImGuiTableColumnFlags_WidthFixed,   80.0f );
-					ImGui::TableSetupColumn( "Knots",         ImGuiTableColumnFlags_WidthStretch );
+					ImGui::TableSetupScrollFreeze( 1, 1 );
+					ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+					for( int ci : activeCurveCols )
+					{
+						bool isLast = ( ci == activeCurveCols.back() );
+						ImGui::TableSetupColumn( allCurveCols[ci], isLast ? ImGuiTableColumnFlags_WidthStretch : ImGuiTableColumnFlags_WidthFixed, 80.0f );
+					}
 					ImGui::TableHeadersRow();
 
 					ImGuiListClipper clipper;
@@ -1833,27 +1930,31 @@ void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
 						{
 							const auto& curve = anim.curves[i];
 
-							const char* interp = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
-							int knotTypeIdx  = (int)curve.knotType;
-							int valueTypeIdx = (int)curve.valueType;
-							const char* knotTypeName  = ( knotTypeIdx  >= 0 && knotTypeIdx  < 10 ) ? elementTypeNames[knotTypeIdx]  : "Unknown";
-							const char* valueTypeName = ( valueTypeIdx >= 0 && valueTypeIdx < 10 ) ? elementTypeNames[valueTypeIdx] : "Unknown";
+							const char* interp        = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
+							int         knotTypeIdx   = (int)curve.knotType;
+							int         valueTypeIdx  = (int)curve.valueType;
+							const char* knotTypeName  = knotTypeIdx < (int)cmf::v1::ElementType::Count ? elementTypeNames[knotTypeIdx] : "Unknown";
+							const char* valueTypeName = valueTypeIdx < (int)cmf::v1::ElementType::Count ? elementTypeNames[valueTypeIdx] : "Unknown";
 
 							ImGui::TableNextRow();
 							if( i == m_meshDetailsState.linkedCurveIndex )
 								ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+
 							ImGui::TableSetColumnIndex( 0 );
 							ImGui::Text( "%d", i );
-							ImGui::TableSetColumnIndex( 1 );
-							ImGui::TextUnformatted( interp );
-							ImGui::TableSetColumnIndex( 2 );
-							ImGui::TextUnformatted( knotTypeName );
-							ImGui::TableSetColumnIndex( 3 );
-							ImGui::TextUnformatted( valueTypeName );
-							ImGui::TableSetColumnIndex( 4 );
-							ImGui::Text( "%u", (uint32_t)curve.valueDimension );
-							ImGui::TableSetColumnIndex( 5 );
-							ImGui::Text( "%u", curve.knotCount );
+
+							for( int col = 0; col < (int)activeCurveCols.size(); ++col )
+							{
+								ImGui::TableSetColumnIndex( col + 1 );
+								switch( activeCurveCols[col] )
+								{
+								case 0: ImGui::TextUnformatted( interp );        break;
+								case 1: ImGui::TextUnformatted( knotTypeName );  break;
+								case 2: ImGui::TextUnformatted( valueTypeName ); break;
+								case 3: ImGui::Text( "%u", (uint32_t)curve.valueDimension ); break;
+								case 4: ImGui::Text( "%u", curve.knotCount );    break;
+								}
+							}
 						}
 					}
 					clipper.End();
@@ -1864,5 +1965,143 @@ void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
 		}
 
 		ImGui::EndTabBar();
+	}
+}
+
+void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
+{
+	const auto& audioOcclusionMesh = mesh.audioOcclusionMesh;
+	if( audioOcclusionMesh.vertices.empty() && audioOcclusionMesh.indices.empty() )
+	{
+		ImGui::Text( "No audio occlusion mesh" );
+		return;
+	}
+
+	uint32_t vertexCount = (uint32_t)audioOcclusionMesh.vertices.size();
+	uint32_t indexCount  = (uint32_t)audioOcclusionMesh.indices.size();
+	uint32_t triCount    = indexCount / 3;
+
+	ImGui::Text( "Vertices: %u  Triangles: %u", vertexCount, triCount );
+	const auto& b  = audioOcclusionMesh.bounds;
+	auto         sz = b.Size();
+	ImGui::Text( "Bounds Min:  %.4f  %.4f  %.4f", b.m_min.x, b.m_min.y, b.m_min.z );
+	ImGui::Text( "Bounds Max:  %.4f  %.4f  %.4f", b.m_max.x, b.m_max.y, b.m_max.z );
+	ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
+
+	ImGui::Spacing();
+
+	if( ImGui::CollapsingHeader( "Vertices", ImGuiTreeNodeFlags_DefaultOpen ) )
+	{
+		static const char* allVertCols[] = { "X", "Y", "Z" };
+		for( const auto& col : allVertCols )
+			if( m_meshDetailsState.audioVertexColumnFilter.find( col ) == m_meshDetailsState.audioVertexColumnFilter.end() )
+				m_meshDetailsState.audioVertexColumnFilter[col] = true;
+
+		if( ImGui::CollapsingHeader( "Filters##avf" ) )
+		{
+			if( ImGui::Button( "Reset##avr" ) )
+				for( auto& [name, enabled] : m_meshDetailsState.audioVertexColumnFilter )
+					enabled = true;
+			for( const auto& col : allVertCols )
+			{
+				bool enabled = m_meshDetailsState.audioVertexColumnFilter[col];
+				if( ImGui::Checkbox( col, &enabled ) )
+					m_meshDetailsState.audioVertexColumnFilter[col] = enabled;
+			}
+		}
+
+		std::vector<AudioVertexColumn> activeVertCols;
+		for( int i = 0; i < 3; ++i )
+			if( m_meshDetailsState.audioVertexColumnFilter[allVertCols[i]] )
+				activeVertCols.push_back( static_cast<AudioVertexColumn>( i ) );
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollX |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		int colCount = (int)activeVertCols.size() + 1;
+		float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		if( ImGui::BeginTable( "##aomverts", colCount, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
+		{
+			ImGui::TableSetupScrollFreeze( 1, 1 );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			for( AudioVertexColumn ci : activeVertCols )
+			{
+				bool isLast = ( ci == activeVertCols.back() );
+				ImGui::TableSetupColumn( allVertCols[(int)ci], isLast ? ImGuiTableColumnFlags_WidthStretch : ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			}
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)vertexCount );
+			while( clipper.Step() )
+			{
+				for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+				{
+					const auto& v = audioOcclusionMesh.vertices[i];
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex( 0 );
+					ImGui::Text( "%d", i );
+					for( int col = 0; col < (int)activeVertCols.size(); ++col )
+					{
+						ImGui::TableSetColumnIndex( col + 1 );
+						switch( activeVertCols[col] )
+						{
+						case AudioVertexColumn::X: ImGui::Text( "%.4f", v.x ); break;
+						case AudioVertexColumn::Y: ImGui::Text( "%.4f", v.y ); break;
+						case AudioVertexColumn::Z: ImGui::Text( "%.4f", v.z ); break;
+						}
+					}
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
+	}
+
+	ImGui::Spacing();
+
+	if( triCount > 0 && ImGui::CollapsingHeader( "Triangles", ImGuiTreeNodeFlags_DefaultOpen ) )
+	{
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollX |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		if( ImGui::BeginTable( "##aomtris", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
+		{
+			ImGui::TableSetupScrollFreeze( 1, 1 );
+			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 60.0f );
+			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)triCount );
+			while( clipper.Step() )
+			{
+				for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
+				{
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex( 0 );
+					ImGui::Text( "%d", i );
+					ImGui::TableSetColumnIndex( 1 );
+					ImGui::Text( "%u", (uint32_t)audioOcclusionMesh.indices[i * 3 + 0] );
+					ImGui::TableSetColumnIndex( 2 );
+					ImGui::Text( "%u", (uint32_t)audioOcclusionMesh.indices[i * 3 + 1] );
+					ImGui::TableSetColumnIndex( 3 );
+					ImGui::Text( "%u", (uint32_t)audioOcclusionMesh.indices[i * 3 + 2] );
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
+		}
 	}
 }

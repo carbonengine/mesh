@@ -112,6 +112,9 @@ private:
 		int selectedAnimationIndex{ 0 };
 		int linkedCurveIndex{ -1 };
 		bool navigateToLinkedCurve{ false };
+		std::unordered_map<std::string, bool> channelColumnFilter;
+		std::unordered_map<std::string, bool> curveColumnFilter;
+		std::unordered_map<std::string, bool> audioVertexColumnFilter;
 	};
 
 	void SetupGeneralView( AppState& appState );
@@ -152,6 +155,7 @@ private:
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 	void RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
 	void RenderAnimationsTab( CmfContent* cmfContent );
+	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
