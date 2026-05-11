@@ -134,7 +134,7 @@ CARBON_MESH_EXPORT void BlendPoses( SkeletonPose& outPose, const SkeletonPose& p
 * @param skeleton The skeleton containing the bone mask.
 * @param boneMask The name of the bone mask to extract weights from.
 */
-CARBON_MESH_EXPORT BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std::string_view& boneMask );
+CARBON_MESH_EXPORT BoneWeights ExtractBoneWeights( const Skeleton& skeleton, const std::string_view& boneMask );
 
 /** @brief Blends two skeleton poses together using per-bone weights.
 * The function interpolates between the transforms of the two input poses based on the provided bone weights, producing a new pose.
