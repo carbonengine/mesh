@@ -154,7 +154,7 @@ void Application::Run()
 	}
 	float time = (float)glfwGetTime();
 
-	while( !glfwWindowShouldClose( m_window ) )
+	while( !glfwWindowShouldClose( m_window ) && !m_appState.exitRequested.GetValue() )
 	{
 		m_appState.CallStateCallbacks();
 
@@ -222,9 +222,24 @@ void Application::Run()
 
 void Application::LoadCmfFile( const std::string& path )
 {
-	// load the cmf content from the path and set it in the app state
-	m_appState.cmfPath.SetValue( path );
-	m_appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( path ) );
+	// check if we are loading a full model or an animation/pose file
+	std::shared_ptr<CmfContent> data = CmfContentLoader::LoadContentFromFile( path );
+	auto currentData = m_appState.cmfContent.GetValue();
+	if( currentData != nullptr && data && data->m_cmfData->meshes.empty() )
+	{
+		Log::Info( "Applying animation/pose file %s", path.c_str() );
+		m_appState.modelState.animationOverridePath.SetValue( path );
+		m_appState.modelState.animationOverride.ForceSetValue( data );
+	}
+	else
+	{
+		Log::Info( "Applying model file %s", path.c_str() );
+		m_appState.ResetModelState();
+
+		// load the cmf content from the path and set it in the app state
+		m_appState.cmfPath.SetValue( path );
+		m_appState.cmfContent.ForceSetValue( data );
+	}
 }
 
 void Application::Resize( uint32_t width, uint32_t height )

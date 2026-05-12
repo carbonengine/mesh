@@ -21,13 +21,13 @@ struct CoordinateSystem
 {
 	CoordinateSystem( const ufbx_coordinate_axes& axes, float scale );
 
-    /** @brief Transforms a point from the FBX coordinate system to the CMF coordinate system.
+	/** @brief Transforms a point from the FBX coordinate system to the CMF coordinate system.
     * @param v The point to transform.
     * @return The transformed point.
     */
 	Vector3 TransformPoint( const Vector3& v ) const;
 
-    /** @brief Transforms a vector (direction) from the FBX coordinate system to the CMF coordinate system.
+	/** @brief Transforms a vector (direction) from the FBX coordinate system to the CMF coordinate system.
     * @param v The vector to transform.
     * @return The transformed vector.
     */

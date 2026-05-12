@@ -324,7 +324,7 @@ void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const Skeleto
 	}
 }
 
-BoneWeights ExtractBoneWeights( Skeleton& skeleton, const std::string_view& boneMask )
+BoneWeights ExtractBoneWeights( const Skeleton& skeleton, const std::string_view& boneMask )
 {
 	BoneWeights result = { &skeleton };
 	result.boneWeights.resize( skeleton.bones.size(), 0.f );

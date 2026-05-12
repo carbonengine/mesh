@@ -111,7 +111,7 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 		m_graphicsCommandBuffer.SetRenderSize( width, height );
 	} );
 
-	state.cmfContent.RegisterCallback( [this]( CmfContent* content, AppState& appState ) {
+	state.cmfContent.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
 		if( content == nullptr )
 		{
 			m_loadStatus = LoadStatus::FAILED;
@@ -120,17 +120,32 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 		{
 			m_loadStatus = LoadStatus::SUCCESSFUL;
 		}
+		RegisterModelCallbacks( appState );
 	} );
 
-	state.currentAnimation.RegisterCallback( [this]( std::string animationName, AppState& appState ) {
+	auto [width, height] = state.windowSize.GetValue();
+	m_graphicsCommandBuffer.SetRenderSize( width, height );
+	UpdateUiState( state );
+}
+
+void UIRenderer::RegisterModelCallbacks( AppState& appState )
+{
+	// Register callbacks for model state changes
+	appState.modelState.currentAnimation.RegisterCallback( [this]( std::string animationName, AppState& appState ) {
 		m_playback.currentTime = 0.0f;
 		m_playback.playing = false;
 
-		if( animationName != "" && appState.cmfContent.GetValue() != nullptr )
+		auto cmfContent = appState.modelState.animationOverride.GetValue();
+		if( cmfContent == nullptr )
 		{
-			for( const auto& animation : appState.cmfContent.GetValue()->m_cmfData->animations )
+			cmfContent = appState.cmfContent.GetValue();
+		}
+
+		if( !animationName.empty() && cmfContent != nullptr )
+		{
+			for( const auto& animation : cmfContent->m_cmfData->animations )
 			{
-				if( strcmp( animation.name.data(), animationName.data() ) == 0 )
+				if( cmf::ToStdString( animation.name ) == animationName )
 				{
 					m_playback.duration = animation.duration;
 					return;
@@ -143,27 +158,23 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 		}
 	} );
 
-	auto [width, height] = state.windowSize.GetValue();
-	m_graphicsCommandBuffer.SetRenderSize( width, height );
-	UpdateUiState( state );
+	appState.modelState.animationOverridePath.RegisterCallback( [this]( std::string animationPath, AppState& appState ) {
+		appState.modelState.currentAnimation.SetValue( "" );
+		appState.modelState.currentAnimationTime.SetValue( 0.0f );
+		m_playback = Playback{};
+	} );
 }
 
-void UIRenderer::FileOpenDialog( AppState& appState )
+const char* UIRenderer::FileOpenDialog( AppState& appState )
 {
 	char const* filter[1] = { "*.cmf" };
-	const char* path = tinyfd_openFileDialog(
+	return tinyfd_openFileDialog(
 		"Open CMF File",
 		NULL,
 		1,
 		filter,
 		"CMF Files",
 		0 );
-
-	if( path != nullptr )
-	{
-		appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( path ) );
-		appState.cmfPath.SetValue( std::string( path ) );
-	}
 }
 
 void UIRenderer::BeginFrame()
@@ -374,7 +385,14 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::SetItemTooltip( "%s", m_uiState.filePath.data() );
 
 		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		ImGui::Text( "Animation Path" );
+		ImGui::TableNextColumn();
+		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+		ImGui::InputText( "##animationPath", m_uiState.animationPath.data(), m_uiState.animationPath.size(), ImGuiInputTextFlags_ReadOnly );
+		ImGui::SetItemTooltip( "%s", m_uiState.animationPath.data() );
 
+		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
 		ImGui::Text( "Vertices" );
 		ImGui::TableNextColumn();
@@ -399,14 +417,14 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "Polygon Mode" );
 		ImGui::TableNextColumn();
 		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-		SetupCombo( "##polygonmode", m_uiState.polygonModeComboBox, appState.polygonMode );
+		SetupCombo( "##polygonmode", m_uiState.polygonModeComboBox, appState.modelState.polygonMode );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Visualization" );
 		ImGui::TableNextColumn();
 		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.visualizationShader );
+		SetupCombo( "##visualiationMode", m_uiState.visualizationShaderComboBox, appState.modelState.visualizationShader );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
@@ -414,19 +432,19 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		bool boundingBox = m_uiState.modelStates.boundingBox;
 		OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &boundingBox]() {
-			appState.modelBoundingBox.SetValue( boundingBox );
+			appState.modelState.modelBoundingBox.SetValue( boundingBox );
 		} );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Wireframe Overlay" );
 		ImGui::TableNextColumn();
-		bool wireframeOverlay = std::all_of( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
+		bool wireframeOverlay = std::all_of( appState.modelState.meshWireframeOverlay.begin(), appState.modelState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
 									return state.GetValue();
 								} ) &&
-			appState.meshWireframeOverlay.size() > 0;
+			appState.modelState.meshWireframeOverlay.size() > 0;
 		OnChange( ImGui::Checkbox( "##wireframecheckbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
-			std::for_each( appState.meshWireframeOverlay.begin(), appState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
+			std::for_each( appState.modelState.meshWireframeOverlay.begin(), appState.modelState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
 				state.SetValue( wireframeOverlay );
 			} );
 		} );
@@ -435,12 +453,12 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Audio Occlusion Mesh" );
 		ImGui::TableNextColumn();
-		bool audioOcclusion = std::all_of( appState.audioOcclusionMesh.begin(), appState.audioOcclusionMesh.end(), []( const State<bool>& state ) {
+		bool audioOcclusion = std::all_of( appState.modelState.audioOcclusionMesh.begin(), appState.modelState.audioOcclusionMesh.end(), []( const State<bool>& state ) {
 								  return state.GetValue();
 							  } ) &&
-			appState.audioOcclusionMesh.size() > 0;
+			appState.modelState.audioOcclusionMesh.size() > 0;
 		OnChange( ImGui::Checkbox( "##audioocclusioncheckbox", &audioOcclusion ), [&appState, &audioOcclusion]() {
-			std::for_each( appState.audioOcclusionMesh.begin(), appState.audioOcclusionMesh.end(), [audioOcclusion]( State<bool>& state ) {
+			std::for_each( appState.modelState.audioOcclusionMesh.begin(), appState.modelState.audioOcclusionMesh.end(), [audioOcclusion]( State<bool>& state ) {
 				state.SetValue( audioOcclusion );
 			} );
 		} );
@@ -482,7 +500,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::Text( "LOD" );
 			ImGui::TableNextColumn();
 			ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-			SetupCombo( "##selectedlod", m_uiState.modelStates.lod, appState.selectedLod );
+			SetupCombo( "##selectedlod", m_uiState.modelStates.lod, appState.modelState.selectedLod );
 
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
@@ -504,7 +522,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool display = mesh.display;
 			OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &mesh, &display]() {
-				appState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
+				appState.modelState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
 			} );
 
 			ImGui::TableNextRow();
@@ -515,7 +533,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool boundingBox = mesh.boundingBox;
 			OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &mesh, &boundingBox]() {
-				appState.meshBoundingBox[mesh.meshIndex].SetValue( boundingBox );
+				appState.modelState.meshBoundingBox[mesh.meshIndex].SetValue( boundingBox );
 			} );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
@@ -525,7 +543,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool wireframeOverlay = mesh.wireframeOverlay;
 			OnChange( ImGui::Checkbox( "##wireframeoverlaycheckbox", &wireframeOverlay ), [&appState, &mesh, &wireframeOverlay]() {
-				appState.meshWireframeOverlay[mesh.meshIndex].SetValue( wireframeOverlay );
+				appState.modelState.meshWireframeOverlay[mesh.meshIndex].SetValue( wireframeOverlay );
 			} );
 			ImGui::TableNextRow();
 
@@ -536,7 +554,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool audioOcclusion = mesh.audioOcclusionMesh;
 			OnChange( ImGui::Checkbox( "##audioocclusionmeshcheckbox", &audioOcclusion ), [&appState, &mesh, &audioOcclusion]() {
-				appState.audioOcclusionMesh[mesh.meshIndex].SetValue( audioOcclusion );
+				appState.modelState.audioOcclusionMesh[mesh.meshIndex].SetValue( audioOcclusion );
 			} );
 			ImGui::EndDisabled();
 
@@ -576,13 +594,13 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		float weight = morphTarget.weight;
 		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight]() {
-			appState.morphTargetWeight[morphTarget.index].SetValue( weight );
+			appState.modelState.morphTargetWeight[morphTarget.index].SetValue( weight );
 		} );
 		ImGui::TableNextColumn();
 		bool enabled = morphTarget.enabled;
 
 		OnChange( ImGui::Checkbox( "##checkbox", &enabled ), [&appState, &morphTarget, &enabled]() {
-			appState.morphTargetEnabled[morphTarget.index].SetValue( enabled );
+			appState.modelState.morphTargetEnabled[morphTarget.index].SetValue( enabled );
 		} );
 		ImGui::SetItemTooltip( "Toggles the \"%s\" morph target", morphTarget.name.c_str() );
 		ImGui::EndTable();
@@ -598,7 +616,53 @@ void UIRenderer::SetupMenubar( AppState& appState )
 		{
 			if( ImGui::MenuItem( "Open", "Ctrl+O" ) )
 			{
-				FileOpenDialog( appState );
+				auto filePath = FileOpenDialog( appState );
+				if( filePath != nullptr )
+				{
+					appState.ResetModelState();
+					appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( filePath ) );
+					appState.cmfPath.SetValue( std::string( filePath ) );
+				}
+			}
+			if( appState.cmfContent.GetValue() == nullptr )
+			{
+				ImGui::BeginDisabled();
+			}
+			if( ImGui::MenuItem( "Load Animation Override" ) )
+			{
+				auto filePath = FileOpenDialog( appState );
+				if( filePath != nullptr )
+				{
+					appState.modelState.animationOverridePath.SetValue( std::string( filePath ) );
+					appState.modelState.animationOverride.ForceSetValue( CmfContentLoader::LoadContentFromFile( filePath ) );
+					appState.modelState.currentAnimation.SetValue( "" );
+					appState.modelState.currentAnimationTime.SetValue( 0.0f );
+				}
+			}
+			if( appState.cmfContent.GetValue() == nullptr )
+			{
+				ImGui::EndDisabled();
+			}
+
+			if( appState.modelState.animationOverride.GetValue() == nullptr )
+			{
+				ImGui::BeginDisabled();
+			}
+
+			if( ImGui::MenuItem( "Unload Animation Override" ) )
+			{
+				appState.modelState.animationOverridePath.SetValue( "" );
+				appState.modelState.animationOverride.ForceSetValue( nullptr );
+			}
+
+			if( appState.modelState.animationOverride.GetValue() == nullptr )
+			{
+				ImGui::EndDisabled();
+			}
+			ImGui::Separator();
+			if( ImGui::MenuItem( "Exit" ) )
+			{
+				appState.exitRequested.SetValue( true );
 			}
 			ImGui::EndMenu();
 		}
@@ -662,6 +726,15 @@ void UIRenderer::HandlePlaybackButtonPressed()
 	}
 }
 
+void UIRenderer::StepAnimation( float amount, AppState& appState )
+{
+	m_playback.playing = false;
+	// step a tenth of a sec
+	m_playback.currentTime += amount;
+	m_playback.currentTime = std::max( 0.0f, std::min( m_playback.currentTime, m_playback.duration ) );
+	appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
+}
+
 void UIRenderer::SetupPlaybackControls( AppState& appState )
 {
 	float width = (float)appState.windowSize.GetValue().first;
@@ -671,11 +744,18 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 	if( m_playback.playing )
 	{
 		m_playback.currentTime += ImGui::GetIO().DeltaTime;
-		appState.currentAnimationTime.SetValue( m_playback.currentTime );
+		appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
 		if( m_playback.currentTime >= m_playback.duration )
 		{
-			m_playback.currentTime = m_playback.duration;
-			m_playback.playing = false;
+			if( m_playback.repeat )
+			{
+				m_playback.currentTime = 0.0f;
+			}
+			else
+			{
+				m_playback.currentTime = m_playback.duration;
+				m_playback.playing = false;
+			}
 		}
 	}
 
@@ -685,17 +765,39 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 	bool open = true;
 	if( ImGui::Begin( "Animation", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize ) )
 	{
+		ImGui::PushItemWidth( 120.0f );
+		// selection box to the right
+		SetupCombo( "##animation", m_playback.animationComboBox, appState.modelState.currentAnimation );
+		ImGui::SameLine();
+
 		bool disabled = m_playback.animationComboBox.selectedItemValue == "";
 		if( disabled )
 		{
 			ImGui::BeginDisabled();
 		}
+		OnChange( ImGui::Button( "<", ImVec2( 18.0f, 18.0f ) ), [this, &appState]() {
+			StepAnimation( -0.1f, appState );
+		} );
+
+		ImGui::SameLine();
 		OnChange( ImGui::Button( GetPlaybackButtonLabel(), ImVec2( 64.0f, 18.0f ) ), [this]() { HandlePlaybackButtonPressed(); } );
 
 		ImGui::SameLine();
+		OnChange( ImGui::Button( ">", ImVec2( 18.0f, 18.0f ) ), [this, &appState]() {
+			StepAnimation( 0.1f, appState );
+		} );
+
+		ImGui::SameLine();
+		ImGui::PushItemWidth( 30.0f );
+		ImGui::Checkbox( "##repeatanimation", &m_playback.repeat );
+		ImGui::SetItemTooltip( "Repeat the animation" );
+
+		ImGui::SameLine();
 		float availableWidth = ImGui::GetContentRegionAvail().x;
-		ImGui::PushItemWidth( availableWidth - 128.0f );
-		ImGui::SliderFloat( "##playbackSlider", &m_playback.currentTime, 0.0f, m_playback.duration );
+		ImGui::PushItemWidth( availableWidth );
+		OnChange( ImGui::SliderFloat( "##playbackSlider", &m_playback.currentTime, 0.0f, m_playback.duration ), [&appState, this]() {
+			appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
+		} );
 		ImGui::SetItemTooltip( "%.3fs / %.3fs", m_playback.currentTime, m_playback.duration );
 
 		if( disabled )
@@ -703,17 +805,12 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 			ImGui::EndDisabled();
 		}
 		ImGui::SameLine();
-
-		ImGui::PushItemWidth( 120.0f );
-		// selection box to the right
-		SetupCombo( "##animation", m_playback.animationComboBox, appState.currentAnimation );
 	}
 	ImGui::End();
 }
 
 void UIRenderer::SetupPopupWindows( AppState& appState )
 {
-
 	if( m_loadStatus == LoadStatus::FAILED )
 	{
 		ImGui::OpenPopup( "Error" );
@@ -766,7 +863,13 @@ void UIRenderer::UpdateInputs( AppState& appState )
 	// Handle ui keyboard shortcuts
 	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_O ) )
 	{
-		FileOpenDialog( appState );
+		auto filePath = FileOpenDialog( appState );
+		if( filePath != nullptr )
+		{
+			appState.ResetModelState();
+			appState.cmfContent.ForceSetValue( CmfContentLoader::LoadContentFromFile( filePath ) );
+			appState.cmfPath.SetValue( std::string( filePath ) );
+		}
 	}
 	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_F ) )
 	{
@@ -779,9 +882,9 @@ void UIRenderer::UpdateUiState( AppState& appState )
 	if( m_loadStatus == LoadStatus::SUCCESSFUL )
 	{
 		// reset all appStae items related to cmf
-		appState.selectedLod.SetValue( 0 );
-		appState.currentAnimation.SetValue( "" );
-		appState.currentAnimationTime.SetValue( 0.0f );
+		appState.modelState.selectedLod.SetValue( 0 );
+		appState.modelState.currentAnimation.SetValue( "" );
+		appState.modelState.currentAnimationTime.SetValue( 0.0f );
 		m_playback = Playback{};
 	}
 
@@ -790,21 +893,21 @@ void UIRenderer::UpdateUiState( AppState& appState )
 	if( cmfContent != nullptr )
 	{
 		m_uiState.filePath = appState.cmfPath.GetValue();
-
+		m_uiState.animationPath = appState.modelState.animationOverridePath.GetValue();
 		// polygon mode selection
 		m_uiState.polygonModeComboBox.items = {
 			{ "Fill", VK_POLYGON_MODE_FILL },
 			{ "Line", VK_POLYGON_MODE_LINE },
 			{ "Point", VK_POLYGON_MODE_POINT }
 		};
-		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.polygonMode.GetValue() );
+		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.modelState.polygonMode.GetValue() );
 
 		size_t meshIndex = 0;
 		size_t morphIndex = 0;
 		size_t maxLod = 0;
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			if( meshIndex >= appState.meshVisibilityStates.size() )
+			if( meshIndex >= appState.modelState.meshVisibilityStates.size() )
 			{
 				break;
 			}
@@ -812,11 +915,11 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.meshIndex = meshIndex;
 			meshState.name = cmf::ToStdString( mesh.name );
 			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
-			meshState.display = appState.meshVisibilityStates[meshIndex].GetValue();
-			meshState.wireframeOverlay = appState.meshWireframeOverlay[meshIndex].GetValue();
-			meshState.audioOcclusionMesh = appState.audioOcclusionMesh[meshIndex].GetValue();
+			meshState.display = appState.modelState.meshVisibilityStates[meshIndex].GetValue();
+			meshState.wireframeOverlay = appState.modelState.meshWireframeOverlay[meshIndex].GetValue();
+			meshState.audioOcclusionMesh = appState.modelState.audioOcclusionMesh[meshIndex].GetValue();
 			meshState.hasAudioOcclusionMesh = !mesh.audioOcclusionMesh.vertices.empty() && !mesh.audioOcclusionMesh.indices.empty();
-			meshState.boundingBox = appState.meshBoundingBox[meshIndex].GetValue();
+			meshState.boundingBox = appState.modelState.meshBoundingBox[meshIndex].GetValue();
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
 
@@ -831,14 +934,14 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 			for( const auto& morphTarget : mesh.morphTargets.targets )
 			{
-				if( morphIndex >= appState.morphTargetWeight.size() )
+				if( morphIndex >= appState.modelState.morphTargetWeight.size() )
 				{
 					break;
 				}
 				MorphTargetUiState morphTargetState{};
 				morphTargetState.name = cmf::ToStdString( morphTarget.name );
-				morphTargetState.weight = appState.morphTargetWeight[morphIndex].GetValue();
-				morphTargetState.enabled = appState.morphTargetEnabled[morphIndex].GetValue();
+				morphTargetState.weight = appState.modelState.morphTargetWeight[morphIndex].GetValue();
+				morphTargetState.enabled = appState.modelState.morphTargetEnabled[morphIndex].GetValue();
 				morphTargetState.index = morphIndex++;
 				meshState.morphTargets.push_back( morphTargetState );
 			}
@@ -848,29 +951,32 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		}
 
 		// visualization shader selection
-		for( const auto& shaderName : appState.availableShaders.GetValue() )
+		for( const auto& shaderName : appState.modelState.availableShaders.GetValue() )
 		{
 			m_uiState.visualizationShaderComboBox.items.push_back( { shaderName, shaderName } );
 		}
-		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.visualizationShader.GetValue() );
+		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.modelState.visualizationShader.GetValue() );
 
 		for( uint32_t lod = 0; lod < maxLod; ++lod )
 		{
 			m_uiState.modelStates.lod.items.push_back( std::make_pair( "Lod " + std::to_string( lod ), lod ) );
 		}
 
-		m_uiState.modelStates.lod.SetSelectedItemByValue( appState.selectedLod.GetValue() );
-		m_uiState.modelStates.boundingBox = appState.modelBoundingBox.GetValue();
+		m_uiState.modelStates.lod.SetSelectedItemByValue( appState.modelState.selectedLod.GetValue() );
+		m_uiState.modelStates.boundingBox = appState.modelState.modelBoundingBox.GetValue();
 
 		if( m_playback.animationComboBox.items.empty() )
 		{
 			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
-			for( const auto& animation : cmfContent->m_cmfData->animations )
+			auto animationOverride = appState.modelState.animationOverride.GetValue();
+			const auto& animations = animationOverride != nullptr ? animationOverride->m_cmfData->animations : cmfContent->m_cmfData->animations;
+
+			for( const auto& animation : animations )
 			{
 				auto animationName = cmf::ToStdString( animation.name );
 				m_playback.animationComboBox.items.push_back( std::make_pair( animationName, animationName ) );
 			}
-			m_playback.animationComboBox.SetSelectedItemByValue( appState.currentAnimation.GetValue() );
+			m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 		}
 	}
 	else
@@ -879,7 +985,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		if( m_playback.animationComboBox.items.empty() )
 		{
 			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
-			m_playback.animationComboBox.SetSelectedItemByValue( appState.currentAnimation.GetValue() );
+			m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 		}
 
 		// polygon mode selection
@@ -888,7 +994,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			{ "Line", VK_POLYGON_MODE_LINE },
 			{ "Point", VK_POLYGON_MODE_POINT }
 		};
-		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.polygonMode.GetValue() );
+		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.modelState.polygonMode.GetValue() );
 		m_uiState.filePath = "No file loaded";
 
 		// visualization shader selection

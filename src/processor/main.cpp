@@ -3,10 +3,7 @@
 #include <nlohmann/json.hpp>
 #include "cmffile.h"
 
-namespace
-{
-const char* const CMF_PROCESSOR_VERSION = "1.0.0";
-}
+const char* CMF_PROCESSOR_VERSION = "1.0.0";
 
 
 int main( int argc, char** argv )

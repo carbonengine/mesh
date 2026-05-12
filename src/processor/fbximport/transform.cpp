@@ -63,7 +63,7 @@ CoordinateSystem::CoordinateSystem( const ufbx_coordinate_axes& axes, float scal
 	Vector3 forward = -ToVector( axes.front );
 	Vector3 right = ToVector( axes.right );
 
-    // The transformation is somewhat different from a normal one: it matches the legacy transform.
+	// The transformation is somewhat different from a normal one: it matches the legacy transform.
 	switch( axes.up )
 	{
 	case UFBX_COORDINATE_AXIS_POSITIVE_X:

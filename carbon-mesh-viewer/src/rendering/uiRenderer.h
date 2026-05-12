@@ -79,6 +79,7 @@ private:
 	struct UiState
 	{
 		std::string filePath;
+		std::string animationPath;
 		ModelUiState modelStates{};
 
 		CmfUiComboBox<VkPolygonMode> polygonModeComboBox;
@@ -90,6 +91,7 @@ private:
 		float duration{ 0.0f };
 		float currentTime{ 0.0f };
 		bool playing{ false };
+		bool repeat{ false };
 		CmfUiComboBox<std::string> animationComboBox;
 	};
 
@@ -116,6 +118,7 @@ private:
 		std::unordered_map<std::string, bool> curveColumnFilter;
 		std::unordered_map<std::string, bool> audioVertexColumnFilter;
 	};
+	void RegisterModelCallbacks( AppState& appState );
 
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
@@ -126,6 +129,7 @@ private:
 
 	const char* GetPlaybackButtonLabel() const;
 	void HandlePlaybackButtonPressed();
+	void StepAnimation( float amount, AppState& appState );
 
 	void OnChange( bool changed, std::function<void()> callback );
 
@@ -133,7 +137,7 @@ private:
 	void SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState );
 
 	void UpdateUiState( AppState& appState );
-	void FileOpenDialog( AppState& appState );
+	const char* FileOpenDialog( AppState& appState );
 
 	struct AttributeInfo
 	{
