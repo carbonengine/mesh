@@ -158,7 +158,6 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
 endif()
 
 
-add_subdirectory (src/fbximport) 
 add_subdirectory( carbon-mesh-viewer )
 add_subdirectory( carbon-mesh-optimizer )
 add_subdirectory( src/processor )

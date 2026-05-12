@@ -113,7 +113,7 @@ std::pair<cmf::Span<cmf::Skeleton>, BoneMap> ImportSkeletons( const ufbx_scene& 
 			}
 
 			// Some skeletons are nested inside mesh nodes. We need to include the parent node in this case as if
-            // it is a root bone to match legacy importer.
+			// it is a root bone to match legacy importer.
 			if( obj->parent && ufbx_as_node( &obj->parent->element ) && obj->parent != scene.root_node )
 			{
 				obj = obj->parent;
