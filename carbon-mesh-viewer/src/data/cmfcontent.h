@@ -28,5 +28,5 @@ private:
 
 namespace CmfContentLoader
 {
-std::shared_ptr<CmfContent> LoadContentFromFile( const std::string& filePath );
+CmfContent* LoadContentFromFile( const std::string& filePath );
 };

@@ -1,66 +1,55 @@
 #include "geometryprepass.h"
 
+#include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
 #include "rendering/vulkan/vulkanerrors.h"
 #include <numeric>
 
-GeometryPrePass::GeometryPrePass( std::shared_ptr<const Renderer> renderer, std::shared_ptr<CmfContent> cmfContent, const cmf::Mesh& cmfMesh ) :
+GeometryPrePass::GeometryPrePass( std::shared_ptr<const Renderer> renderer, CmfContent* cmfContent, const cmf::Mesh& cmfMesh ) :
 	m_cmfMesh( cmfMesh ),
 	m_cmfContent( cmfContent ),
 	m_renderer( renderer ),
 	m_effect( renderer )
 {
+	bool hasMorphs = !m_cmfMesh.morphTargets.targets.empty();
+	bool hasAnimations = !m_cmfMesh.boneBindings.empty();
+	m_mode = hasMorphs || hasAnimations ? Mode::DynamicMesh : Mode::StaticMesh;
 }
 
 GeometryPrePass::~GeometryPrePass()
 {
-	m_boneTransformBuffer.Release( m_renderer.get() );
-	m_computeOutBuffer.Release( m_renderer.get() );
-	m_elementBuffer.Release( m_renderer.get() );
-	m_skinnedElementBuffer.Release( m_renderer.get() );
-	m_indexBuffer.Release( m_renderer.get() );
-	m_morphJobBuffer.Release( m_renderer.get() );
-	m_morphTargetBuffer.Release( m_renderer.get() );
-	m_weightBuffer.Release( m_renderer.get() );
-	m_vertexBuffer.Release( m_renderer.get() );
 }
 
 void GeometryPrePass::Initialize( AppState& appState )
 {
-	auto firstMorphState = appState.modelState.morphTargetEnabled.size();
+	auto firstMorphState = appState.morphTargetEnabled.size();
 
 	// go through the morph targets so we can register to the morph weight and display flags
 	for( size_t i = 0; i < m_cmfMesh.morphTargets.targets.size(); i++ )
 	{
-		auto index = appState.modelState.morphTargetEnabled.AddState();
-		appState.modelState.morphTargetWeight.AddState();
+		auto index = appState.morphTargetEnabled.AddState();
+		appState.morphTargetWeight.AddState();
 
-		appState.modelState.morphTargetWeight[index].RegisterCallback( [this, index, firstMorphState]( float weight, AppState& ) {
-			SetMorphWeight( index - firstMorphState, weight );
+		appState.morphTargetWeight[index].RegisterCallback( [this, index, firstMorphState]( float weight, AppState& ) {
+			UpdateMorphWeights( index - firstMorphState, weight );
 		} );
-		appState.modelState.morphTargetEnabled[index].RegisterCallback( [this, index, firstMorphState]( bool enabled, AppState& appState ) {
-			float weight = enabled ? appState.modelState.morphTargetWeight[index].GetValue() : 0.0f;
-			SetMorphWeight( index - firstMorphState, weight );
+		appState.morphTargetEnabled[index].RegisterCallback( [this, index, firstMorphState]( bool enabled, AppState& appState ) {
+			float weight = enabled ? appState.morphTargetWeight[index].GetValue() : 0.0f;
+			UpdateMorphWeights( index - firstMorphState, weight );
 		} );
 	}
-	appState.modelState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
-		UpdateLod( lodIndex );
-	} );
 
-	m_weights.resize( m_cmfMesh.morphTargets.targets.size(), 0.0f );
-	const auto boneElement = std::find_if( m_cmfMesh.decl.begin(), m_cmfMesh.decl.end(), []( const cmf::VertexElement& elem ) {
-		return elem.usage == cmf::Usage::BoneIndices;
-	} );
+	if( m_mode == Mode::DynamicMesh )
+	{
+		m_weights.resize( m_cmfMesh.morphTargets.targets.size(), 0.0f );
+	}
 
-	m_hasBoneIndices = boneElement != m_cmfMesh.decl.end();
-	m_isDynamic = !m_weights.empty() || m_hasBoneIndices;
-
-	UpdateLod( appState.modelState.selectedLod.GetValue() );
+	UpdateLod( appState.selectedLod.GetValue() );
 }
 
 void GeometryPrePass::Process( ComputeCommandBuffer& commandBuffer )
 {
-	if( m_weights.empty() && m_ubo.boneCount == 0 )
+	if( m_mode == Mode::StaticMesh )
 	{
 		return;
 	}
@@ -118,7 +107,7 @@ void GeometryPrePass::IssueBarrier( VkCommandBuffer& commandBuffer, VkAccessFlag
 						  nullptr );
 }
 
-void GeometryPrePass::SetMorphWeight( size_t morphIndex, float weight )
+void GeometryPrePass::UpdateMorphWeights( size_t morphIndex, float weight )
 {
 	uint32_t morphCount = (uint32_t)m_cmfMesh.morphTargets.targets.size();
 	if( morphIndex >= morphCount )
@@ -130,113 +119,27 @@ void GeometryPrePass::SetMorphWeight( size_t morphIndex, float weight )
 	m_weightBuffer.SetData( m_renderer.get(), (const uint8_t*)m_weights.data(), (uint32_t)( m_weights.size() * sizeof( float ) ) );
 }
 
-void GeometryPrePass::SetSkeletonPose( const cmf::SkeletonPose& pose, const cmf::Skeleton* meshSkeleton )
-{
-	if( !m_hasBoneIndices )
-	{
-		return;
-	}
-
-	std::vector<Matrix> worldTransforms;
-	cmf::ComputeWorldTransforms( worldTransforms, pose );
-
-	for( uint32_t boneIdx = 0; boneIdx < m_cmfMesh.boneBindings.size(); boneIdx++ )
-	{
-		if( boneIdx >= m_skeletonBoneIndex.size() )
-		{
-			m_boneTransforms[boneIdx] = IdentityMatrix();
-			continue;
-		}
-
-		auto skeletonIndex = m_skeletonBoneIndex[boneIdx];
-		auto meshIndex = m_meshBoneIndex[boneIdx];
-
-		if( skeletonIndex < 0 || meshIndex < 0 )
-		{
-			m_boneTransforms[boneIdx] = IdentityMatrix();
-			continue;
-		}
-
-		m_boneTransforms[boneIdx] = meshSkeleton->invBindTransforms[meshIndex] * worldTransforms[skeletonIndex];
-	}
-
-	UpdateBoneTransforms( (uint32_t)m_cmfMesh.boneBindings.size() );
-}
-
-void GeometryPrePass::InitializeAnimationData( cmf::Skeleton* animationSkeleton, cmf::Skeleton* baseSkeleton )
-{
-	if( !m_hasBoneIndices )
-	{
-		return;
-	}
-
-	const auto boneBindings = m_cmfMesh.boneBindings;
-	auto createMapping = [boneBindings]( const cmf::Skeleton& skeleton ) -> std::vector<int32_t> {
-		std::vector<int32_t> mapping( boneBindings.size(), -1 );
-		for( uint32_t meshBoneIndex = 0; meshBoneIndex < boneBindings.size(); ++meshBoneIndex )
-		{
-			const auto boundBoneName = boneBindings[meshBoneIndex].name;
-
-			auto foundBone = std::find_if( skeleton.bones.begin(), skeleton.bones.end(), [boundBoneName]( cmf::String boneName ) {
-				return boundBoneName == boneName;
-			} );
-			if( foundBone != skeleton.bones.end() )
-			{
-				mapping[meshBoneIndex] = (int32_t)std::distance( skeleton.bones.begin(), foundBone );
-			}
-		}
-		return mapping;
-	};
-
-	if( baseSkeleton )
-	{
-		size_t meshBoneCount = m_cmfMesh.boneBindings.size();
-
-		m_boneTransforms.fill( Matrix() );
-		m_meshBoneIndex = createMapping( *baseSkeleton );
-
-		if( animationSkeleton )
-		{
-			m_skeletonBoneIndex = createMapping( *animationSkeleton );
-		}
-		else
-		{
-			m_skeletonBoneIndex = m_meshBoneIndex;
-		}
-	}
-	else
-	{
-		m_meshBoneIndex.resize( boneBindings.size(), -1 );
-		m_skeletonBoneIndex = m_meshBoneIndex;
-	}
-}
-
 void GeometryPrePass::UpdateLod( uint32_t lodIndex )
 {
-	if( m_currentLod == lodIndex )
-	{
-		return;
-	}
-
 	m_currentLod = lodIndex;
 
-	if( m_isDynamic )
+	auto lod = m_cmfMesh.lods[m_currentLod];
+	if( lod.morphTargets.empty() )
 	{
-		SetupForDynamicMesh();
+		m_mode = Mode::StaticMesh;
 	}
 	else
+	{
+		m_mode = Mode::DynamicMesh;
+	}
+
+	if( m_mode == Mode::StaticMesh )
 	{
 		SetupForStaticMesh();
 	}
-}
-
-void GeometryPrePass::UpdateBoneTransforms( uint32_t boneCount )
-{
-	m_boneCount = boneCount;
-	m_ubo.boneCount = boneCount;
-	if( m_effect.IsInitialized() )
+	else
 	{
-		m_boneTransformBuffer.SetData( m_renderer.get(), (const uint8_t*)m_boneTransforms.data(), (uint32_t)( m_boneTransforms.size() * sizeof( Matrix ) ) );
+		SetupForDynamicMesh();
 	}
 }
 
@@ -275,17 +178,9 @@ void GeometryPrePass::SetupForStaticMesh()
 
 void GeometryPrePass::SetupForDynamicMesh()
 {
-	m_effect = ComputeEffect( m_renderer );
-	// Clear out the morph jobs and bone element indices, since we will be rebuilding them for the new LOD
-	m_morphJobs.clear();
-	m_boneIndexElementIndex = std::numeric_limits<uint32_t>::max();
-	m_boneWeightElementIndex = std::numeric_limits<uint32_t>::max();
-	std::vector<Element> elements{};
-	elements.reserve( m_cmfMesh.decl.size() + m_cmfMesh.morphTargets.decl.size() );
-
-	std::vector<Element> skinnedElements{};
-
 	auto lod = m_cmfMesh.lods[m_currentLod];
+
+	m_morphJobs.clear();
 
 	const uint8_t* vertexData = m_cmfContent->Index( lod.vb.index, lod.vb.offset );
 
@@ -303,10 +198,13 @@ void GeometryPrePass::SetupForDynamicMesh()
 	morphTargetData.resize( totalMorphTargetDataSize );
 
 	uint32_t morphTargetDataOffset = 0;
+	std::vector<Element> elements{};
 
-	const uint32_t morphTargetStride = std::accumulate( m_cmfMesh.morphTargets.decl.begin(), m_cmfMesh.morphTargets.decl.end(), (uint32_t)0, []( uint32_t currentStride, const cmf::VertexElement& decl ) {
+	const uint32_t morphTargetStride = (uint32_t)std::accumulate( m_cmfMesh.morphTargets.decl.begin(), m_cmfMesh.morphTargets.decl.end(), (uint32_t)0, []( uint32_t currentStride, const cmf::VertexElement& decl ) {
 		return currentStride + cmf::GetVertexElementSize( decl );
 	} );
+
+	elements.reserve( m_cmfMesh.decl.size() + m_cmfMesh.morphTargets.decl.size() );
 
 	for( const auto vertexDecl : m_cmfMesh.decl )
 	{
@@ -315,22 +213,7 @@ void GeometryPrePass::SetupForDynamicMesh()
 			vertexDecl.usage == cmf::Usage::Binormal ||
 			vertexDecl.usage == cmf::Usage::PackedTangent ||
 			vertexDecl.usage == cmf::Usage::PackedTangentLegacy;
-		Element element = { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized };
-		elements.push_back( element );
-
-		if( vertexDecl.usage == cmf::Usage::BoneIndices )
-		{
-			m_boneIndexElementIndex = (uint32_t)elements.size() - 1;
-		}
-		else if( vertexDecl.usage == cmf::Usage::BoneWeights )
-		{
-			m_boneWeightElementIndex = (uint32_t)elements.size() - 1;
-		}
-
-		if( normalized || ( vertexDecl.usage == cmf::Usage::Position && vertexDecl.usageIndex == 0 ) )
-		{
-			skinnedElements.push_back( element );
-		}
+		elements.push_back( { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized } );
 	}
 
 	for( const auto morphTargetDecl : m_cmfMesh.morphTargets.decl )
@@ -386,9 +269,7 @@ void GeometryPrePass::SetupForDynamicMesh()
 
 	m_morphJobBuffer.Initialize( m_renderer.get(), BufferType::Storage, (const uint8_t*)m_morphJobs.data(), (uint32_t)( m_morphJobs.size() * sizeof( MorphJob ) ), sizeof( MorphJob ) );
 	m_elementBuffer.Initialize( m_renderer.get(), BufferType::Storage, (const uint8_t*)elements.data(), (uint32_t)( elements.size() * sizeof( Element ) ), sizeof( Element ) );
-	m_skinnedElementBuffer.Initialize( m_renderer.get(), BufferType::Storage, (const uint8_t*)skinnedElements.data(), (uint32_t)( skinnedElements.size() * sizeof( Element ) ), sizeof( Element ) );
 	m_weightBuffer.Initialize( m_renderer.get(), BufferType::Storage, (const uint8_t*)m_weights.data(), (uint32_t)( m_weights.size() * sizeof( float ) ), sizeof( float ) );
-	m_boneTransformBuffer.Initialize( m_renderer.get(), BufferType::Storage, (const uint8_t*)m_boneTransforms.data(), (uint32_t)( m_boneTransforms.size() * sizeof( Matrix ) ), sizeof( Matrix ) );
 	m_renderer->EndCopyCommandBuffer( copyCmd );
 
 	// release the staging buffers for constant buffers
@@ -397,25 +278,13 @@ void GeometryPrePass::SetupForDynamicMesh()
 		m_indexBuffer.ReleaseStaging( m_renderer.get() );
 	}
 
-	uint32_t morphTargetBufferStride = 0;
-	if( lod.morphTargets.size() > 0 )
-	{
-		morphTargetBufferStride = lod.morphTargets[0].vb.size / 4;
-	}
-
-	// All byte sizes need to be converted to float sizes
 	m_ubo = {
 		(uint32_t)m_morphJobs.size(),
 		(uint32_t)( lod.vb.size / lod.vb.stride ),
 		lod.vb.stride / 4,
 		(uint32_t)lod.morphTargets.size(),
-		morphTargetBufferStride,
-		morphTargetStride / 4,
-		m_boneCount,
-		m_boneIndexElementIndex,
-		m_boneWeightElementIndex,
-		(uint32_t)elements.size(),
-		(uint32_t)skinnedElements.size()
+		lod.morphTargets[0].vb.size / 4,
+		morphTargetStride / 4
 	};
 
 	// recreate the effect, the buffers may have changed
@@ -428,19 +297,17 @@ void GeometryPrePass::SetupForDynamicMesh()
 	m_effect.RegisterStorageBuffer( VK_SHADER_STAGE_COMPUTE_BIT, 4, &m_morphJobBuffer ); // job buffer
 	m_effect.RegisterStorageBuffer( VK_SHADER_STAGE_COMPUTE_BIT, 5, &m_elementBuffer ); // element buffer
 	m_effect.RegisterStorageBuffer( VK_SHADER_STAGE_COMPUTE_BIT, 6, &m_weightBuffer ); // weight buffer
-	m_effect.RegisterStorageBuffer( VK_SHADER_STAGE_COMPUTE_BIT, 7, &m_boneTransformBuffer ); // bone transform buffer
-	m_effect.RegisterStorageBuffer( VK_SHADER_STAGE_COMPUTE_BIT, 8, &m_skinnedElementBuffer ); // skinned element buffer
 
 	m_effect.Initialize();
 }
 
 const Buffer& GeometryPrePass::GetVertexBuffer() const
 {
-	if( m_isDynamic )
+	if( m_mode == Mode::StaticMesh )
 	{
-		return m_computeOutBuffer;
+		return m_vertexBuffer;
 	}
-	return m_vertexBuffer;
+	return m_computeOutBuffer;
 }
 
 const Buffer& GeometryPrePass::GetIndexBuffer() const

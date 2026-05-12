@@ -17,7 +17,7 @@ public:
 
 	void PrePass();
 	void Render( const AppState& state, const Camera& camera );
-	void SetData( std::shared_ptr<CmfContent> data, AppState& appState );
+	void SetData( CmfContent* data, AppState& appState );
 
 private:
 	void ReleaseModel();

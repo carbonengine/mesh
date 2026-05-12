@@ -23,11 +23,6 @@ layout (binding = 0) uniform UBO
     uint morphBufferCount; // number of morph target buffers
     uint morphBufferStride; // stride of a single morph target buffer
 	uint morphVertexStride; // single morph vertex stride
-    uint boneCount; // number of bones in the bone buffer
-    uint boneIndexElementIndex; // index into the elements array for the bone index element
-    uint boneWeightElementIndex; // index into the elements array for the bone weight element
-    uint sourceElementCount; // number of source elements in the elements array
-    uint skinnedElementCount; // number of skinned elements in the skinned elements array
 } params;
 
 struct MorphJob {
@@ -64,14 +59,6 @@ layout(std430, binding = 5) buffer Elements {
 
 layout(std430, binding = 6) buffer Weights {
 	float weights[ ];
-};
-
-layout(std430, binding = 7) buffer BoneBuffer {
-    mat4x4 boneBuffer[ ];
-};
-
-layout(std430, binding = 8) buffer SkinnedElements {
-    Element skinnedElements[ ];
 };
 
 // Initializes the output vertex with the values in the source 
@@ -242,43 +229,6 @@ vec4 GetSourceValue( uint indexInVertexBuffer, Element element )
     return result;
 }
 
-// Returns the source value as the correct type
-vec4 GetOutputValue( uint indexInVertexBuffer, Element element ) 
-{
-    vec4 result = vec4( 0.0f );
-    switch( element.type )
-    {
-    case FLOAT32_TYPE:
-        for( uint i = 0; i < element.count; ++i )
-        {
-            result[i] = vertexOut[ indexInVertexBuffer + i ];
-        }
-        break;
-    case FLOAT16_TYPE:
-    case UINT16NORM_TYPE:
-    case UINT16_TYPE:
-    case INT16NORM_TYPE:
-    case INT16_TYPE:
-        // 4 16byte values can be packed in 2 float values
-        result.xy = FloatAsVec4( vertexOut[ indexInVertexBuffer ], element ).xy;
-        if( element.count > 2 )
-        {
-            result.zw = FloatAsVec4( vertexOut[ indexInVertexBuffer + 1 ], element ).xy;
-        }
-        break;
-    case UINT8NORM_TYPE:
-    case UINT8_TYPE:
-    case INT8NORM_TYPE:
-    case INT8_TYPE:
-        // 4 8byte values can be packed in a single float value
-        result = FloatAsVec4( vertexOut[ indexInVertexBuffer ], element );
-        break;
-    default:
-        break;
-    }
-    return result;
-}
-
 vec4 ApplyWeight( float weight, const Element sourceElement, const Element morphElement, uint vertexIndex, uint morphBufferIndex )
 {
     uint sourceIndexStart = vertexIndex * params.vertexStride + sourceElement.offset;
@@ -337,7 +287,7 @@ void main()
     // reset the out value
     InitializeOutput( vertexIndex );
 
-    for( uint morphJobIndex = 0; morphJobIndex < params.morphJobCount; ++morphJobIndex )
+    for( uint morphJobIndex = 0; morphJobIndex < params.morphJobCount; ++morphJobIndex ) 
     {
         vec4 change = vec4( 0.0f );
         MorphJob morphJob = morphJobs[ morphJobIndex ];
@@ -372,36 +322,5 @@ void main()
     }
 
     // step 5. bone animation
-    if( params.boneCount > 0 && params.skinnedElementCount > 0 && params.boneIndexElementIndex < params.sourceElementCount )
-    {
-        Element boneIndexElement = elements[ params.boneIndexElementIndex ];
-        
-        vec4 boneIndices = GetSourceValue( vertexIndex * params.vertexStride + boneIndexElement.offset, boneIndexElement );
-        
-        vec4 boneWeights = vec4(1, 0, 0, 0);
-        
-        if( params.boneWeightElementIndex < params.sourceElementCount )
-        {
-            Element boneWeightElement = elements[ params.boneWeightElementIndex ];
-            boneWeights = GetSourceValue( vertexIndex * params.vertexStride + boneWeightElement.offset, boneWeightElement );
-        }
 
-        mat4x4 skinningMatrix = boneBuffer[ int(boneIndices.x) ] * boneWeights.x +
-                                boneBuffer[ int(boneIndices.y) ] * boneWeights.y +
-                                boneBuffer[ int(boneIndices.z) ] * boneWeights.z +
-                                boneBuffer[ int(boneIndices.w) ] * boneWeights.w;
-                                
-        for( uint i = 0; i < params.skinnedElementCount; ++i )
-        {
-            Element element = skinnedElements[ i ];
-            vec4 value = GetOutputValue( vertexIndex * params.vertexStride + element.offset, element );
-
-            if( element.normalized == 0 )
-            {
-                value.w = 1.0;
-            }
-
-            WriteOut( skinningMatrix * value, element, vertexIndex * params.vertexStride + element.offset );
-        }
-    }
 }

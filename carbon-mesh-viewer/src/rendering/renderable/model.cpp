@@ -3,7 +3,7 @@
 #include "../models/boundingBox.h"
 #include "../vulkan/vulkanerrors.h"
 
-ModelRenderable::ModelRenderable( std::shared_ptr<CmfContent> data, std::shared_ptr<const Renderer> renderer ) :
+ModelRenderable::ModelRenderable( CmfContent* data, std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
 	m_boundingBox( BoundingBox::Create( renderer, Vector3( 0.5, 0.5, 0.0 ) ) )
 {
@@ -24,14 +24,14 @@ ModelRenderable::~ModelRenderable()
 
 VkResult ModelRenderable::Initialize( AppState& appState )
 {
-	appState.modelState.meshVisibilityStates.Clear();
-	appState.modelState.morphTargetEnabled.Clear();
-	appState.modelState.morphTargetWeight.Clear();
-	appState.modelState.meshWireframeOverlay.Clear();
-	appState.modelState.audioOcclusionMesh.Clear();
-	appState.modelState.meshBoundingBox.Clear();
+	appState.meshVisibilityStates.Clear();
+	appState.morphTargetEnabled.Clear();
+	appState.morphTargetWeight.Clear();
+	appState.meshWireframeOverlay.Clear();
+	appState.audioOcclusionMesh.Clear();
+	appState.meshBoundingBox.Clear();
 
-	appState.modelState.modelBoundingBox.RegisterCallback( [&]( bool value, AppState& ) {
+	appState.modelBoundingBox.RegisterCallback( [&]( bool value, AppState& ) {
 		m_showBoundingBox = value;
 	} );
 

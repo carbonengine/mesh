@@ -8,7 +8,7 @@
 class ModelRenderable
 {
 public:
-	ModelRenderable( std::shared_ptr<CmfContent> data, std::shared_ptr<const Renderer> renderer );
+	ModelRenderable( CmfContent* data, std::shared_ptr<const Renderer> renderer );
 	~ModelRenderable();
 
 	VkResult Initialize( AppState& appState );
@@ -18,13 +18,10 @@ public:
 	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
 private:
-	void SetAnimation( std::string animationName );
-
 	std::vector<MeshRenderable> m_meshes{};
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
 
 	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
-	std::vector<Matrix> m_boneMatrices{};
 };

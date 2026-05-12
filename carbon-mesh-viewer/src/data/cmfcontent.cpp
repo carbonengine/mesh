@@ -19,7 +19,7 @@ inline errno_t fopen_s( FILE** stream, char const* fileName, char const* mode )
 
 namespace CmfContentLoader
 {
-std::shared_ptr<CmfContent> LoadContentFromFile( const std::string& filePath )
+CmfContent* LoadContentFromFile( const std::string& filePath )
 {
 	Log::Info( "Loading cmf file: %s", filePath.c_str() );
 
@@ -57,7 +57,7 @@ std::shared_ptr<CmfContent> LoadContentFromFile( const std::string& filePath )
 	}
 
 	// cast the data to m_cmfModel
-	return std::make_shared<CmfContent>( fileData, filePath );
+	return new CmfContent( fileData, filePath );
 }
 };
 

@@ -17,16 +17,16 @@ SceneRenderer::~SceneRenderer()
 
 VkResult SceneRenderer::Initialize( AppState& state )
 {
-	state.cmfContent.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
+	state.cmfContent.RegisterCallback( [this]( CmfContent* content, AppState& appState ) {
 		this->SetData( content, appState );
 	} );
 
-	state.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
-		m_model->SetRenderingMode( appState.modelState.visualizationShader.GetValue(), mode );
+	state.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
+		m_model->SetRenderingMode( appState.visualizationShader.GetValue(), mode );
 	} );
 
-	state.modelState.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
-		m_model->SetRenderingMode( shaderName, appState.modelState.polygonMode.GetValue() );
+	state.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
+		m_model->SetRenderingMode( shaderName, appState.polygonMode.GetValue() );
 	} );
 
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
@@ -76,7 +76,7 @@ void SceneRenderer::Render( const AppState& state, const Camera& camera )
 	m_graphicsCommandBuffer.End();
 }
 
-void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appState )
+void SceneRenderer::SetData( CmfContent* data, AppState& appState )
 {
 	ReleaseModel();
 
@@ -87,7 +87,7 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 	}
 
 	// reset the visualization shader if it is not set or not applicable for the current model
-	std::string currentShaderName = appState.modelState.visualizationShader.GetValue();
+	std::string currentShaderName = appState.visualizationShader.GetValue();
 	std::vector<cmf::VertexElement> availableVertexElements;
 
 	for( const auto& mesh : data->m_cmfData->meshes )
@@ -103,11 +103,11 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 
 	if( foundItem == shaderNames.end() && shaderNames.size() > 0 )
 	{
-		appState.modelState.visualizationShader.SetValue( shaderNames[0] );
+		appState.visualizationShader.SetValue( shaderNames[0] );
 	}
-	appState.modelState.availableShaders.SetValue( shaderNames );
+	appState.availableShaders.SetValue( shaderNames );
 
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
 	m_model->Initialize( appState );
-	m_model->SetRenderingMode( appState.modelState.visualizationShader.GetValue(), appState.modelState.polygonMode.GetValue() );
+	m_model->SetRenderingMode( appState.visualizationShader.GetValue(), appState.polygonMode.GetValue() );
 }

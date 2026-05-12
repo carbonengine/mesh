@@ -18,26 +18,18 @@ void AppState::CallStateCallbacks()
 
 	cmfContent.CallCallbacks( *this );
 	cmfPath.CallCallbacks( *this );
-	exitRequested.CallCallbacks( *this );
 
-	modelState.selectedLod.CallCallbacks( *this );
-	modelState.visualizationShader.CallCallbacks( *this );
-	modelState.availableShaders.CallCallbacks( *this );
-	modelState.polygonMode.CallCallbacks( *this );
-	modelState.meshVisibilityStates.CallCallbacks( *this );
-	modelState.morphTargetWeight.CallCallbacks( *this );
-	modelState.morphTargetEnabled.CallCallbacks( *this );
-	modelState.meshWireframeOverlay.CallCallbacks( *this );
-	modelState.audioOcclusionMesh.CallCallbacks( *this );
-	modelState.meshBoundingBox.CallCallbacks( *this );
-	modelState.modelBoundingBox.CallCallbacks( *this );
-	modelState.currentAnimation.CallCallbacks( *this );
-	modelState.currentAnimationTime.CallCallbacks( *this );
-	modelState.animationOverridePath.CallCallbacks( *this );
-	modelState.animationOverride.CallCallbacks( *this );
-}
-
-void AppState::ResetModelState()
-{
-	modelState = {};
+	selectedLod.CallCallbacks( *this );
+	visualizationShader.CallCallbacks( *this );
+	availableShaders.CallCallbacks( *this );
+	polygonMode.CallCallbacks( *this );
+	meshVisibilityStates.CallCallbacks( *this );
+	morphTargetWeight.CallCallbacks( *this );
+	morphTargetEnabled.CallCallbacks( *this );
+	meshWireframeOverlay.CallCallbacks( *this );
+	audioOcclusionMesh.CallCallbacks( *this );
+	meshBoundingBox.CallCallbacks( *this );
+	modelBoundingBox.CallCallbacks( *this );
+	currentAnimation.CallCallbacks( *this );
+	currentAnimationTime.CallCallbacks( *this );
 }

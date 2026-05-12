@@ -17,7 +17,7 @@ void Camera::Initialize( AppState& state )
 		HandleMouseStateChanged( newMouseState );
 	} );
 
-	state.cmfContent.RegisterCallback( [this]( std::shared_ptr<CmfContent> cmfContent, AppState& ) {
+	state.cmfContent.RegisterCallback( [this]( CmfContent* cmfContent, AppState& ) {
 		if( cmfContent != nullptr )
 		{
 			auto boundingSphere = cmfContent->GetBoundingSphere();
