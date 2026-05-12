@@ -91,6 +91,27 @@ enum class CameraTrigger
 	CAMERA_TRIGGER_LOOK_BACK,
 };
 
+struct ModelState
+{
+	State<uint32_t> selectedLod{ 0 };
+	State<std::string> visualizationShader{ "" };
+	State<std::vector<std::string>> availableShaders{ {} };
+
+	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
+	State<std::string> currentAnimation{ "" };
+	State<float> currentAnimationTime{ 0.0f };
+
+	StateCollection<bool> meshVisibilityStates{ true };
+	StateCollection<float> morphTargetWeight{ 0.0 };
+	StateCollection<bool> morphTargetEnabled{ true };
+	StateCollection<bool> meshWireframeOverlay{ false };
+	StateCollection<bool> audioOcclusionMesh{ false };
+	StateCollection<bool> meshBoundingBox{ false };
+	State<bool> modelBoundingBox{ false };
+
+	State<std::string> animationOverridePath{ "" };
+	State<std::shared_ptr<CmfContent>> animationOverride{ nullptr };
+};
 
 struct AppState
 {
@@ -104,25 +125,18 @@ struct AppState
 	State<CameraTrigger> cameraTrigger{ CameraTrigger::CAMERA_TRIGGER_NONE };
 
 	// cmf
-	State<CmfContent*> cmfContent{ nullptr };
+	State<std::shared_ptr<CmfContent>> cmfContent{ nullptr };
 	State<std::string> cmfPath{ "" };
-	// ui
-	State<uint32_t> selectedLod{ 0 };
-	State<std::string> visualizationShader{ "" };
-	State<std::vector<std::string>> availableShaders{ {} };
-	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
-	State<std::string> currentAnimation{ "" };
-	State<float> currentAnimationTime{ 0.0f };
 
-	StateCollection<bool> meshVisibilityStates{ true };
-	StateCollection<float> morphTargetWeight{ 0.0 };
-	StateCollection<bool> morphTargetEnabled{ true };
-	StateCollection<bool> meshWireframeOverlay{ false };
-	StateCollection<bool> audioOcclusionMesh{ false };
-	StateCollection<bool> meshBoundingBox{ false };
-	State<bool> modelBoundingBox{ false };
+	State<bool> exitRequested{ false };
+
+	// model
+	ModelState modelState{};
 
 	void CallStateCallbacks();
+	void ResetModelState();
 };
+
+
 
 #include "appState_template_impl.h"

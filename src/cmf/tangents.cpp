@@ -3,8 +3,42 @@
 #include "cmf/bufferstreams.h"
 #include "cmf/bufferutils.h"
 #include <array>
+#include <optional>
 #include <meshoptimizer.h>
 #include <mikktspace.h>
+
+namespace
+{
+
+struct TangentElements
+{
+	cmf::VertexElement normal;
+	cmf::VertexElement tangent;
+	cmf::VertexElement bitangent;
+};
+
+std::optional<TangentElements> FindTangentElements( const cmf::Span<cmf::VertexElement>& decl, uint32_t usageIndex )
+{
+	auto normal = FindElement( decl, cmf::Usage::Normal );
+	auto tangent = FindElement( decl, cmf::Usage::Tangent, usageIndex );
+	auto bitangent = FindElement( decl, cmf::Usage::Binormal, usageIndex );
+	if( normal && tangent && bitangent )
+	{
+		return TangentElements{ *normal, *tangent, *bitangent };
+	}
+	return {};
+}
+
+const cmf::VertexElement* FindPackedTangentElement( const cmf::Span<cmf::VertexElement>& decl, uint32_t usageIndex )
+{
+	if( const auto* packedTangentElement = FindElement( decl, cmf::Usage::PackedTangent, usageIndex ) )
+	{
+		return packedTangentElement;
+	}
+	return FindElement( decl, cmf::Usage::PackedTangentLegacy, usageIndex );
+}
+
+}
 
 namespace cmf
 {
@@ -392,7 +426,7 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsLegacy( Vector4 t )
 }
 
 
-Vector4 PackTangents( TangentCompression compression, Vector3 normal, Vector3 tangent, Vector3 bitangent )
+Vector4 PackTangents( TangentCompression compression, const Vector3& normal, const Vector3& tangent, const Vector3& bitangent )
 {
 	if( compression == TangentCompression::PackedTangent )
 	{
@@ -401,7 +435,7 @@ Vector4 PackTangents( TangentCompression compression, Vector3 normal, Vector3 ta
 	return PackTangentsLegacy( normal, tangent, bitangent );
 }
 
-std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compression, Vector4 t )
+std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compression, const Vector4& t )
 {
 	if( compression == TangentCompression::PackedTangent )
 	{
@@ -410,35 +444,24 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangents( TangentCompression compres
 	return UnpackTangentsLegacy( t );
 }
 
-void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, TangentCompression compression, CompressionErrorMetrics* metrics, MemoryAllocator& allocator, BufferManager& bufferManager )
+bool CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, TangentCompression compression, CompressionErrorMetrics* metrics, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
 	// Check if tangents are already packed.
-	auto packedTangentElement = FindElement( mesh.decl, Usage::PackedTangent, usageIndex );
-	if( packedTangentElement )
+	if( FindPackedTangentElement( mesh.decl, usageIndex ) )
 	{
-		return;
+		return false;
 	}
-
-
 	// Check if the mesh has the required data to pack tangents.
-	auto normalElement = FindElement( mesh.decl, Usage::Normal );
-	auto tangentElement = FindElement( mesh.decl, Usage::Tangent, usageIndex );
-	auto bitangentElement = FindElement( mesh.decl, Usage::Binormal, usageIndex );
-
-	if( !normalElement || !tangentElement || !bitangentElement )
+	if( !FindTangentElements( mesh.decl, usageIndex ) )
 	{
-		printf( "Failed to pack tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-		return;
+		return false;
 	}
-
 
 	// Create a new vertex declaration with the new tangents, and a mapping for copying to it.
-	Span<VertexElement> newVertexDeclaration;
-	VertexElement newPackedTangentElement;
-
-	{
+	auto ChangeDeclaration = []( const Span<VertexElement>& decl, uint32_t usageIndex, bool retainNormal, TangentCompression compression, MemoryAllocator& allocator ) {
+		Span<VertexElement> newVertexDeclaration;
 		uint32_t offset = 0;
-		for( VertexElement element : mesh.decl )
+		for( const auto& element : decl )
 		{
 			if( ( element.usage == Usage::Tangent || element.usage == Usage::Binormal ) && element.usageIndex == usageIndex )
 			{
@@ -446,9 +469,10 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 				continue;
 			}
 
-			if( element.usage == Usage::Normal && element.usageIndex == usageIndex )
+			if( element.usage == Usage::Normal && element.usageIndex == 0 )
 			{
 				// Insert the packed tangent
+				VertexElement newPackedTangentElement;
 				if( compression == TangentCompression::PackedTangent )
 				{
 					newPackedTangentElement = { Usage::PackedTangent, (uint8_t)usageIndex, ElementType::Int16Norm, 4, offset };
@@ -472,152 +496,189 @@ void CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 			Modify( newVertexDeclaration, allocator ).push_back( newElement );
 			offset += GetVertexElementSize( element );
 		}
-	}
+		return newVertexDeclaration;
+	};
 
-	uint32_t totalVertexCount = 0;
+	auto newVertexDeclaration = ChangeDeclaration( mesh.decl, usageIndex, retainNormal, compression, allocator );
 
-	double totalNormalError = 0.0;
-	double totalTangentError = 0.0;
-	double totalBitangentError = 0.0;
-
-	for( auto& lod : mesh.lods )
+	struct TotalMetrics
 	{
-		auto newVertexBuffer = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
-		uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
+		uint32_t vertexCount = 0;
 
-		ConstBufferElementStream<Vector3> normals( *normalElement, lod.vb, bufferManager );
-		ConstBufferElementStream<Vector3> tangents( *tangentElement, lod.vb, bufferManager );
-		ConstBufferElementStream<Vector3> bitangents( *bitangentElement, lod.vb, bufferManager );
+		double normalError = 0.0;
+		double tangentError = 0.0;
+		double bitangentError = 0.0;
+	};
+	TotalMetrics totals;
 
-		BufferElementStream<Vector4> packedTangents( newPackedTangentElement, newVertexBuffer, bufferManager );
+	auto CompressBuffer = [&allocator, &bufferManager, compression, usageIndex]( const BufferView& vb, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, TotalMetrics* totals ) {
+		auto tangentElements = FindTangentElements( oldDecl, usageIndex );
+		const auto* newPackedTangentElement = FindPackedTangentElement( newDecl, usageIndex );
+
+		auto newVertexBuffer = ChangeBufferVertexDeclaration( vb, oldDecl, newDecl, allocator, bufferManager );
+		const uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
+
+		const ConstBufferElementStream<Vector3> normals( tangentElements->normal, vb, bufferManager );
+		const ConstBufferElementStream<Vector3> tangents( tangentElements->tangent, vb, bufferManager );
+		const ConstBufferElementStream<Vector3> bitangents( tangentElements->bitangent, vb, bufferManager );
+
+		const BufferElementStream<Vector4> packedTangents( *newPackedTangentElement, newVertexBuffer, bufferManager );
 
 		for( uint32_t i = 0; i < vertexCount; i++ )
 		{
-			Vector3 normal = normals[i];
-			Vector3 tangent = tangents[i];
-			Vector3 bitangent = bitangents[i];
-			Vector4 packedTangent = PackTangents( compression, normal, tangent, bitangent );
+			const Vector3 normal = Normalize( normals[i] );
+			const Vector3 tangent = Normalize( tangents[i] );
+			const Vector3 bitangent = Normalize( bitangents[i] );
+			const Vector4 packedTangent = PackTangents( compression, normal, tangent, bitangent );
 			packedTangents.set( i, packedTangent );
 
-			if( metrics )
+			if( totals )
 			{
-				auto packedTangent2 = packedTangents[i];
+				const auto packedTangent2 = packedTangents[i];
 				auto [normal2, tangent2, bitangent2] = UnpackTangents( compression, packedTangent2 );
 
-				totalNormalError += acosf( std::clamp( Dot( normal, normal2 ), -1.0f, +1.0f ) );
-				totalTangentError += acosf( std::clamp( Dot( tangent, tangent2 ), -1.0f, +1.0f ) );
-				totalBitangentError += acosf( std::clamp( Dot( bitangent, bitangent2 ), -1.0f, +1.0f ) );
+				totals->normalError += acosf( std::clamp( Dot( normal, normal2 ), -1.0f, +1.0f ) );
+				totals->tangentError += acosf( std::clamp( Dot( tangent, tangent2 ), -1.0f, +1.0f ) );
+				totals->bitangentError += acosf( std::clamp( Dot( bitangent, bitangent2 ), -1.0f, +1.0f ) );
 			}
 		}
+		if( totals )
+		{
+			totals->vertexCount += vertexCount;
+		}
 
-		totalVertexCount += vertexCount;
+		return newVertexBuffer;
+	};
 
-		// TODO: May need to compress morph target tangents here too.
-		lod.vb = newVertexBuffer;
+	for( auto& lod : mesh.lods )
+	{
+		lod.vb = CompressBuffer( lod.vb, mesh.decl, newVertexDeclaration, ( metrics && mesh.lods.begin() == &lod ) ? &totals : nullptr );
 	}
 
 	mesh.decl = newVertexDeclaration;
 
+	if( auto morphTargetTangents = FindTangentElements( mesh.morphTargets.decl, usageIndex ) )
+	{
+		auto newMorphDecl = ChangeDeclaration( mesh.morphTargets.decl, usageIndex, retainNormal, compression, allocator );
+		for( auto& lod : mesh.lods )
+		{
+			for( auto& morphTarget : lod.morphTargets )
+			{
+				morphTarget.vb = CompressBuffer( morphTarget.vb, mesh.morphTargets.decl, newMorphDecl, nullptr );
+			}
+		}
+		mesh.morphTargets.decl = newMorphDecl;
+	}
+
 	if( metrics )
 	{
-		metrics->averageNormalErrorDegrees += float( totalNormalError / totalVertexCount * 180 / 3.14159265359 );
-		metrics->averageTangentErrorDegrees += float( totalTangentError / totalVertexCount * 180 / 3.14159265359 );
-		metrics->averageBitangentErrorDegrees += float( totalBitangentError / totalVertexCount * 180 / 3.14159265359 );
+		if( totals.vertexCount > 0 )
+		{
+			metrics->averageNormalErrorDegrees = float( totals.normalError / totals.vertexCount * 180 / 3.14159265359 );
+			metrics->averageTangentErrorDegrees = float( totals.tangentError / totals.vertexCount * 180 / 3.14159265359 );
+			metrics->averageBitangentErrorDegrees = float( totals.bitangentError / totals.vertexCount * 180 / 3.14159265359 );
+		}
+		else
+		{
+			metrics->averageNormalErrorDegrees = 0.0f;
+			metrics->averageTangentErrorDegrees = 0.0f;
+			metrics->averageBitangentErrorDegrees = 0.0f;
+		}
 	}
+	return true;
 }
 
-void DecompressTangents( Mesh& mesh, uint32_t usageIndex, MemoryAllocator& allocator, BufferManager& bufferManager )
+bool DecompressTangents( Mesh& mesh, uint32_t usageIndex, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
 	// Check if tangents are already packed.
-	auto packedTangentElement = FindElement( mesh.decl, Usage::PackedTangent, usageIndex );
+	const auto* packedTangentElement = FindPackedTangentElement( mesh.decl, usageIndex );
 	if( !packedTangentElement )
 	{
-		packedTangentElement = FindElement( mesh.decl, Usage::PackedTangentLegacy, usageIndex );
+		return false;
 	}
-	if( !packedTangentElement )
-	{
-		printf( "Failed to unpack tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-		printf( "    No PackedTangent%d attribute found.\n", 0 );
-		return;
-	}
-
 
 	// Create a new vertex declaration with the new tangents, and a mapping for copying to it.
-	Span<VertexElement> newVertexDeclaration;
-	VertexElement newNormalElement;
-	VertexElement newTangentElement;
-	VertexElement newBitangentElement;
-
-	{
+	auto ChangeDeclaration = []( const Span<VertexElement>& decl, uint32_t usageIndex, MemoryAllocator& allocator ) {
+		Span<VertexElement> newDecl;
 		uint32_t offset = 0;
-		for( VertexElement element : mesh.decl )
+		for( const auto& element : decl )
 		{
-
 			if( ( element.usage == Usage::PackedTangent || element.usage == Usage::PackedTangentLegacy ) && element.usageIndex == usageIndex )
 			{
 				// Insert the unpacked tangents
-				newNormalElement = { Usage::Normal, (uint8_t)0, ElementType::Float32, 3, offset };
-				Modify( newVertexDeclaration, allocator ).push_back( newNormalElement );
+				auto newNormalElement = VertexElement{ Usage::Normal, (uint8_t)0, ElementType::Float32, 3, offset };
+				Modify( newDecl, allocator ).push_back( newNormalElement );
 				offset += GetVertexElementSize( newNormalElement );
 
-				newTangentElement = { Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
-				Modify( newVertexDeclaration, allocator ).push_back( newTangentElement );
+				auto newTangentElement = VertexElement{ Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
+				Modify( newDecl, allocator ).push_back( newTangentElement );
 				offset += GetVertexElementSize( newTangentElement );
-
-				newBitangentElement = { Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
-				Modify( newVertexDeclaration, allocator ).push_back( newBitangentElement );
+				auto newBitangentElement = VertexElement{ Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
+				Modify( newDecl, allocator ).push_back( newBitangentElement );
 				offset += GetVertexElementSize( newBitangentElement );
 			}
-
-
 			if( ( element.usage == Usage::PackedTangent || element.usage == Usage::PackedTangentLegacy || element.usage == Usage::Tangent || element.usage == Usage::Binormal ) && element.usageIndex == usageIndex )
 			{
 				// Omit any existing tangents.
 				continue;
 			}
-
 			if( element.usage == Usage::Normal && element.usageIndex == 0 )
 			{
 				// Omit any existing normal
 				continue;
 			}
-
-
 			VertexElement newElement = element;
 			newElement.offset = offset;
-			Modify( newVertexDeclaration, allocator ).push_back( newElement );
+			Modify( newDecl, allocator ).push_back( newElement );
 			offset += GetVertexElementSize( element );
 		}
-	}
+		return newDecl;
+	};
 
-	auto compression = ( packedTangentElement->usage == Usage::PackedTangent ) ? TangentCompression::PackedTangent : TangentCompression::PackedTangentLegacy;
+	auto DecompressBuffer = [&allocator, &bufferManager]( const BufferView& vb, const Span<VertexElement>& oldDecl, const cmf::VertexElement& packedTangentElement, const Span<VertexElement>& newDecl ) {
+		auto compression = ( packedTangentElement.usage == Usage::PackedTangent ) ? TangentCompression::PackedTangent : TangentCompression::PackedTangentLegacy;
+		auto newVertexBuffer = ChangeBufferVertexDeclaration( vb, oldDecl, newDecl, allocator, bufferManager );
+		const uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
 
-	for( auto& lod : mesh.lods )
-	{
-		auto newVertexBuffer = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
-		uint32_t vertexCount = newVertexBuffer.size / newVertexBuffer.stride;
+		const auto tangentElements = FindTangentElements( newDecl, packedTangentElement.usageIndex );
 
-		ConstBufferElementStream<Vector4> packedTangents( *packedTangentElement, lod.vb, bufferManager );
-		BufferElementStream<Vector3> normals( newNormalElement, newVertexBuffer, bufferManager );
-		BufferElementStream<Vector3> tangents( newTangentElement, newVertexBuffer, bufferManager );
-		BufferElementStream<Vector3> bitangents( newBitangentElement, newVertexBuffer, bufferManager );
+		const ConstBufferElementStream<Vector4> packedTangents( packedTangentElement, vb, bufferManager );
+		const BufferElementStream<Vector3> normals( tangentElements->normal, newVertexBuffer, bufferManager );
+		const BufferElementStream<Vector3> tangents( tangentElements->tangent, newVertexBuffer, bufferManager );
+		const BufferElementStream<Vector3> bitangents( tangentElements->bitangent, newVertexBuffer, bufferManager );
 
 		for( uint32_t i = 0; i < vertexCount; i++ )
 		{
 			// Write out the new tangent and bitangent.
-			Vector4 packedTangent = packedTangents[i];
+			const Vector4 packedTangent = packedTangents[i];
 
 			auto [normal, tangent, bitangent] = UnpackTangents( compression, packedTangent );
 			normals.set( i, normal );
 			tangents.set( i, tangent );
 			bitangents.set( i, bitangent );
 		}
+		return newVertexBuffer;
+	};
 
-		// TODO: May need to compress morph target tangents here too.
-
-		lod.vb = newVertexBuffer;
+	auto newDecl = ChangeDeclaration( mesh.decl, usageIndex, allocator );
+	for( auto& lod : mesh.lods )
+	{
+		lod.vb = DecompressBuffer( lod.vb, mesh.decl, *packedTangentElement, newDecl );
 	}
+	mesh.decl = newDecl;
 
-	mesh.decl = newVertexDeclaration;
+	if( const auto* morphTargetTangents = FindPackedTangentElement( mesh.morphTargets.decl, usageIndex ) )
+	{
+		auto morphTargetDecl = ChangeDeclaration( mesh.morphTargets.decl, usageIndex, allocator );
+		for( auto& lod : mesh.lods )
+		{
+			for( auto& morphTarget : lod.morphTargets )
+			{
+				morphTarget.vb = DecompressBuffer( morphTarget.vb, mesh.morphTargets.decl, *morphTargetTangents, morphTargetDecl );
+			}
+		}
+		mesh.morphTargets.decl = morphTargetDecl;
+	}
+	return true;
 }
 }
