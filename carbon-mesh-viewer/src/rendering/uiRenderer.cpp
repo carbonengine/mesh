@@ -215,7 +215,7 @@ void UIRenderer::CMFInfoWindow( AppState& appState )
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
-	float ySize = height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1; // +1 so we get an  overlap of the borders
+	float ySize = std::max( 1.0f, height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1 ); // +1 so we get an  overlap of the borders
 
 	ImGui::SetNextWindowPos( ImVec2( 0, 18 ), ImGuiCond_Always );
 	ImGui::SetNextWindowSizeConstraints( ImVec2( 0, ySize ), ImVec2( width, ySize ) );
@@ -1039,7 +1039,7 @@ const char* UIRenderer::GetElementTypeName( cmf::ElementType type )
 		"Int16Norm", "Int16", "UInt8Norm", "UInt8", "Int8Norm", "Int8"
 	};
 	int idx = (int)type;
-	return idx >= 0 && idx < (int)cmf::ElementType::Count ? names[idx] : "Unknown";
+	return idx >= 0 && idx < cmf::ElementTypeCount ? names[idx] : "Unknown";
 }
 
 void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex )
@@ -1093,10 +1093,17 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 					const auto& attr = attributes[ai];
 					ImGui::TableSetColumnIndex( ai + 1 );
 
+					if( attr.byteOffset + (uint32_t)attr.elementCount * (uint32_t)attr.conv.second > stride )
+					{
+						ImGui::TextUnformatted( "Stride Offset Missmatch" );
+						continue;
+					}
+
 					if( attr.name.find( "Color" ) == 0 )
 					{
 						float c[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-						for( uint8_t i = 0; i < attr.elementCount && i < 4; ++i )
+                        // Only read in RGB for the colors since we dont store alpha data
+						for( uint8_t i = 0; i < attr.elementCount && i < 3; ++i )
 						{
 							const uint8_t* compPtr = vertexPtr + attr.byteOffset + i * attr.conv.second;
 							float v = attr.conv.first.to( compPtr );
@@ -1150,7 +1157,7 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, lod.vb.stride );
 	const uint8_t* vbData = cmfContent->Index( lod.vb.index, 0 ) + lod.vb.offset;
 
-    // Get the lables for the vertex atributes
+    // Get the labels for the vertex atributes
 	auto allAttributes = BuildAttributes( mesh.decl );
 
 	for( const auto& attr : allAttributes )
@@ -1159,7 +1166,7 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 			m_meshDetailsState.vertexAttributeFilter[attr.name] = true;
 	}
 
-    // Vertex atribute filter list
+    // Vertex attribute filter list
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##vf" ) )
