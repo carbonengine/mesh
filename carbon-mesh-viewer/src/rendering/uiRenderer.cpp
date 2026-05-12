@@ -12,10 +12,34 @@
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 
-enum class BoneColumn        { Name, Parent, Position, Rotation, Scale };
-enum class ChannelColumn     { Target, Type, Curve };
-enum class CurveColumn       { Interpolation, KnotType, ValueType, Dimensions, Knots };
-enum class AudioVertexColumn { X, Y, Z };
+enum class BoneColumn
+{
+	Name,
+	Parent,
+	Position,
+	Rotation,
+	Scale
+};
+enum class ChannelColumn
+{
+	Target,
+	Type,
+	Curve
+};
+enum class CurveColumn
+{
+	Interpolation,
+	KnotType,
+	ValueType,
+	Dimensions,
+	Knots
+};
+enum class AudioVertexColumn
+{
+	X,
+	Y,
+	Z
+};
 
 const ImVec4 LINK_COLOR( 0.4f, 0.6f, 1.0f, 1.0f );
 
@@ -1015,17 +1039,39 @@ std::string UIRenderer::GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex 
 	std::string name;
 	switch( usage )
 	{
-	case cmf::Usage::Position:            name = "Position"; break;
-	case cmf::Usage::Normal:              name = "Normal"; break;
-	case cmf::Usage::Tangent:             name = "Tangent"; break;
-	case cmf::Usage::Binormal:            name = "Binormal"; break;
-	case cmf::Usage::TexCoord:            name = "TexCoord"; break;
-	case cmf::Usage::Color:               name = "Color"; break;
-	case cmf::Usage::BoneIndices:         name = "Bone Indices"; break;
-	case cmf::Usage::BoneWeights:         name = "Bone Weights"; break;
-	case cmf::Usage::PackedTangent:       name = "Packed Tangent"; break;
-	case cmf::Usage::PackedTangentLegacy: name = "Packed Tangent (Legacy)"; break;
-	default:                              name = "Unknown"; break;
+	case cmf::Usage::Position:
+		name = "Position";
+		break;
+	case cmf::Usage::Normal:
+		name = "Normal";
+		break;
+	case cmf::Usage::Tangent:
+		name = "Tangent";
+		break;
+	case cmf::Usage::Binormal:
+		name = "Binormal";
+		break;
+	case cmf::Usage::TexCoord:
+		name = "TexCoord";
+		break;
+	case cmf::Usage::Color:
+		name = "Color";
+		break;
+	case cmf::Usage::BoneIndices:
+		name = "Bone Indices";
+		break;
+	case cmf::Usage::BoneWeights:
+		name = "Bone Weights";
+		break;
+	case cmf::Usage::PackedTangent:
+		name = "Packed Tangent";
+		break;
+	case cmf::Usage::PackedTangentLegacy:
+		name = "Packed Tangent (Legacy)";
+		break;
+	default:
+		name = "Unknown";
+		break;
 	}
 	if( usageIndex > 0 )
 		name += std::to_string( usageIndex );
@@ -1035,8 +1081,7 @@ std::string UIRenderer::GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex 
 const char* UIRenderer::GetElementTypeName( cmf::ElementType type )
 {
 	static const char* names[] = {
-		"Float32", "Float16", "UInt16Norm", "UInt16",
-		"Int16Norm", "Int16", "UInt8Norm", "UInt8", "Int8Norm", "Int8"
+		"Float32", "Float16", "UInt16Norm", "UInt16", "Int16Norm", "Int16", "UInt8Norm", "UInt8", "Int8Norm", "Int8"
 	};
 	int idx = (int)type;
 	return idx >= 0 && idx < cmf::ElementTypeCount ? names[idx] : "Unknown";
@@ -1102,7 +1147,7 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 					if( attr.name.find( "Color" ) == 0 )
 					{
 						float c[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-                        // Only read in RGB for the colors since we dont store alpha data
+						// Only read in RGB for the colors since we dont store alpha data
 						for( uint8_t i = 0; i < attr.elementCount && i < 3; ++i )
 						{
 							const uint8_t* compPtr = vertexPtr + attr.byteOffset + i * attr.conv.second;
@@ -1112,8 +1157,7 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 						float sz = ImGui::GetTextLineHeight();
 						ImVec2 p = ImGui::GetCursorScreenPos();
 						ImGui::GetWindowDrawList()->AddRectFilled(
-							p, ImVec2( p.x + sz, p.y + sz ),
-							IM_COL32( (int)( c[0] * 255 ), (int)( c[1] * 255 ), (int)( c[2] * 255 ), (int)( c[3] * 255 ) ) );
+							p, ImVec2( p.x + sz, p.y + sz ), IM_COL32( (int)( c[0] * 255 ), (int)( c[1] * 255 ), (int)( c[2] * 255 ), (int)( c[3] * 255 ) ) );
 						ImGui::Dummy( ImVec2( sz + 4.0f, sz ) );
 						ImGui::SameLine();
 					}
@@ -1157,7 +1201,7 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, lod.vb.stride );
 	const uint8_t* vbData = cmfContent->Index( lod.vb.index, 0 ) + lod.vb.offset;
 
-    // Get the labels for the vertex atributes
+	// Get the labels for the vertex atributes
 	auto allAttributes = BuildAttributes( mesh.decl );
 
 	for( const auto& attr : allAttributes )
@@ -1166,7 +1210,7 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 			m_meshDetailsState.vertexAttributeFilter[attr.name] = true;
 	}
 
-    // Vertex attribute filter list
+	// Vertex attribute filter list
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##vf" ) )
@@ -1219,8 +1263,7 @@ void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 		ImGui::RadioButton( "Triangles", &m_meshDetailsState.indexViewMode, 0 );
 	}
 
-	auto indexSelectable = [&]( uint32_t vertexIdx, int uniqueId )
-	{
+	auto indexSelectable = [&]( uint32_t vertexIdx, int uniqueId ) {
 		char buf[16];
 		snprintf( buf, sizeof( buf ), "%u", vertexIdx );
 		ImGui::PushID( uniqueId );
@@ -1440,9 +1483,7 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 		float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 		float contentHeight = (float)( mesh.boneBindings.size() + 1 ) * lineHeight;
 		float halfWindowHeight = ImGui::GetContentRegionAvail().y * 0.5f;
-		float bindingsHeight = hasSkeleton
-			? std::min( contentHeight, halfWindowHeight )
-			: ImGui::GetContentRegionAvail().y;
+		float bindingsHeight = hasSkeleton ? std::min( contentHeight, halfWindowHeight ) : ImGui::GetContentRegionAvail().y;
 
 		ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
@@ -1663,13 +1704,10 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& me
 					children[parent].push_back( i );
 			}
 
-			std::function<void( int )> renderBone = [&]( int bi )
-			{
+			std::function<void( int )> renderBone = [&]( int bi ) {
 				std::string boneName = cmf::ToStdString( skeleton.bones[bi] );
 				bool isLeaf = children[bi].empty();
-				ImGuiTreeNodeFlags flags = isLeaf
-					? ( ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen )
-					: ImGuiTreeNodeFlags_None;
+				ImGuiTreeNodeFlags flags = isLeaf ? ( ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen ) : ImGuiTreeNodeFlags_None;
 
 				ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
 				bool open = ImGui::TreeNodeEx( (void*)(intptr_t)bi, flags, "%s", boneName.c_str() );
@@ -1945,11 +1983,21 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 				const char* typeName = "Unknown";
 				switch( channel.targetType )
 				{
-				case cmf::AnimationChannelTargetType::BonePosition: typeName = "Bone Position"; break;
-				case cmf::AnimationChannelTargetType::BoneRotation: typeName = "Bone Rotation"; break;
-				case cmf::AnimationChannelTargetType::BoneScale:    typeName = "Bone Scale";    break;
-				case cmf::AnimationChannelTargetType::MorphTarget:  typeName = "Morph Target";  break;
-				case cmf::AnimationChannelTargetType::Other:        typeName = "Other";         break;
+				case cmf::AnimationChannelTargetType::BonePosition:
+					typeName = "Bone Position";
+					break;
+				case cmf::AnimationChannelTargetType::BoneRotation:
+					typeName = "Bone Rotation";
+					break;
+				case cmf::AnimationChannelTargetType::BoneScale:
+					typeName = "Bone Scale";
+					break;
+				case cmf::AnimationChannelTargetType::MorphTarget:
+					typeName = "Morph Target";
+					break;
+				case cmf::AnimationChannelTargetType::Other:
+					typeName = "Other";
+					break;
 				}
 
 				ImGui::TableNextRow();
@@ -1964,8 +2012,7 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 					case ChannelColumn::Type:
 						ImGui::TextUnformatted( typeName );
 						break;
-					case ChannelColumn::Curve:
-					{
+					case ChannelColumn::Curve: {
 						char curveBuf[16];
 						snprintf( curveBuf, sizeof( curveBuf ), "%u", channel.curveIndex );
 						ImGui::PushID( i );
@@ -2057,8 +2104,8 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
 			{
 				const auto& curve = anim.curves[i];
 
-				const char* interp        = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
-				const char* knotTypeName  = GetElementTypeName( curve.knotType );
+				const char* interp = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
+				const char* knotTypeName = GetElementTypeName( curve.knotType );
 				const char* valueTypeName = GetElementTypeName( curve.valueType );
 
 				ImGui::TableNextRow();
@@ -2073,11 +2120,21 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
 					ImGui::TableSetColumnIndex( col + 1 );
 					switch( activeCurveCols[col] )
 					{
-					case CurveColumn::Interpolation: ImGui::TextUnformatted( interp );        break;
-					case CurveColumn::KnotType:      ImGui::TextUnformatted( knotTypeName );  break;
-					case CurveColumn::ValueType:     ImGui::TextUnformatted( valueTypeName ); break;
-					case CurveColumn::Dimensions:    ImGui::Text( "%u", (uint32_t)curve.valueDimension ); break;
-					case CurveColumn::Knots:         ImGui::Text( "%u", curve.knotCount );    break;
+					case CurveColumn::Interpolation:
+						ImGui::TextUnformatted( interp );
+						break;
+					case CurveColumn::KnotType:
+						ImGui::TextUnformatted( knotTypeName );
+						break;
+					case CurveColumn::ValueType:
+						ImGui::TextUnformatted( valueTypeName );
+						break;
+					case CurveColumn::Dimensions:
+						ImGui::Text( "%u", (uint32_t)curve.valueDimension );
+						break;
+					case CurveColumn::Knots:
+						ImGui::Text( "%u", curve.knotCount );
+						break;
 					}
 				}
 			}
@@ -2097,12 +2154,12 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 	}
 
 	uint32_t vertexCount = (uint32_t)audioOcclusionMesh.vertices.size();
-	uint32_t indexCount  = (uint32_t)audioOcclusionMesh.indices.size();
-	uint32_t triCount    = indexCount / 3;
+	uint32_t indexCount = (uint32_t)audioOcclusionMesh.indices.size();
+	uint32_t triCount = indexCount / 3;
 
 	ImGui::Text( "Vertices: %u  Triangles: %u", vertexCount, triCount );
-	const auto& b  = audioOcclusionMesh.bounds;
-	auto         sz = b.Size();
+	const auto& b = audioOcclusionMesh.bounds;
+	auto sz = b.Size();
 	ImGui::Text( "Bounds Min:  %.4f  %.4f  %.4f", b.m_min.x, b.m_min.y, b.m_min.z );
 	ImGui::Text( "Bounds Max:  %.4f  %.4f  %.4f", b.m_max.x, b.m_max.y, b.m_max.z );
 	ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
@@ -2169,9 +2226,15 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 						ImGui::TableSetColumnIndex( col + 1 );
 						switch( activeVertCols[col] )
 						{
-						case AudioVertexColumn::X: ImGui::Text( "%.4f", v.x ); break;
-						case AudioVertexColumn::Y: ImGui::Text( "%.4f", v.y ); break;
-						case AudioVertexColumn::Z: ImGui::Text( "%.4f", v.z ); break;
+						case AudioVertexColumn::X:
+							ImGui::Text( "%.4f", v.x );
+							break;
+						case AudioVertexColumn::Y:
+							ImGui::Text( "%.4f", v.y );
+							break;
+						case AudioVertexColumn::Z:
+							ImGui::Text( "%.4f", v.z );
+							break;
 						}
 					}
 				}

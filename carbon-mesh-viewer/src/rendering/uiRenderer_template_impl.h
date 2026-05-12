@@ -1,5 +1,5 @@
 
-template<typename Decl>
+template <typename Decl>
 std::vector<UIRenderer::AttributeInfo> UIRenderer::BuildAttributes( const Decl& decl )
 {
 	std::vector<AttributeInfo> attributes;
@@ -8,11 +8,10 @@ std::vector<UIRenderer::AttributeInfo> UIRenderer::BuildAttributes( const Decl& 
 		auto conv = cmf::GetScalarConversionFunction<float>( elem.type );
 		if( !conv.first.to )
 			continue;
-		attributes.push_back( { 
-            GetUsageFlagLabel( elem.usage, elem.usageIndex ),
-			elem.offset,
-			std::min( elem.elementCount, uint8_t( 4 ) ),
-			conv } );
+		attributes.push_back( { GetUsageFlagLabel( elem.usage, elem.usageIndex ),
+								elem.offset,
+								std::min( elem.elementCount, uint8_t( 4 ) ),
+								conv } );
 	}
 	return attributes;
 }

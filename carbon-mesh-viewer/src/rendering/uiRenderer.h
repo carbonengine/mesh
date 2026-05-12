@@ -150,7 +150,7 @@ private:
 	static std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex );
 	static const char* GetElementTypeName( cmf::ElementType type );
 
-	template<typename Decl>
+	template <typename Decl>
 	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
 
 	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex );
