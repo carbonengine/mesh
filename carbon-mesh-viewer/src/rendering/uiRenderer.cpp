@@ -248,7 +248,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		return;
 	}
 
-	auto* cmfContent = appState.cmfContent.GetValue();
+	auto* cmfContent = appState.cmfContent.GetValue().get();
 	if( cmfContent == nullptr || cmfContent->m_cmfData == nullptr )
 	{
 		ImGui::Text( "No CMF loaded" );
