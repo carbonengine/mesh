@@ -260,7 +260,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
-	float ySize = height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1; // +1 so we get an overlap of the borders
+	float ySize = std::max( 1.0f, height - MENU_BAR_HEIGHT - ANIMATION_PLAYER_HEIGHT + 1 ); // +1 so we get an overlap of the borders
 
 	// Pivot (1,0) anchors the top-right corner to the right edge of the viewport
 	ImGui::SetNextWindowPos( ImVec2( width, MENU_BAR_HEIGHT ), ImGuiCond_Always, ImVec2( 1.0f, 0.0f ) );
@@ -1654,7 +1654,6 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 			ImGui::EndTable();
 		}
 	}
-
 }
 
 void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
