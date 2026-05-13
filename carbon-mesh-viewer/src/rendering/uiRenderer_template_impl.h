@@ -1,4 +1,21 @@
 
+template <typename Decl>
+std::vector<UIRenderer::AttributeInfo> UIRenderer::BuildAttributes( const Decl& decl )
+{
+	std::vector<AttributeInfo> attributes;
+	for( const auto& elem : decl )
+	{
+		auto conv = cmf::GetScalarConversionFunction<float>( elem.type );
+		if( !conv.first.to )
+			continue;
+		attributes.push_back( { GetUsageFlagLabel( elem.usage, elem.usageIndex ),
+								elem.offset,
+								std::min( elem.elementCount, uint8_t( 4 ) ),
+								conv } );
+	}
+	return attributes;
+}
+
 template <typename T>
 void UIRenderer::SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState )
 {
