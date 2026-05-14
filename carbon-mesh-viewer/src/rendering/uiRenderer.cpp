@@ -1688,6 +1688,26 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 		}
 	};
 
+	std::function<void( const cmf::Skeleton& )> renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
+		int boneCount = (int)skeleton.bones.size();
+		std::vector<std::vector<int>> children( boneCount );
+		std::vector<int> roots;
+
+		for( int i = 0; i < boneCount; ++i )
+		{
+			uint32_t parent = ( (size_t)i < skeleton.parents.size() ) ? skeleton.parents[i] : 0xffffffff;
+			if( parent == (uint32_t)i || parent >= (uint32_t)boneCount )
+				roots.push_back( i );
+			else
+				children[parent].push_back( i );
+		}
+
+		for( int root : roots )
+		{
+			renderBone( root, skeleton, children );
+		}
+	};
+
 	if( !skeletons.empty() )
 	{
 		std::string skelSectionHeader = "Skeletons (" + std::to_string( skeletons.size() ) + ")";
@@ -1702,22 +1722,7 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 
 				if( ImGui::TreeNodeEx( skelHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
 				{
-					int boneCount = (int)skeleton.bones.size();
-					std::vector<std::vector<int>> children( boneCount );
-					std::vector<int> roots;
-
-					for( int i = 0; i < boneCount; ++i )
-					{
-						uint32_t parent = ( (size_t)i < skeleton.parents.size() ) ? skeleton.parents[i] : 0xffffffff;
-						if( parent == (uint32_t)i || parent >= (uint32_t)boneCount )
-							roots.push_back( i );
-						else
-							children[parent].push_back( i );
-					}
-
-					for( int root : roots )
-						renderBone( root, skeleton, children );
-
+					renderSkeleton( skeleton );
 					ImGui::TreePop();
 				}
 				ImGui::PopID();
@@ -1729,190 +1734,160 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 	std::string meshesSectionHeader = "Meshes (" + std::to_string( meshes.size() ) + ")";
 	if( ImGui::TreeNodeEx( meshesSectionHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
 	{
-	for( int mi = 0; mi < (int)meshes.size(); ++mi )
-	{
-		ImGui::PushID( mi );
-		const auto& mesh = meshes[mi];
-		bool isCurrentMesh = ( mi == m_meshDetailsState.selectedMeshIndex );
-		ImGuiTreeNodeFlags meshFlags = isCurrentMesh ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None;
-		std::string meshHeader = "Mesh: " + cmf::ToStdString( mesh.name );
-
-		if( ImGui::TreeNodeEx( "##meshnode", meshFlags, "%s", meshHeader.c_str() ) )
+		for( int mi = 0; mi < (int)meshes.size(); ++mi )
 		{
+			ImGui::PushID( mi );
+			const auto& mesh = meshes[mi];
+			bool isCurrentMesh = ( mi == m_meshDetailsState.selectedMeshIndex );
+			ImGuiTreeNodeFlags meshFlags = isCurrentMesh ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None;
+			std::string meshHeader = "Mesh: " + cmf::ToStdString( mesh.name );
+			if( ImGui::TreeNodeEx( "##meshnode", meshFlags, "%s", meshHeader.c_str() ) )
 			{
-				const auto& b = mesh.bounds;
-				auto sz = b.Size();
-				ImGui::Text( "Bounds Min:  %.4f  %.4f  %.4f", b.m_min.x, b.m_min.y, b.m_min.z );
-				ImGui::Text( "Bounds Max:  %.4f  %.4f  %.4f", b.m_max.x, b.m_max.y, b.m_max.z );
-				ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
-			}
-
-			bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
-			if( hasSkeleton )
-			{
-				const auto& skeleton = skeletons[mesh.skeleton];
-				std::string skelHeader = "Skeleton[" + std::to_string( mesh.skeleton ) + "]: " + cmf::ToStdString( skeleton.name ) +
-					" (" + std::to_string( skeleton.bones.size() ) + " bones)";
-
-				if( ImGui::TreeNodeEx( skelHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
 				{
-					int boneCount = (int)skeleton.bones.size();
-					std::vector<std::vector<int>> children( boneCount );
-					std::vector<int> roots;
-
-					for( int i = 0; i < boneCount; ++i )
-					{
-						uint32_t parent = ( (size_t)i < skeleton.parents.size() ) ? skeleton.parents[i] : 0xffffffff;
-						if( parent == (uint32_t)i || parent >= (uint32_t)boneCount )
-							roots.push_back( i );
-						else
-							children[parent].push_back( i );
-					}
-
-						for( int root : roots )
-							renderBone( root, skeleton, children );
-
-					for( int root : roots )
-						renderBone( root, skeleton, children );
-
-					ImGui::TreePop();
+					const auto& b = mesh.bounds;
+					auto sz = b.Size();
+					ImGui::Text( "Bounds Min:  %.4f  %.4f  %.4f", b.m_min.x, b.m_min.y, b.m_min.z );
+					ImGui::Text( "Bounds Max:  %.4f  %.4f  %.4f", b.m_max.x, b.m_max.y, b.m_max.z );
+					ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
 				}
-				}
-
-			if( !mesh.morphTargets.targets.empty() )
-			{
-				std::string morphHeader = "Morph Targets (" + std::to_string( mesh.morphTargets.targets.size() ) + ")";
-				if( ImGui::TreeNode( morphHeader.c_str() ) )
+				bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
+				if( hasSkeleton )
 				{
-					if( !mesh.morphTargets.decl.empty() && ImGui::TreeNode( "Declaration" ) )
+					const auto& skeleton = skeletons[mesh.skeleton];
+					std::string skelHeader = "Skeleton[" + std::to_string( mesh.skeleton ) + "]: " + cmf::ToStdString( skeleton.name ) +
+						" (" + std::to_string( skeleton.bones.size() ) + " bones)";
+					if( ImGui::TreeNodeEx( skelHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
 					{
-						for( const auto& elem : mesh.morphTargets.decl )
-						{
-							std::string attrName = GetUsageFlagLabel( elem.usage, elem.usageIndex );
-							const char* typeName = GetElementTypeName( elem.type );
-							ImGui::TreeNodeEx( attrName.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen );
-							ImGui::SameLine();
-							ImGui::TextDisabled( "(%s x%u)", typeName, (uint32_t)elem.elementCount );
-						}
+						renderSkeleton( skeleton );
 						ImGui::TreePop();
 					}
-
-					for( int ti = 0; ti < (int)mesh.morphTargets.targets.size(); ++ti )
+				}
+				if( !mesh.morphTargets.targets.empty() )
+				{
+					std::string morphHeader = "Morph Targets (" + std::to_string( mesh.morphTargets.targets.size() ) + ")";
+					if( ImGui::TreeNode( morphHeader.c_str() ) )
 					{
-						const auto& target = mesh.morphTargets.targets[ti];
-						std::string name = cmf::ToStdString( target.name );
-						ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
-						bool morphOpen = ImGui::TreeNode( name.c_str() );
-						ImGui::PopStyleColor();
-						if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+						if( !mesh.morphTargets.decl.empty() && ImGui::TreeNode( "Declaration" ) )
 						{
-							m_meshDetailsState.linkedMorphTargetIndex = ti;
-							m_meshDetailsState.navigateToLinkedMorphTarget = true;
-						}
-						if( morphOpen )
-						{
-							ImGui::Text( "Max Displacement: %.4f", target.maxDisplacement );
-							for( int li = 0; li < (int)mesh.lods.size(); ++li )
+							for( const auto& elem : mesh.morphTargets.decl )
 							{
-								const auto& lod = mesh.lods[li];
-								if( ti < (int)lod.morphTargets.size() )
+								std::string attrName = GetUsageFlagLabel( elem.usage, elem.usageIndex );
+								const char* typeName = GetElementTypeName( elem.type );
+								ImGui::TreeNodeEx( attrName.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen );
+								ImGui::SameLine();
+								ImGui::TextDisabled( "(%s x%u)", typeName, (uint32_t)elem.elementCount );
+							}
+							ImGui::TreePop();
+						}
+						for( int ti = 0; ti < (int)mesh.morphTargets.targets.size(); ++ti )
+						{
+							const auto& target = mesh.morphTargets.targets[ti];
+							std::string name = cmf::ToStdString( target.name );
+							ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
+							bool morphOpen = ImGui::TreeNode( name.c_str() );
+							ImGui::PopStyleColor();
+							if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+							{
+								m_meshDetailsState.linkedMorphTargetIndex = ti;
+								m_meshDetailsState.navigateToLinkedMorphTarget = true;
+							}
+							if( morphOpen )
+							{
+								ImGui::Text( "Max Displacement: %.4f", target.maxDisplacement );
+								for( int li = 0; li < (int)mesh.lods.size(); ++li )
 								{
-									const auto& morphLod = lod.morphTargets[ti];
-									uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
-									ImGui::Text( "LOD %d: %u vertices", li, vtxCount );
+									const auto& lod = mesh.lods[li];
+									if( ti < (int)lod.morphTargets.size() )
+									{
+										const auto& morphLod = lod.morphTargets[ti];
+										uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
+										ImGui::Text( "LOD %d: %u vertices", li, vtxCount );
+									}
 								}
-							}
 								ImGui::TreePop();
+							}
 						}
-					}
-
 						ImGui::TreePop();
 					}
 				}
-			}
-
-			if( !mesh.areas.empty() )
-			{
-				std::string areasHeader = "Mesh Areas (" + std::to_string( mesh.areas.size() ) + ")";
-				if( ImGui::TreeNode( areasHeader.c_str() ) )
+				if( !mesh.areas.empty() )
 				{
-					for( const auto& area : mesh.areas )
+					std::string areasHeader = "Mesh Areas (" + std::to_string( mesh.areas.size() ) + ")";
+					if( ImGui::TreeNode( areasHeader.c_str() ) )
 					{
-						std::string areaName = cmf::ToStdString( area.name );
-						if( ImGui::TreeNode( areaName.c_str() ) )
+						for( const auto& area : mesh.areas )
 						{
-							ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
-							ImGui::Text( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
-							if( !area.bones.empty() )
+							std::string areaName = cmf::ToStdString( area.name );
+							if( ImGui::TreeNode( areaName.c_str() ) )
 							{
-								std::string boneList = "Bones:";
-								for( uint16_t bi : area.bones )
-									boneList += " " + std::to_string( bi );
-								ImGui::TextUnformatted( boneList.c_str() );
+								ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
+								ImGui::Text( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
+								if( !area.bones.empty() )
+								{
+									std::string boneList = "Bones:";
+									for( uint16_t bi : area.bones )
+										boneList += " " + std::to_string( bi );
+									ImGui::TextUnformatted( boneList.c_str() );
+								}
+								ImGui::TreePop();
 							}
-							ImGui::TreePop();
 						}
+						ImGui::TreePop();
 					}
-					ImGui::TreePop();
 				}
-			}
-
-			if( !mesh.lods.empty() )
-			{
-				std::string lodsHeader = "LODs (" + std::to_string( mesh.lods.size() ) + ")";
-				if( ImGui::TreeNode( lodsHeader.c_str() ) )
+				if( !mesh.lods.empty() )
 				{
-					for( int i = 0; i < (int)mesh.lods.size(); ++i )
+					std::string lodsHeader = "LODs (" + std::to_string( mesh.lods.size() ) + ")";
+					if( ImGui::TreeNode( lodsHeader.c_str() ) )
 					{
-						const auto& lod = mesh.lods[i];
-						std::string lodLabel;
-						if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
-							lodLabel = "LOD " + std::to_string( i ) + " (base)";
-						else
-							lodLabel = "LOD " + std::to_string( i ) + " (threshold: " + std::to_string( lod.threshold ) + "px)";
+						for( int i = 0; i < (int)mesh.lods.size(); ++i )
+						{
+							const auto& lod = mesh.lods[i];
+							std::string lodLabel;
+							if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
+								lodLabel = "LOD " + std::to_string( i ) + " (base)";
+							else
+								lodLabel = "LOD " + std::to_string( i ) + " (threshold: " + std::to_string( lod.threshold ) + "px)";
 
-						ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
-						bool lodOpen = ImGui::TreeNode( lodLabel.c_str() );
-						ImGui::PopStyleColor();
-						if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
-						{
-							m_meshDetailsState.selectedLodIndex = i;
-							m_meshDetailsState.scrollToLinkedVertex = true;
+							ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
+							bool lodOpen = ImGui::TreeNode( lodLabel.c_str() );
+							ImGui::PopStyleColor();
+							if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+							{
+								m_meshDetailsState.selectedLodIndex = i;
+								m_meshDetailsState.scrollToLinkedVertex = true;
+							}
+							if( lodOpen )
+							{
+								uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
+								uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
+								ImGui::Text( "Vertices: %u", vertexCount );
+								ImGui::Text( "Indices: %u", indexCount );
+								if( !lod.areas.empty() )
+									ImGui::Text( "Areas: %u", (uint32_t)lod.areas.size() );
+								if( !lod.morphTargets.empty() )
+									ImGui::Text( "Morph Targets: %u", (uint32_t)lod.morphTargets.size() );
+								ImGui::TreePop();
+							}
 						}
-						if( lodOpen )
-						{
-							uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
-							uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
-							ImGui::Text( "Vertices: %u", vertexCount );
-							ImGui::Text( "Indices: %u", indexCount );
-							if( !lod.areas.empty() )
-								ImGui::Text( "Areas: %u", (uint32_t)lod.areas.size() );
-							if( !lod.morphTargets.empty() )
-								ImGui::Text( "Morph Targets: %u", (uint32_t)lod.morphTargets.size() );
-							ImGui::TreePop();
-						}
+						ImGui::TreePop();
 					}
-					ImGui::TreePop();
 				}
-			}
-
-			if( !mesh.audioOcclusionMesh.vertices.empty() )
-			{
-				if( ImGui::TreeNode( "Audio Occlusion Mesh" ) )
+				if( !mesh.audioOcclusionMesh.vertices.empty() )
 				{
-					ImGui::Text( "Vertices: %u", (uint32_t)mesh.audioOcclusionMesh.vertices.size() );
-					ImGui::Text( "Indices: %u", (uint32_t)mesh.audioOcclusionMesh.indices.size() );
-					ImGui::TreePop();
+					if( ImGui::TreeNode( "Audio Occlusion Mesh" ) )
+					{
+						ImGui::Text( "Vertices: %u", (uint32_t)mesh.audioOcclusionMesh.vertices.size() );
+						ImGui::Text( "Indices: %u", (uint32_t)mesh.audioOcclusionMesh.indices.size() );
+						ImGui::TreePop();
+					}
 				}
+				ImGui::TreePop();
 			}
-
-			ImGui::TreePop();
+			ImGui::PopID();
 		}
-		ImGui::PopID();
+		ImGui::TreePop(); // Meshes
 	}
-	ImGui::TreePop(); // Meshes
-	}
-
 	ImGui::EndChild();
 }
 
