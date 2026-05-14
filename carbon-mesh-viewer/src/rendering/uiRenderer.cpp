@@ -281,7 +281,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 	}
 
 	const auto& meshes = cmfContent->m_cmfData->meshes;
-	if( meshes.size() == 0 )
+	if( meshes.empty() )
 	{
 		ImGui::Text( "No meshes" );
 		ImGui::End();
@@ -1520,7 +1520,7 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 	{
 		const auto& skeleton = skeletons[mesh.skeleton];
 		std::string skelName = cmf::ToStdString( skeleton.name );
-		ImGui::Text( "Skeleton: %s  Index: %u  Bones: %u", skelName.c_str(), ( uint32_t )mesh.skeleton, ( uint32_t )skeleton.bones.size() );
+		ImGui::Text( "Skeleton: %s  Index: %u  Bones: %u", skelName.c_str(), (uint32_t)mesh.skeleton, (uint32_t)skeleton.bones.size() );
 
 		static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
 		for( const auto& col : allBoneCols )
@@ -1667,7 +1667,6 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 	const auto& meshes = cmfContent->m_cmfData->meshes;
 	const auto& skeletons = cmfContent->m_cmfData->skeletons;
 
-	
 	std::function<void( int, const cmf::Skeleton&, const std::vector<std::vector<int>>& )> renderBone = [&]( int bi, const cmf::Skeleton& skeleton, const std::vector<std::vector<int>>& children ) {
 		std::string boneName = cmf::ToStdString( skeleton.bones[bi] );
 		bool isLeaf = children[bi].empty();
@@ -1770,12 +1769,15 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 							children[parent].push_back( i );
 					}
 
+						for( int root : roots )
+							renderBone( root, skeleton, children );
+
 					for( int root : roots )
 						renderBone( root, skeleton, children );
 
 					ImGui::TreePop();
 				}
-			}
+				}
 
 			if( !mesh.morphTargets.targets.empty() )
 			{
@@ -1820,11 +1822,12 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 									ImGui::Text( "LOD %d: %u vertices", li, vtxCount );
 								}
 							}
-							ImGui::TreePop();
+								ImGui::TreePop();
 						}
 					}
 
-					ImGui::TreePop();
+						ImGui::TreePop();
+					}
 				}
 			}
 
