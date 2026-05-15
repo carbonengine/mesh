@@ -11,14 +11,14 @@ bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 {
 	if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
 	{
-		if( value.size() == 0 )
-		{
-			return true;
-		}
 		// Total size must be multiple of element size
 		if( value.byteSize % sizeof( typename T::value_type ) != 0 )
 		{
 			return false;
+		}
+		if( value.size() == 0 )
+		{
+			return true;
 		}
 		// Pointer must be within the base + totalSize range
 		if( value.data() < base || reinterpret_cast<const uint8_t*>( value.end() ) > reinterpret_cast<const uint8_t*>( base ) + totalSize )
