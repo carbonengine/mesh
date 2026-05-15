@@ -37,8 +37,26 @@ template <typename From, typename To>
 inline ConversionFunction<To> MakeNormalizedConversionFunction()
 {
 	return {
-		[]( const void* data ) { return To( double( *reinterpret_cast<const From*>( data ) ) / double( std::numeric_limits<From>::max() ) ); },
-		[]( void* dest, const To& value ) { *reinterpret_cast<From*>( dest ) = From( value * double( std::numeric_limits<From>::max() ) ); }
+		[]( const void* data ) {
+			if constexpr( std::is_signed_v<From> )
+			{
+				return To( std::max( float( *static_cast<const From*>( data ) ) / float( std::numeric_limits<From>::max() ), -1.0f ) );
+			}
+			else
+			{
+				return To( float( *static_cast<const From*>( data ) ) / float( std::numeric_limits<From>::max() ) );
+			}
+		},
+		[]( void* dest, const To& value ) {
+			if constexpr( std::is_signed_v<From> )
+			{
+				*static_cast<From*>( dest ) = From( std::round( std::clamp( float( value ), -1.0f, 1.0f ) * float( std::numeric_limits<From>::max() ) ) );
+			}
+			else
+			{
+				*static_cast<From*>( dest ) = From( std::round( std::clamp( float( value ), 0.0f, 1.0f ) * float( std::numeric_limits<From>::max() ) ) );
+			}
+		}
 	};
 }
 
