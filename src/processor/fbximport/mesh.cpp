@@ -107,13 +107,51 @@ struct SkinWeights
      *
      * @return A 32-bit unsigned integer containing the packed bone weights.
      */
-	uint32_t GetPackedWeights() const
+	[[nodiscard]] uint32_t GetPackedWeights() const
 	{
-		uint32_t w0 = static_cast<uint32_t>( weights[0] * 255.f ) & 0xff;
-		uint32_t w1 = static_cast<uint32_t>( weights[1] * 255.f ) & 0xff;
-		uint32_t w2 = static_cast<uint32_t>( weights[2] * 255.f ) & 0xff;
-		uint32_t w3 = static_cast<uint32_t>( weights[3] * 255.f ) & 0xff;
-		return ( w0 & 0xff ) | ( ( w1 & 0xff ) << 8 ) | ( ( w2 & 0xff ) << 16 ) | ( ( w3 & 0xff ) << 24 );
+		const uint32_t maxUint8 = std::numeric_limits<uint8_t>::max();
+
+		auto weightAsUint8 = [maxUint8]( float weight ) -> uint32_t {
+			return std::min( static_cast<uint32_t>( std::max( 0.0f, std::round( weight * float( maxUint8 ) ) ) ), maxUint8 );
+		};
+		std::array<uint32_t, 4> intWeights = {
+			weightAsUint8( weights[0] ),
+			weightAsUint8( weights[1] ),
+			weightAsUint8( weights[2] ),
+			weightAsUint8( weights[3] )
+		};
+		// Renormalize the integer weights to ensure they sum up to 255.
+		auto sum = std::accumulate( intWeights.begin(), intWeights.end(), 0u );
+		if( sum != 0 )
+		{
+			while( sum != maxUint8 )
+			{
+				for( auto& w : intWeights )
+				{
+					if( sum < maxUint8 )
+					{
+						if( w < maxUint8 )
+						{
+							++w;
+							++sum;
+						}
+					}
+					else
+					{
+						if( w > 0 )
+						{
+							--w;
+							--sum;
+						}
+					}
+					if( sum == maxUint8 )
+					{
+						break;
+					}
+				}
+			}
+		}
+		return intWeights[0] | ( intWeights[1] << 8 ) | ( intWeights[2] << 16 ) | ( intWeights[3] << 24 );
 	}
 };
 
@@ -292,7 +330,7 @@ cmf::Span<cmf::VertexElement> CreateVertexDeclaration( const ufbx_mesh& geom, co
 		offset += cmf::GetElementTypeSize( options.boneIndexType ) * 4;
 		if( options.bonesPerVertex != 1 )
 		{
-			cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::BoneWeights, 0, cmf::ElementType::UInt8, 4, offset } );
+			cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::BoneWeights, 0, cmf::ElementType::UInt8Norm, 4, offset } );
 			offset += sizeof( uint32_t );
 		}
 	}

@@ -262,7 +262,7 @@ void ExportMeshToSimplygon( Simplygon::spGeometryData& geomData, const cmf::Mesh
 			Enumerate( cmf::ConstBufferElementStream<std::array<uint32_t, 4>>( element, srcLod.vb, bufferAllocator ), [&]( size_t idx, std::array<uint32_t, 4> uv ) {
 				for( uint32_t b = 0; b < bonesPerVertex; ++b )
 				{
-					indices->SetItem( Simplygon::rid( idx * 4 + b ), Simplygon::rid( uv[b] ) );
+					indices->SetItem( Simplygon::rid( idx * bonesPerVertex + b ), Simplygon::rid( uv[b] ) );
 				}
 			} );
 
