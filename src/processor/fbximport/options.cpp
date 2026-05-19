@@ -557,11 +557,15 @@ void from_json( const nlohmann::json& j, ImportOptions& p )
 	{
 		j.at( "animation" ).get_to( p.animationOptions );
 	}
+	if( j.contains( "lowdetailSuffix" ) )
+	{
+		j.at( "lowdetailSuffix" ).get_to( p.lowdetailSuffix );
+	}
 }
 
 void to_json( nlohmann::json& j, const ImportOptions& p )
 {
-	j = nlohmann::json{ { "mesh", p.meshOptions }, { "skeleton", p.skeletonOptions }, { "animation", p.animationOptions } };
+	j = nlohmann::json{ { "mesh", p.meshOptions }, { "skeleton", p.skeletonOptions }, { "animation", p.animationOptions }, { "lowdetailSuffix", p.lowdetailSuffix } };
 }
 
 void ValidateOptions( const ImportOptions& options )

@@ -197,6 +197,9 @@ struct ImportOptions
 	MeshImportOptions meshOptions;
 	SkeletonImportOptions skeletonOptions;
 	AnimationImportOptions animationOptions;
+
+	// Filename suffix for low-detail file version
+	std::string lowdetailSuffix;
 };
 
 void from_json( const nlohmann::json& j, ImportOptions& p );

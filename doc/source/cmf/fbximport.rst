@@ -37,7 +37,19 @@ Configuration files
 Configuration files are JSON files storing multiple settings controlling the import process. The structure of the JSON file is not rigid, i.e., the importer only tries to find the
 data in it that it can recognize. Furthermore, none of the settings in the file are mandatory: all settings have default values.
 
-The root of the JSON file is expected to be an object containing optional fields ``mesh``, ``skeleton``, ``animation`` that are objects themselves containing settings for mesh, skeleton, and animation importing, respectively.
+The root of the JSON file is expected to be an object containing optional fields ``mesh``, ``skeleton``, ``animation`` that are objects themselves containing settings for mesh, skeleton, 
+and animation importing, respectively as well as other settings described below.
+
+General settings
+^^^^^^^^^^^^^^^^
+``lowdetailSuffix``
+  Type ``string``, default ``""``. If this setting is not an empty string, the importer will create a "low-detail" version of the output file in the same directory as the
+  main output CMF file, with the same name but with the specified suffix before the file extension. The low-detail version of the file will only contain the lowest LOD for each mesh
+  along with all the skeletons and animations. These "low-detail" files can be used for streaming in games: the game can load the low-detail version of the file first, and then load
+  the main file in the background to get higher LODs. If this setting is an empty string, no low-detail version of the file is created. Also, if LOD generation is disabled or results
+  in no generated LODs, the low-detail version of the file will not be created regardless of this setting, as it would be identical to the main file. This built-in low-detail output
+  overlaps with the functionality of the ``extractlod`` command: use ``fbximport`` with ``lowdetailSuffix`` when generating CMF files from FBX, and use ``extractlod`` when you need to
+  create a low-detail CMF from an existing CMF file after import.
 
 Mesh settings
 ^^^^^^^^^^^^^
