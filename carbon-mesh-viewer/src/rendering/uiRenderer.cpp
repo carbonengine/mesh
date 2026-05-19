@@ -949,8 +949,10 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 			for( const auto& lod : mesh.lods )
 			{
-				meshState.vertexCount += lod.vb.size / lod.vb.stride;
-				meshState.indexCount += lod.ib.size / lod.ib.stride;
+				if( lod.vb.stride > 0 )
+					meshState.vertexCount += lod.vb.size / lod.vb.stride;
+				if( lod.ib.stride > 0 )
+					meshState.indexCount += lod.ib.size / lod.ib.stride;
 			}
 
 			m_uiState.modelStates.totalVertexCount += meshState.vertexCount;
