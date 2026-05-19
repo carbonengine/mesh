@@ -949,8 +949,10 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 			for( const auto& lod : mesh.lods )
 			{
-				meshState.vertexCount += lod.vb.size / lod.vb.stride;
-				meshState.indexCount += lod.ib.size / lod.ib.stride;
+				if( lod.vb.stride > 0 )
+					meshState.vertexCount += lod.vb.size / lod.vb.stride;
+				if( lod.ib.stride > 0 )
+					meshState.indexCount += lod.ib.size / lod.ib.stride;
 			}
 
 			m_uiState.modelStates.totalVertexCount += meshState.vertexCount;
@@ -1817,7 +1819,12 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 					{
 						for( const auto& area : mesh.areas )
 						{
+							ImGui::PushID( &area );
 							std::string areaName = cmf::ToStdString( area.name );
+							if( areaName.empty() )
+							{
+								areaName = "Unnamed Area";
+							}
 							if( ImGui::TreeNode( areaName.c_str() ) )
 							{
 								ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
@@ -1831,6 +1838,7 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 								}
 								ImGui::TreePop();
 							}
+							ImGui::PopID();
 						}
 						ImGui::TreePop();
 					}
