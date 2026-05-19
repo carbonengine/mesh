@@ -1819,7 +1819,12 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 					{
 						for( const auto& area : mesh.areas )
 						{
+							ImGui::PushID( &area );
 							std::string areaName = cmf::ToStdString( area.name );
+							if(areaName.empty())
+							{
+								areaName = "Unnamed Area";
+							}
 							if( ImGui::TreeNode( areaName.c_str() ) )
 							{
 								ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
@@ -1833,6 +1838,7 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 								}
 								ImGui::TreePop();
 							}
+							ImGui::PopID();
 						}
 						ImGui::TreePop();
 					}
