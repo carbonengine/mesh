@@ -1821,7 +1821,7 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 						{
 							ImGui::PushID( &area );
 							std::string areaName = cmf::ToStdString( area.name );
-							if(areaName.empty())
+							if( areaName.empty() )
 							{
 								areaName = "Unnamed Area";
 							}
