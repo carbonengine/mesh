@@ -195,6 +195,24 @@ Animation settings
 ``animation.moveToOrigin``
   Type ``boolean``, default ``true``. If this setting is ``true``, the animation for the root bone translation and orientation is relative to its pose on the first frame.
 
+``animation.reduceKeyframes``
+  Type ``boolean``, default ``true``. If this setting is ``true``, the animation keyframes will be reduced to remove redundant keys reconstructible by interpolation.
+
+``animation.keyReductionTolerance``
+  Type ``number``, default ``0.001``. Tolerance value used when reducing animation keyframes. Keys that can be reconstructable within this tolerance are considered redundant and removed.
+  The smaller the value, the more keyframes will be retained.
+
+``animation.optimizeFormat``
+  Type ``boolean``, default ``true``. If this setting is ``true``, the importer tries to find a smaller representation for the animation data (normalized fixed-point values, half-precision floats, etc.), 
+  optimizing the format for storage.
+
+``animation.keyTolerance``
+  Type ``number``, default ``0.001``. Tolerance value for keyframe times used when optimizing curve format. Smaller the values may prevent format optimization.
+
+``animation.valueTolerance``
+  Type ``number``, default ``0.0001``. Tolerance value for keyframe values used when optimizing curve format. Smaller the values may prevent format optimization.
+
+
 Examples
 ^^^^^^^^
 

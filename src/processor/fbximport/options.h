@@ -176,6 +176,16 @@ struct AnimationImportOptions
 	NamedFilter namedFilter;
 	// Animation is exported relative to the first frame pose
 	bool moveToOrigin = true;
+	// Reduce keyframes to optimize animation data
+	bool reduceKeyframes = true;
+	// Tolerance used for keyframe reduction. The smaller the value, the more keyframes will be retained.
+	float keyReductionTolerance = 0.001f;
+	// Try to find a smaller numeric format for animation data (e.g. half float instead of full float) to reduce memory usage.
+	bool optimizeFormat = true;
+	// Tolerance for keyframe times used for format optimization. Smaller the values may prevent format optimization
+	float keyTolerance = 0.001f;
+	// Tolerance for keyframe values used for format optimization. Smaller the values may prevent format optimization
+	float valueTolerance = 0.0001f;
 };
 
 void from_json( const nlohmann::json& j, AnimationImportOptions& p );

@@ -95,6 +95,28 @@ CARBON_MESH_EXPORT Vector4 SampleVector4Curve( const cmf::AnimationCurve& curve,
 */
 CARBON_MESH_EXPORT Quaternion SampleQuaternionCurve( const cmf::AnimationCurve& curve, float time );
 
+/**
+ * @brief Removes duplicate curves from an animation. 
+ * Considers curves identical if they are bitwise identical. The function modifies animation parameter in-place.
+ * 
+ * @param animation The animation from which to remove duplicate curves.
+ * @param allocator The memory allocator to use for the operation.
+ */
+CARBON_MESH_EXPORT void RemoveDuplicateCurves( cmf::Animation& animation, cmf::MemoryAllocator& allocator );
+
+/**
+ * @brief Optimizes the knot and/or value format of an animation curve to reduce memory usage. Tries to choose the smallest possible numeric 
+ * format for the curve's knots and values (8 or 16 bit fixed point formats or 16-bit float format) based on the range and precision of the data, 
+ * while ensuring that the optimized curve produces results within the specified tolerances. The function modifies the input curve in-place.
+ * 
+ * @param curve The animation curve to optimize. This parameter is modified in place.
+ * @param keyTolerance The tolerance value used for keyframe time optimization.
+ * @param tolerance The general tolerance value used during optimization.
+ * @param allocator The memory allocator used for internal operations.
+ * @return This function does not return a value.
+ */
+CARBON_MESH_EXPORT void OptimizeCurveFormat( cmf::AnimationCurve& curve, float keyTolerance, float tolerance, cmf::MemoryAllocator& allocator );
+
 /** @brief Samples a skeletal animation to produce a new skeleton pose at the given time.
 * The function iterates through the animation channels, identifies those that target bone transformations, and samples the 
 * corresponding curves to update the bone transforms in the output pose. It will not change the transforms of bones that are 

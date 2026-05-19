@@ -1155,6 +1155,8 @@ cmf::Mesh ImportMesh( const ufbx_node& meshNode, const MeshImportOptions& option
 
 	GenerateAudioOcclusionMesh( outMesh, options.audioOcclusionMesh, allocator, bufferAllocator );
 
+	OptimizeBuffers( outMesh, bufferAllocator );
+
 	return outMesh;
 }
 

@@ -1,4 +1,6 @@
 #include "animation.h"
+#include "cmf/declutils.h"
+#include "cmf/animation.h"
 
 
 /**
@@ -212,7 +214,10 @@ cmf::Span<cmf::Animation> ImportAnimations( const ufbx_scene& scene, const BoneM
 		ufbx_bake_opts opts = { 0 };
 		opts.trim_start_time = true;
 		opts.step_handling = UFBX_BAKE_STEP_HANDLING_IDENTICAL_TIME;
-		auto bakedAnim = ufbx_bake_anim( &scene, animStack->anim, &opts, nullptr );
+		opts.key_reduction_enabled = options.reduceKeyframes;
+		opts.key_reduction_rotation = true;
+		opts.key_reduction_threshold = options.keyReductionTolerance;
+		auto* bakedAnim = ufbx_bake_anim( &scene, animStack->anim, &opts, nullptr );
 		ImportSkeletalAnimations(
 			outAnim.channels,
 			outAnim.curves,
@@ -234,5 +239,20 @@ cmf::Span<cmf::Animation> ImportAnimations( const ufbx_scene& scene, const BoneM
 	// To match the order of animations in the legacy importer
 	std::reverse( outAnims.begin(), outAnims.end() );
 
+	// Remove duplicate curves
+	for( auto& anim : outAnims )
+	{
+		cmf::RemoveDuplicateCurves( anim, allocator );
+	}
+	if( options.optimizeFormat )
+	{
+		for( auto& anim : outAnims )
+		{
+			for( auto& curve : anim.curves )
+			{
+				cmf::OptimizeCurveFormat( curve, options.keyTolerance, options.valueTolerance, allocator );
+			}
+		}
+	}
 	return outAnims;
 }
