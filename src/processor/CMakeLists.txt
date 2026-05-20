@@ -38,6 +38,9 @@ find_package(CLI11 CONFIG REQUIRED)
 find_package(unofficial-hash-library CONFIG REQUIRED)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
+if(NOT TINYGLTF_INCLUDE_DIRS)
+    message(FATAL_ERROR "tiny_gltf.h not found. Install the tinygltf package via vcpkg.")
+endif()
 
 if(USE_SIMPLYGON)
     find_package(Simplygon CONFIG REQUIRED)

@@ -9,14 +9,15 @@
 
 namespace
 {
-struct GLFTOptions
+struct GLTFOptions
 {
 	std::string srcPath;
 	std::string dstPath;
 	bool combinedFile;
 };
 
-const cmf::VertexElement* FindElement( cmf::Span<cmf::VertexElement> decl, cmf::Usage usage )
+// Find elements that do not require usageIndex and only exist in the data stream once
+const cmf::VertexElement* FindSingleUsageElement( cmf::Span<cmf::VertexElement> decl, cmf::Usage usage )
 {
 	for ( const auto& element : decl )
 	{
@@ -147,7 +148,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 	if ( mesh.lods.empty() )
 		return;
 
-	const auto* posElement = FindElement( mesh.decl, cmf::Usage::Position );
+	const auto* posElement = FindSingleUsageElement( mesh.decl, cmf::Usage::Position );
 	if ( !posElement || posElement->type != cmf::ElementType::Float32 || posElement->elementCount != 3 )
 	{
 		fprintf( stderr, "Mesh '%.*s' has unsupported position format; skipping\n",
@@ -160,43 +161,62 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 
 	for ( const auto& lod : mesh.lods )
 	{
-		const uint32_t vertexCount = lod.vb.size / lod.vb.stride;
-		const uint32_t indexCount  = lod.ib.size / lod.ib.stride;
+		const uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
 		const auto* vbBytes = static_cast<const uint8_t*>( bufferManager.GetData( lod.vb ) );
-
-		// Write indices into glTF buffer
-		AlignBuffer( gltfBuffer, lod.ib.stride );
-		const size_t indexByteOffset = gltfBuffer.data.size();
-		const size_t indexByteLength  = static_cast<size_t>( indexCount ) * lod.ib.stride;
-		const auto* ibBytes = static_cast<const uint8_t*>( bufferManager.GetData( lod.ib ) );
-		gltfBuffer.data.resize( indexByteOffset + indexByteLength );
-		memcpy( gltfBuffer.data.data() + indexByteOffset, ibBytes, indexByteLength );
-
-		const int indexBVIdx = static_cast<int>( model.bufferViews.size() );
-		{
-			tinygltf::BufferView bv;
-			bv.buffer     = 0;
-			bv.byteOffset = indexByteOffset;
-			bv.byteLength = indexByteLength;
-			bv.target     = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
-			model.bufferViews.push_back( bv );
-		}
-
-		const int indexAccIdx = static_cast<int>( model.accessors.size() );
-		{
-			tinygltf::Accessor acc;
-			acc.bufferView    = indexBVIdx;
-			acc.byteOffset    = 0;
-			acc.componentType = lod.ib.stride == 2 ? TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT : TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
-			acc.type          = TINYGLTF_TYPE_SCALAR;
-			acc.count         = indexCount;
-			model.accessors.push_back( acc );
-		}
 
 		// Vertex attributes
 		tinygltf::Primitive prim;
-		prim.indices = indexAccIdx;
-		prim.mode    = TINYGLTF_MODE_TRIANGLES;
+		switch( mesh.topology )
+		{
+		case cmf::v1::MeshTopology::PointList: {
+			prim.mode = TINYGLTF_MODE_POINTS;
+			break;
+		}
+		case cmf::v1::MeshTopology::TriangleList: {
+			prim.mode = TINYGLTF_MODE_TRIANGLES;
+			break;
+		}
+		default: {
+			fprintf( stderr, "Unsupported MeshTopology" );
+			return;
+		}
+		}
+
+		// Write indices into glTF buffer
+		if( lod.ib.stride > 0 )
+		{
+			const uint32_t indexCount = lod.ib.size / lod.ib.stride;
+
+			AlignBuffer( gltfBuffer, lod.ib.stride );
+			const size_t indexByteOffset = gltfBuffer.data.size();
+			const size_t indexByteLength = static_cast<size_t>( indexCount ) * lod.ib.stride;
+			const auto* ibBytes = static_cast<const uint8_t*>( bufferManager.GetData( lod.ib ) );
+			gltfBuffer.data.resize( indexByteOffset + indexByteLength );
+			memcpy( gltfBuffer.data.data() + indexByteOffset, ibBytes, indexByteLength );
+
+			const int indexBVIdx = static_cast<int>( model.bufferViews.size() );
+			{
+				tinygltf::BufferView bv;
+				bv.buffer = 0;
+				bv.byteOffset = indexByteOffset;
+				bv.byteLength = indexByteLength;
+				bv.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+				model.bufferViews.push_back( bv );
+			}
+
+			const int indexAccIdx = static_cast<int>( model.accessors.size() );
+			{
+				tinygltf::Accessor acc;
+				acc.bufferView = indexBVIdx;
+				acc.byteOffset = 0;
+				acc.componentType = lod.ib.stride == 2 ? TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT : TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+				acc.type = TINYGLTF_TYPE_SCALAR;
+				acc.count = indexCount;
+				model.accessors.push_back( acc );
+			}
+
+			prim.indices = indexAccIdx;
+		}
 
 		prim.attributes["POSITION"] = AddVertexAttributeFloat( vbBytes, vertexCount, lod.vb.stride, *posElement, gltfBuffer, model );
 
@@ -208,7 +228,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 		};
 		for ( const auto& attrib : kSingleAttribs )
 		{
-			const auto* elem = FindElement( mesh.decl, attrib.usage );
+			const auto* elem = FindSingleUsageElement( mesh.decl, attrib.usage );
 			if ( elem && elem->type == cmf::ElementType::Float32 )
 				prim.attributes[attrib.name] = AddVertexAttributeFloat( vbBytes, vertexCount, lod.vb.stride, *elem, gltfBuffer, model );
 		}
@@ -220,43 +240,36 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 		};
 		for ( const auto& attrib : kMultiAttribs )
 		{
-			int setIdx = 0;
 			for ( const auto& elem : mesh.decl )
 			{
 				if ( elem.usage == attrib.usage && elem.type == cmf::ElementType::Float32 )
 				{
-					const std::string name = std::string( attrib.prefix ) + "_" + std::to_string( setIdx++ );
+					const std::string name = std::string( attrib.prefix ) + "_" + std::to_string( elem.usageIndex );
 					prim.attributes[name] = AddVertexAttributeFloat( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 				}
 			}
 		}
 
 		// Integer attributes (JOINTS_n)
+		for ( const auto& elem : mesh.decl )
 		{
-			int setIdx = 0;
-			for ( const auto& elem : mesh.decl )
+			if ( elem.usage == cmf::Usage::BoneIndices &&
+			     ( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
 			{
-				if ( elem.usage == cmf::Usage::BoneIndices &&
-				     ( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
-				{
-					const std::string name = std::string( "JOINTS_" ) + std::to_string( setIdx++ );
-					prim.attributes[name] = AddVertexAttributeInteger( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
-				}
+				const std::string name = std::string( "JOINTS_" ) + std::to_string( elem.usageIndex );
+				prim.attributes[name] = AddVertexAttributeInteger( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 			}
 		}
 
 		// Normalized integer attributes (WEIGHTS_n for non-float bone weights)
+		for ( const auto& elem : mesh.decl )
 		{
-			int setIdx = 0;
-			for ( const auto& elem : mesh.decl )
+			if ( elem.usage == cmf::Usage::BoneWeights &&
+			     ( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt8Norm ||
+			       elem.type == cmf::ElementType::UInt16 || elem.type == cmf::ElementType::UInt16Norm ) )
 			{
-				if ( elem.usage == cmf::Usage::BoneWeights &&
-				     ( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt8Norm ||
-				       elem.type == cmf::ElementType::UInt16 || elem.type == cmf::ElementType::UInt16Norm ) )
-				{
-					const std::string name = std::string( "WEIGHTS_" ) + std::to_string( setIdx++ );
-					prim.attributes[name] = AddVertexAttributeInteger( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model, true );
-				}
+				const std::string name = std::string( "WEIGHTS_" ) + std::to_string( elem.usageIndex );
+				prim.attributes[name] = AddVertexAttributeInteger( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model, true );
 			}
 		}
 
@@ -297,7 +310,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 	scene.nodes.push_back( lodNodeIndices[0] );
 }
 
-void GLTFConverter( CLI::App& app, GLFTOptions& options )
+void GLTFConverter( CLI::App& app, GLTFOptions& options )
 {
 	app.add_option( "src", options.srcPath, "Path to the source CMF file" )->required()->check( CLI::ExistingFile );
 	app.add_option( "dst", options.dstPath, "Path to the output glTF" )->required();
