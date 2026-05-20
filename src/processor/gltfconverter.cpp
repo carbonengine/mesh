@@ -268,8 +268,8 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 		// Integer attributes (JOINTS_n)
 		for( const auto& elem : mesh.decl )
 		{
-			if ( elem.usage == cmf::Usage::BoneIndices &&
-			     ( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
+			if( elem.usage == cmf::Usage::BoneIndices &&
+				( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
 			{
 				const std::string name = std::string( "JOINTS_" ) + std::to_string( elem.usageIndex );
 				prim.attributes[name] = AddVertexAttributeInteger( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
