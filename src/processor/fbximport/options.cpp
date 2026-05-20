@@ -506,11 +506,40 @@ void from_json( const nlohmann::json& j, AnimationImportOptions& p )
 	{
 		j.at( "moveToOrigin" ).get_to( p.moveToOrigin );
 	}
+	if( j.contains( "reduceKeyframes" ) )
+	{
+		j.at( "reduceKeyframes" ).get_to( p.reduceKeyframes );
+	}
+	if( j.contains( "keyReductionTolerance" ) )
+	{
+		j.at( "keyReductionTolerance" ).get_to( p.keyReductionTolerance );
+	}
+	if( j.contains( "optimizeFormat" ) )
+	{
+		j.at( "optimizeFormat" ).get_to( p.optimizeFormat );
+	}
+	if( j.contains( "keyTolerance" ) )
+	{
+		j.at( "keyTolerance" ).get_to( p.keyTolerance );
+	}
+	if( j.contains( "valueTolerance" ) )
+	{
+		j.at( "valueTolerance" ).get_to( p.valueTolerance );
+	}
 }
 
 void to_json( nlohmann::json& j, const AnimationImportOptions& p )
 {
-	j = nlohmann::json{ { "import", p.importAnimations }, { "filter", p.namedFilter.m_names }, { "moveToOrigin", p.moveToOrigin } };
+	j = nlohmann::json{
+		{ "import", p.importAnimations },
+		{ "filter", p.namedFilter.m_names },
+		{ "moveToOrigin", p.moveToOrigin },
+		{ "reduceKeyframes", p.reduceKeyframes },
+		{ "keyReductionTolerance", p.keyReductionTolerance },
+		{ "optimizeFormat", p.optimizeFormat },
+		{ "keyTolerance", p.keyTolerance },
+		{ "valueTolerance", p.valueTolerance }
+	};
 }
 
 void from_json( const nlohmann::json& j, ImportOptions& p )
@@ -528,11 +557,15 @@ void from_json( const nlohmann::json& j, ImportOptions& p )
 	{
 		j.at( "animation" ).get_to( p.animationOptions );
 	}
+	if( j.contains( "lowdetailSuffix" ) )
+	{
+		j.at( "lowdetailSuffix" ).get_to( p.lowdetailSuffix );
+	}
 }
 
 void to_json( nlohmann::json& j, const ImportOptions& p )
 {
-	j = nlohmann::json{ { "mesh", p.meshOptions }, { "skeleton", p.skeletonOptions }, { "animation", p.animationOptions } };
+	j = nlohmann::json{ { "mesh", p.meshOptions }, { "skeleton", p.skeletonOptions }, { "animation", p.animationOptions }, { "lowdetailSuffix", p.lowdetailSuffix } };
 }
 
 void ValidateOptions( const ImportOptions& options )

@@ -158,7 +158,7 @@ private:
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
-	void RenderHierarchyTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
+	void RenderHierarchyTab( CmfContent* cmfContent );
 	void RenderAnimationsTab( CmfContent* cmfContent );
 	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
 	void RenderAnimationCurvesSubTab( const cmf::Animation& anim );

@@ -6,6 +6,7 @@
 namespace cmf
 {
 
+// NOLINTBEGIN(readability-identifier-naming)
 template <typename T, typename P, typename Converter = DeclTypeConverter<T>>
 class BaseDataStream
 {
@@ -39,17 +40,17 @@ public:
 			return *this;
 		}
 
-		bool operator==( const Iterator& other ) const
+		[[nodiscard]] bool operator==( const Iterator& other ) const
 		{
 			return m_data == other.m_data;
 		}
 
-		bool operator!=( const Iterator& other ) const
+		[[nodiscard]] bool operator!=( const Iterator& other ) const
 		{
 			return m_data != other.m_data;
 		}
 
-		T operator*() const
+		[[nodiscard]] T operator*() const
 		{
 			return m_conversion( m_data );
 		}
@@ -87,12 +88,12 @@ public:
 		m_conversion.set( m_data + m_stride * index, value );
 	}
 
-	uint32_t size() const
+	[[nodiscard]] uint32_t size() const
 	{
 		return m_count;
 	}
 
-	bool exists() const
+	[[nodiscard]] bool exists() const
 	{
 		return m_data != nullptr;
 	}
@@ -122,6 +123,13 @@ template <typename T, typename P>
 class BaseBufferElementStream : public BaseDataStream<T, P>
 {
 public:
+	/**
+	 * @brief Constructs a buffer element stream for accessing a specific vertex element within an interleaved buffer.
+	 * @param element The vertex element describing the data layout, including type, count, and offset.
+	 * @param data Pointer to the raw vertex buffer data. Note that the actual data pointer is adjusted by the element's offset to point to the correct location within the buffer.
+	 * @param vertexCount The number of vertices in the buffer.
+	 * @param stride The byte offset between consecutive vertices in the buffer.
+	 */
 	BaseBufferElementStream( const VertexElement& element, P* data, uint32_t vertexCount, uint32_t stride ) :
 		BaseDataStream<T, P>( DeclTypeConverter<T>( element.type, element.elementCount ), static_cast<typename BaseDataStream<T, P>::Byte*>( data ) + element.offset, vertexCount, stride )
 	{
@@ -131,17 +139,32 @@ public:
 		}
 	}
 
+	/**
+	 * @brief Constructs a buffer element stream for accessing a specific vertex element within an interleaved buffer. This constructor is a convenience overload that extracts 
+	 * the necessary parameters from a BufferView structure, which describes the layout of the buffer data.
+	 * @param element The vertex element describing the data format.
+	 * @param buffer Pointer to the buffer data. The actual data pointer is adjusted by the view's offset to point to the correct location within the buffer, and the element's offset 
+	 * is applied to access the specific vertex element.
+	 * @param view The buffer view containing offset, count, and stride information.
+	 */
 	BaseBufferElementStream( const VertexElement& element, P* buffer, const BufferView& view ) :
 		BaseBufferElementStream( element, static_cast<typename BaseDataStream<T, P>::Byte*>( buffer ) + view.offset, GetStreamElementCount( view ), view.stride )
 	{
 	}
 
+	/**
+	 * @brief Constructs a buffer element stream for accessing a specific vertex element within an interleaved buffer. This constructor is a convenience overload that retrieves the buffer 
+	 * data from a BufferManager using a BufferView, which describes the layout of the buffer data.
+	 * @param element The vertex element describing the data layout.
+	 * @param view The buffer view specifying the data range and stride.
+	 * @param buffers The buffer manager providing access to the underlying buffer data.
+	 */
 	BaseBufferElementStream( const VertexElement& element, const BufferView& view, const BufferManager& buffers ) :
-		BaseBufferElementStream( element, buffers.GetData( view ), view.size / view.stride, view.stride )
+		BaseBufferElementStream( element, buffers.GetData( view ), GetStreamElementCount( view ), view.stride )
 	{
 	}
 
-	const VertexElement& element() const
+	[[nodiscard]] const VertexElement& element() const
 	{
 		return m_element;
 	}
@@ -150,8 +173,24 @@ private:
 	VertexElement m_element = {};
 };
 
+/**
+ * @brief A buffer stream is a container-like structure that provides an interface for accessing vertex data stored in an interleaved buffer. 
+ * It abstracts away the details of how the data is laid out in memory, allowing users to access elements using standard container semantics (e.g., iterators, indexing).
+ * The stream takes care of converting the raw byte data from the buffer into the appropriate types based on the vertex element description, 
+ * making it easier to work with vertex attributes without needing to manually handle byte offsets and type conversions.
+ * @tparam T Type of the vertex element data accessed through the stream (float, Vector3, etc.). The stream will perform conversions from the raw buffer data to this type when accessing elements.
+ */
 template <typename T>
 using ConstBufferElementStream = BaseBufferElementStream<T, const void>;
+
+/**
+ * @brief A buffer stream is a container-like structure that provides an interface for accessing vertex data stored in an interleaved buffer. 
+ * It abstracts away the details of how the data is laid out in memory, allowing users to access elements using standard container semantics (e.g., iterators, indexing).
+ * The stream takes care of converting the raw byte data from the buffer into the appropriate types based on the vertex element description, 
+ * making it easier to work with vertex attributes without needing to manually handle byte offsets and type conversions.
+ * This class is similar to ConstBufferElementStream but allows for modification of the vertex data through the stream interface using method `set`.
+ * @tparam T Type of the vertex element data accessed through the stream (float, Vector3, etc.). The stream will perform conversions to/from the raw buffer data to this type when accessing elements.
+ */
 template <typename T>
 using BufferElementStream = BaseBufferElementStream<T, void>;
 
@@ -162,18 +201,52 @@ class BaseIndexBufferStream : public BaseDataStream<uint32_t, P, IndexConverter>
 	using Base = BaseDataStream<uint32_t, P, IndexConverter>;
 
 public:
-	BaseIndexBufferStream( P* data, const BufferView& view ) :
-		Base( IndexConverter( view.stride ), static_cast<typename Base::Byte*>( data ) + view.offset, GetStreamElementCount( view ), view.stride )
+	/**
+	 * @brief Constructs an index buffer stream with the specified buffer data, index count, and stride.
+	 * @param data Pointer to the index buffer data.
+	 * @param indexCount The number of indices in the buffer.
+	 * @param stride The size in bytes between consecutive indices. Note that the only accepted stride values are 2 (for 16-bit indices) and 4 (for 32-bit indices).
+	 */
+	BaseIndexBufferStream( P* data, uint32_t indexCount, uint32_t stride ) :
+		Base( IndexConverter( stride ), static_cast<typename Base::Byte*>( data ), indexCount, stride )
 	{
 	}
 
+	/**
+	 * @brief Constructs an index buffer stream from a data pointer and buffer view. The buffer view provides the necessary information about the offset, 
+	 * size, and stride of the index data within the buffer. 
+	 * @param data Pointer to the buffer data. The actual data pointer is adjusted by the view's offset to point to the correct location within the buffer.
+	 * @param view The buffer view containing offset, size, and stride information.
+	 */
+	BaseIndexBufferStream( P* data, const BufferView& view ) :
+		BaseIndexBufferStream( static_cast<typename Base::Byte*>( data ) + view.offset, GetStreamElementCount( view ), view.stride )
+	{
+	}
+
+	/**
+	 * @brief Constructs an index buffer stream from a buffer view and buffer manager. The buffer manager is used to retrieve the actual data pointer for
+	 * the index buffer based on the information provided in the buffer view.
+	 * @param view The buffer view containing offset, size, and stride information for the index data.
+	 * @param buffers The buffer manager providing access to the underlying buffer data.
+	 */
 	BaseIndexBufferStream( const BufferView& view, const BufferManager& buffers ) :
-		BaseIndexBufferStream( buffers.GetData( view ), view )
+		BaseIndexBufferStream( buffers.GetData( view ), GetStreamElementCount( view ), view.stride )
 	{
 	}
 };
+// NOLINTEND(readability-identifier-naming)
 
+/**
+ * @brief An index buffer stream is a container-like structure that provides an interface for accessing index data stored in an index buffer.
+ * It simplifies accessing 16-bit or 32-bit index data by abstracting away the details of how the indices are laid out in memory and performing necessary conversions to a common type (uint32_t) for ease of use.
+ */
 using ConstIndexBufferStream = BaseIndexBufferStream<const void>;
+
+/**
+ * @brief An index buffer stream is a container-like structure that provides an interface for accessing index data stored in an index buffer.
+ * It simplifies accessing 16-bit or 32-bit index data by abstracting away the details of how the indices are laid out in memory and performing necessary conversions to a common type (uint32_t) for ease of use.
+ * This class is similar to ConstIndexBufferStream but allows for modification of the index data through the stream interface using method `set`.
+ */
 using IndexBufferStream = BaseIndexBufferStream<void>;
 
 }

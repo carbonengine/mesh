@@ -21,9 +21,9 @@ namespace cmf
 
 float CalculateUvDensity( const cmf::Mesh& mesh, const cmf::VertexElement& posDecl, const cmf::VertexElement& uvDecl, const cmf::BufferManager& buffers )
 {
-	cmf::BufferElementStream<Vector3> posStream( posDecl, buffers.GetData( mesh.lods[0].vb ), mesh.lods[0].vb );
-	cmf::BufferElementStream<Vector4> uvStream( uvDecl, buffers.GetData( mesh.lods[0].vb ), mesh.lods[0].vb );
-	cmf::IndexBufferStream indexStream( buffers.GetData( mesh.lods[0].ib ), mesh.lods[0].ib );
+	const cmf::BufferElementStream<Vector3> posStream( posDecl, mesh.lods[0].vb, buffers );
+	const cmf::BufferElementStream<Vector4> uvStream( uvDecl, mesh.lods[0].vb, buffers );
+	const cmf::IndexBufferStream indexStream( mesh.lods[0].ib, buffers );
 
 	auto diameter = GetMeshDiameter( posStream );
 	double totalArea = 0;

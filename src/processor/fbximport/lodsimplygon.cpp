@@ -30,7 +30,7 @@ void AssertSimplygonError( Simplygon::EErrorCodes ec, const std::string& message
 }
 
 /** Helper class to manage Simplygon initialization and deinitialization. */
-class SimplygonLibrary
+class SimplygonLibrary : public Simplygon::ErrorHandler
 {
 public:
 	static Simplygon::ISimplygon* Get()
@@ -45,6 +45,7 @@ private:
 	{
 		auto ec = Simplygon::Initialize( &sg );
 		AssertSimplygonError( ec, "Failed to initialize Simplygon" );
+		sg->SetErrorHandler( this );
 	}
 	~SimplygonLibrary()
 	{
@@ -53,6 +54,11 @@ private:
 			Simplygon::Deinitialize( sg );
 			sg = nullptr;
 		}
+	}
+
+	void HandleError( Simplygon::spObject /*object*/, const char* /*interfaceName*/, const char* /*methodName*/, Simplygon::rid /*errorType*/, const char* errorText ) override
+	{
+		throw std::runtime_error( std::string( "Simplygon error: " ) + errorText );
 	}
 };
 
@@ -106,10 +112,15 @@ void ExportVertexField( S simplygonArray, const cmf::VertexElement& element, con
 	} );
 }
 
+std::string GetCustomElementName( const std::string& prefix, const cmf::VertexElement& element )
+{
+	return prefix + "_" + std::to_string( static_cast<int>( element.usage ) ) + "_" + std::to_string( element.usageIndex );
+}
+
 /** Exports a vertex element as a user field into Simplygon geometry data. User fields are used for vertex elements that don't have a corresponding Simplygon field. */
 void ExportUserField( Simplygon::spGeometryData& geomData, const cmf::VertexElement& element, const std::string& namePrefix, const cmf::BufferView& vb, const cmf::BufferView& ib, cmf::BufferManager& bufferAllocator )
 {
-	const std::string name = namePrefix + std::to_string( static_cast<int>( element.usage ) ) + "_" + std::to_string( element.usageIndex );
+	const std::string name = GetCustomElementName( namePrefix, element );
 	const auto indexStream = cmf::ConstIndexBufferStream( ib, bufferAllocator );
 	if( IsFloatElementType( element.type ) )
 	{
@@ -169,13 +180,13 @@ void ExportMorphTargets( Simplygon::spGeometryData& geomData, const cmf::Mesh& m
 				case cmf::Usage::Binormal:
 					if( element.usageIndex == 0 )
 					{
-						continue; // Simplygon doesn't support morph tangents, skip them: we will recaclute them after LOD generation
+						continue; // Simplygon doesn't support morph tangents, skip them: we will recalculate them after LOD generation
 					}
 				default:
 					break;
 				}
 
-				ExportUserField( geomData, element, "CmfMorphAttr", srcLod.morphTargets[targetIndex].vb, srcLod.ib, bufferAllocator );
+				ExportUserField( geomData, element, "CmfMorphAttr_" + std::to_string( targetIndex ), srcLod.morphTargets[targetIndex].vb, srcLod.ib, bufferAllocator );
 			}
 		}
 	}
@@ -411,7 +422,7 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 		default:
 			break;
 		}
-		std::string name = "CmfAttr" + std::to_string( static_cast<int>( element.usage ) ) + "_" + std::to_string( element.usageIndex );
+		std::string name = GetCustomElementName( "CmfAttr", element );
 		auto field = packed->GetUserVertexField( name.c_str() );
 		if( IsFloatElementType( element.type ) )
 		{
@@ -447,11 +458,11 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 				}
 			case cmf::Usage::Tangent:
 			case cmf::Usage::Binormal:
-				continue; // Simplygon doesn't support morph tangents, skip them: we will recaclute them after LOD generation
+				continue; // Simplygon doesn't support morph tangents, skip them: we will recalculate them after LOD generation
 			default:
 				break;
 			}
-			std::string name = "CmfMorphAttr" + std::to_string( static_cast<int>( element.usage ) ) + "_" + std::to_string( element.usageIndex );
+			std::string name = GetCustomElementName( "CmfMorphAttr_" + std::to_string( targetIndex ), element );
 			auto field = packed->GetUserVertexField( name.c_str() );
 			if( IsFloatElementType( element.type ) )
 			{
@@ -572,6 +583,9 @@ void ValidateVertexDeclaration( const cmf::Mesh& mesh )
 				throw std::runtime_error( "Unsupported blend weights usage in mesh " + ToStdString( mesh.name ) );
 			}
 			break;
+		case cmf::Usage::PackedTangent:
+		case cmf::Usage::PackedTangentLegacy:
+			throw std::runtime_error( "Packed tangents are not supported in LOD generation; issue in mesh " + ToStdString( mesh.name ) );
 		default:
 			break;
 		}

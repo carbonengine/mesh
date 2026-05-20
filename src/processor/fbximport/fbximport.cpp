@@ -20,31 +20,6 @@ namespace
 using json = nlohmann::json;
 
 
-std::pair<std::unique_ptr<uint8_t[]>, size_t> LoadFile( const char* path )
-{
-#if _WIN32
-	FILE* f = nullptr;
-	fopen_s( &f, path, "rb" );
-#else
-	FILE* f = fopen( path, "rb" );
-#endif
-	if( !f )
-	{
-		return { nullptr, 0 };
-	}
-	fseek( f, 0, SEEK_END );
-	const size_t s = ftell( f );
-	fseek( f, 0, SEEK_SET );
-	std::unique_ptr<uint8_t[]> data( new uint8_t[s] );
-	if( fread( data.get(), 1, s, f ) != s )
-	{
-		fclose( f );
-		return { nullptr, 0 };
-	}
-	fclose( f );
-	return { std::move( data ), s };
-}
-
 struct ImportFBXArguments
 {
 	std::string fbxPath;
@@ -61,14 +36,10 @@ ImportOptions LoadOptions( const ImportFBXArguments& cliArgs )
 	ImportOptions options;
 	if( !cliArgs.configPath.empty() )
 	{
-		auto configFile = LoadFile( cliArgs.configPath.c_str() );
-		if( !configFile.first )
-		{
-			throw std::runtime_error( "Failed to load config file: " + cliArgs.configPath );
-		}
+		auto configFile = ReadFile( cliArgs.configPath.c_str() );
 		try
 		{
-			options = nlohmann::json::parse( configFile.first.get(), configFile.first.get() + configFile.second );
+			options = nlohmann::json::parse( configFile.begin(), configFile.end() );
 		}
 		catch( const std::exception& e )
 		{
@@ -98,6 +69,17 @@ ImportOptions LoadOptions( const ImportFBXArguments& cliArgs )
 	return options;
 }
 
+void WriteCmf( const char* path, const cmf::Data& data, const cmf::Metadata& metadata, cmf::BufferManager& bufferAllocator )
+{
+	auto fileData = cmf::BuildFile( data, bufferAllocator, &metadata );
+	auto validated = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
+	if( !validated )
+	{
+		throw std::runtime_error( "Generated CMF file is invalid: " + validated.error );
+	}
+	WriteFile( path, fileData );
+}
+
 void ImportFBX( CLI::App& app, ImportFBXArguments& cliArgs )
 {
 	app.add_option( "--config", cliArgs.configPath, "Path to a JSON config file that specifies import options" )->check( CLI::ExistingFile );
@@ -111,14 +93,10 @@ void ImportFBX( CLI::App& app, ImportFBXArguments& cliArgs )
 	app.final_callback( [&cliArgs]() {
 		const ImportOptions options = LoadOptions( cliArgs );
 
-		auto file = LoadFile( cliArgs.fbxPath.c_str() );
-		if( !file.first )
-		{
-			throw std::runtime_error( "Failed to load file: " + cliArgs.fbxPath );
-		}
+		auto file = ReadFile( cliArgs.fbxPath.c_str() );
 
 		ufbx_error error;
-		auto* scene = ufbx_load_memory( file.first.get(), file.second, nullptr, &error );
+		auto* scene = ufbx_load_memory( file.data(), file.size(), nullptr, &error );
 		if( !scene )
 		{
 			constexpr size_t largeEnoughForError = 4096;
@@ -150,38 +128,39 @@ void ImportFBX( CLI::App& app, ImportFBXArguments& cliArgs )
 			cliArgs.metadataPath = std::filesystem::proximate( cliArgs.fbxPath, std::filesystem::path( cliArgs.cmfPath ).remove_filename() ).string();
 		}
 		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "source" ), allocator.AllocateString( cliArgs.metadataPath ) } );
-		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "sourceHash" ), allocator.AllocateString( MD5()( file.first.get(), file.second ) ) } );
-		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "generator" ), allocator.AllocateString( "cmfprocessor" ) } );
+		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "sourceHash" ), allocator.AllocateString( MD5()( file.data(), file.size() ) ) } );
+		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "generator" ), allocator.AllocateString( "cmfprocessor fbximport" ) } );
 		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "generatorVersion" ), allocator.AllocateString( CMF_PROCESSOR_VERSION ) } );
 		cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "options" ), allocator.AllocateString( json( options ).dump() ) } );
-
-		auto fileData = cmf::BuildFile( data, bufferAllocator, &metadata );
-
-		auto validated = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
-		if( !validated )
-		{
-			throw std::runtime_error( "Generated CMF file is invalid: " + validated.error );
-		}
 
 		ufbx_free_scene( scene );
 		scene = nullptr;
 
-#if _WIN32
-		FILE* outFile = nullptr;
-		fopen_s( &outFile, cliArgs.cmfPath.c_str(), "wb" );
-#else
-		FILE* outFile = fopen( cliArgs.cmfPath.c_str(), "wb" );
-#endif
-		if( !outFile )
+		WriteCmf( cliArgs.cmfPath.c_str(), data, metadata, bufferAllocator );
+
+		if( !options.lowdetailSuffix.empty() )
 		{
-			throw std::runtime_error( "Failed to open output file: " + cliArgs.cmfPath );
+			const bool hasLods = std::any_of( data.meshes.begin(), data.meshes.end(), []( const auto& mesh ) { return mesh.lods.size() > 1; } );
+			if( hasLods )
+			{
+				for( auto& mesh : data.meshes )
+				{
+					if( mesh.lods.size() > 1 )
+					{
+						auto lastLod = mesh.lods[mesh.lods.size() - 1];
+						lastLod.threshold = cmf::MeshLod::MAX_THRESHOLD; // make sure the last LOD is visible at all distances
+						mesh.lods = {};
+						cmf::Modify( mesh.lods, allocator ).emplace_back( lastLod );
+					}
+					mesh.audioOcclusionMesh = {};
+				}
+				auto path = std::filesystem::path( cliArgs.cmfPath );
+				const std::string fulldetailFilename = path.filename().string();
+				const std::string lowdetailPath = path.replace_filename( path.stem().string() + options.lowdetailSuffix + path.extension().string() ).string();
+				cmf::Modify( metadata.entries, allocator ).emplace_back( cmf::MetadataEntry{ allocator.AllocateString( "fulldetail" ), allocator.AllocateString( fulldetailFilename ) } );
+				WriteCmf( lowdetailPath.c_str(), data, metadata, bufferAllocator );
+			}
 		}
-		if( fwrite( fileData.data(), 1, fileData.size(), outFile ) != fileData.size() )
-		{
-			fclose( outFile );
-			throw std::runtime_error( "Failed to write output file: " + cliArgs.cmfPath );
-		}
-		fclose( outFile );
 	} );
 }
 

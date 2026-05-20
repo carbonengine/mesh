@@ -4,6 +4,9 @@
 #include "cmf/transforms.h"
 
 #include <mutex>
+#include <array>
+#include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -231,6 +234,70 @@ std::vector<cmf::AnimationPlayer*>& GetActiveAnimationPlayers()
 	return activePlayers;
 }
 
+cmf::BufferElementStream<float> GetScalarStream( cmf::ElementType type, cmf::Span<uint8_t>& data )
+{
+	cmf::VertexElement element = {};
+	element.type = type;
+	element.elementCount = 1;
+	const auto stride = cmf::GetVertexElementSize( element );
+	return { element, data.data(), uint32_t( data.size() / stride ), stride };
+}
+
+cmf::Span<uint8_t> ConvertScalarValues( const float* values, uint32_t valueCount, cmf::ElementType type, cmf::MemoryAllocator& allocator )
+{
+	auto result = allocator.AllocateSpan<uint8_t>( valueCount * cmf::GetElementTypeSize( type ) );
+	auto knotStream = GetScalarStream( type, result );
+	for( uint32_t i = 0; i < valueCount; ++i )
+	{
+		knotStream.set( i, values[i] );
+	}
+	return result;
+}
+
+bool ValuesWithinTolerance( const float* values, uint32_t valueCount, cmf::ElementType type, float minValue, float maxValue, float tolerance )
+{
+	cmf::DeclTypeConverter<float> converter( type, 1 );
+	return std::all_of( values, values + valueCount, [&]( float v ) {
+		if( v < minValue || v > maxValue )
+		{
+			return false;
+		}
+		std::array<uint8_t, 4> buffer;
+		converter.set( buffer.data(), v );
+		return std::abs( converter( buffer.data() ) - v ) <= tolerance;
+	} );
+}
+
+std::pair<cmf::Span<uint8_t>, cmf::ElementType> OptimizeValues( const float* values, uint32_t valueCount, float tolerance, cmf::MemoryAllocator& allocator )
+{
+	if( ValuesWithinTolerance( values, valueCount, cmf::ElementType::UInt8Norm, 0.f, 1.f, tolerance ) )
+	{
+		const auto type = cmf::ElementType::UInt8Norm;
+		return { ConvertScalarValues( values, valueCount, type, allocator ), type };
+	}
+	if( ValuesWithinTolerance( values, valueCount, cmf::ElementType::UInt16Norm, 0.f, 1.f, tolerance ) )
+	{
+		const auto type = cmf::ElementType::UInt16Norm;
+		return { ConvertScalarValues( values, valueCount, type, allocator ), type };
+	}
+	if( ValuesWithinTolerance( values, valueCount, cmf::ElementType::Int8Norm, -1.f, 1.f, tolerance ) )
+	{
+		const auto type = cmf::ElementType::Int8Norm;
+		return { ConvertScalarValues( values, valueCount, type, allocator ), type };
+	}
+	if( ValuesWithinTolerance( values, valueCount, cmf::ElementType::Int16Norm, -1.f, 1.f, tolerance ) )
+	{
+		const auto type = cmf::ElementType::Int16Norm;
+		return { ConvertScalarValues( values, valueCount, type, allocator ), type };
+	}
+	if( ValuesWithinTolerance( values, valueCount, cmf::ElementType::Float16, -65504.f, 65504.f, tolerance ) )
+	{
+		const auto type = cmf::ElementType::Float16;
+		return { ConvertScalarValues( values, valueCount, type, allocator ), type };
+	}
+	return { {}, cmf::ElementType::Float32 };
+}
+
 }
 
 namespace cmf
@@ -271,6 +338,77 @@ Quaternion SampleQuaternionCurve( const cmf::AnimationCurve& curve, float time )
 		return {};
 	}
 }
+
+void RemoveDuplicateCurves( cmf::Animation& animation, cmf::MemoryAllocator& allocator )
+{
+	auto sameCurve = []( const cmf::AnimationCurve& a, const cmf::AnimationCurve& b ) {
+		if( a.valueDimension != b.valueDimension || a.interpolation != b.interpolation || a.knotType != b.knotType || a.valueType != b.valueType || a.knotCount != b.knotCount )
+		{
+			return false;
+		}
+		return std::equal( a.knots.begin(), a.knots.end(), b.knots.begin() ) && std::equal( a.values.begin(), a.values.end(), b.values.begin() );
+	};
+	auto remapCurveIndex = [&]( uint32_t index, uint32_t newIndex ) {
+		for( auto& channel : animation.channels )
+		{
+			if( channel.curveIndex == index )
+			{
+				channel.curveIndex = newIndex;
+			}
+		}
+	};
+	auto* end = animation.curves.end();
+	for( auto* it = animation.curves.begin(); it != end; ++it )
+	{
+		auto& curve = *it;
+		auto* found = std::find_if( animation.curves.begin(), &curve, [&]( const cmf::AnimationCurve& c ) { return sameCurve( c, curve ); } );
+		if( found != &curve )
+		{
+			const auto curveIndex = uint32_t( it - animation.curves.begin() );
+			auto foundIndex = uint32_t( found - animation.curves.begin() );
+			remapCurveIndex( curveIndex, foundIndex );
+			if( it + 1 != end )
+			{
+				// Swap the current curve with the last curve and update channel indices to point to the swapped curve if needed, then remove the last curve (which is a duplicate of the current curve)
+				auto& lastCurve = *( end - 1 );
+				const auto lastIndex = uint32_t( &lastCurve - animation.curves.begin() );
+				std::swap( curve, lastCurve );
+				remapCurveIndex( lastIndex, curveIndex );
+			}
+			--end;
+			--it;
+		}
+	}
+	if( end != animation.curves.end() )
+	{
+		auto newCurves = allocator.AllocateSpan<cmf::AnimationCurve>( size_t( end - animation.curves.begin() ) );
+		std::copy( animation.curves.begin(), end, newCurves.begin() );
+		animation.curves = newCurves;
+	}
+}
+
+void OptimizeCurveFormat( cmf::AnimationCurve& curve, float keyTolerance, float tolerance, cmf::MemoryAllocator& allocator )
+{
+	if( curve.knotType == cmf::ElementType::Float32 )
+	{
+		auto [newKnots, newKnotType] = OptimizeValues( reinterpret_cast<const float*>( curve.knots.data() ), curve.knotCount, keyTolerance, allocator );
+		if( newKnotType != cmf::ElementType::Float32 )
+		{
+			curve.knotType = newKnotType;
+			curve.knots = newKnots;
+		}
+	}
+	if( curve.valueType == cmf::ElementType::Float32 )
+	{
+		auto [newValues, newValueType] = OptimizeValues( reinterpret_cast<const float*>( curve.values.data() ), curve.knotCount * curve.valueDimension, tolerance, allocator );
+		if( newValueType != cmf::ElementType::Float32 )
+		{
+			curve.valueType = newValueType;
+			curve.values = newValues;
+		}
+	}
+}
+
 
 void SampleAnimation( SkeletonPose& pose, const cmf::Animation& animation, const Span<AnimationCurve>& curves, float time )
 {
