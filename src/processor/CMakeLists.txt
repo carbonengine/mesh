@@ -9,6 +9,7 @@ set(PROCESSOR_SOURCES
     main.cpp
     metadata.cpp
     validate.cpp
+    gltfconverter.cpp
 )
 
 set(FBXIMPORT_SOURCES
@@ -35,6 +36,8 @@ set(UFBX_SOURCES
 find_package(CLI11 CONFIG REQUIRED)
 find_package(unofficial-hash-library CONFIG REQUIRED)
 
+find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
+
 if(USE_SIMPLYGON)
     find_package(Simplygon CONFIG REQUIRED)
 endif()
@@ -46,6 +49,7 @@ if(USE_SIMPLYGON)
     target_link_libraries(cmfprocessor PRIVATE Simplygon)
 endif()
 target_include_directories(cmfprocessor PRIVATE "../../vendor/github.com/ufbx/ufbx")
+target_include_directories(cmfprocessor PRIVATE ${TINYGLTF_INCLUDE_DIRS})
 source_group(UFBX FILES ${UFBX_SOURCES})
 source_group(fbximport FILES ${FBXIMPORT_SOURCES})
 set_property(TARGET cmfprocessor PROPERTY COMPILE_WARNING_AS_ERROR ON)
