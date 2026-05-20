@@ -13,7 +13,7 @@ struct GLTFOptions
 {
 	std::string srcPath;
 	std::string dstPath;
-	bool combinedFile;
+	bool combinedFile = false;
 };
 
 // Find elements that do not require usageIndex and only exist in the data stream once
@@ -314,7 +314,7 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 {
 	app.add_option( "src", options.srcPath, "Path to the source CMF file" )->required()->check( CLI::ExistingFile );
 	app.add_option( "dst", options.dstPath, "Path to the output glTF" )->required();
-	app.add_option( "--combinedfile", options.combinedFile, "Should we store the .bin data inside the gltf file as base64" );
+	app.add_flag( "--combinedfile", options.combinedFile, "Should we store the .bin data inside the gltf file as base64" );
 	
 	app.final_callback( [&options]() {
 		CmfFile cmfFile( options.srcPath );
