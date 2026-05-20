@@ -1000,15 +1000,6 @@ void CreateBoneBindings( cmf::Mesh& outMesh, const MeshSkin& skin, const std::ve
 
 void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator );
 
-/** @brief Generates LODs for a mesh based on the specified options.
- *
- * This function delegates LOD generation to the method specified in options (currently only Simplygon is supported).
- *
- * @param mesh The mesh for which to generate LODs.
- * @param options The options for LOD generation, including the method and specific settings for each method.
- * @param allocator The memory allocator used for allocating mesh data.
- * @param bufferAllocator The buffer manager used for allocating vertex and index buffers.
- */
 void GenerateLods( cmf::Mesh& mesh, const LodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
 {
 	if( !options.generate )
