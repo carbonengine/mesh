@@ -110,7 +110,10 @@ void ImportFBX( CLI::App& app, ImportFBXArguments& cliArgs )
 		cmf::MemoryAllocator allocator;
 		cmf::BufferManager bufferAllocator( allocator );
 
-		const CoordinateSystem system( scene->settings.axes, float( scene->settings.unit_meters ) );
+		const CoordinateSystem system =
+			scene->metadata.file_format == UFBX_FILE_FORMAT_OBJ ?
+			CoordinateSystem{} :
+			CoordinateSystem( scene->settings.axes, float( scene->settings.unit_meters ) );
 
 		auto [skeletons, boneMap] = ImportSkeletons( *scene, options.skeletonOptions, allocator, system );
 		data.skeletons = skeletons;
