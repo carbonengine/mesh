@@ -68,7 +68,7 @@ struct SimplygonAudioOcclusionMeshOptions
 {
 	// Target screen size in pixels for the generated audio occlusion mesh. The larger the screen size, the more detailed the generated mesh will be,
 	// but it will also have more triangles and be more expensive to use for audio occlusion calculations.
-	uint32_t screenSize = 20;
+	uint32_t screenSize = 80;
 	// Hole filling mode to use for the generated audio occlusion mesh: hint for Simplygon on how aggressive it should be with filling holes in the source mesh.
 	SimplygonHoleFilling holeFilling = SimplygonHoleFilling::Medium;
 };

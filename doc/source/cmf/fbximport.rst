@@ -171,7 +171,7 @@ Mesh settings
   Type ``string``, default ``Simplygon``. Method/library used to generate audio occlusion meshes. Currently, the only method supported is Simplygon.
 
 ``mesh.audioOcclusionMesh.simplygon.screenSize``
-    Type ``number``, default ``20``. Target screen size in pixels for audio occlusion mesh when using Simplygon. The smaller the value, the more aggressive the simplification is.
+    Type ``number``, default ``80``. Target screen size in pixels for audio occlusion mesh when using Simplygon. The smaller the value, the more aggressive the simplification is.
     The number may not be less than 20.
 
 ``mesh.audioOcclusionMesh.simplygon.holeFilling``

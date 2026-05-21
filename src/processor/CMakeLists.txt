@@ -5,6 +5,7 @@ set(PROCESSOR_SOURCES
     commands.h
     dumpjson.cpp
     extractlod.cpp
+    generateaudioocclusion.cpp
     generatelods.cpp
     hash.cpp
     main.cpp
