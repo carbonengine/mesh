@@ -28,3 +28,14 @@ cmf::Span<cmf::Mesh> ImportMeshes( const ufbx_scene& scene, const MeshImportOpti
  * @param bufferAllocator The buffer manager used for allocating vertex and index buffers.
  */
 void GenerateLods( cmf::Mesh& mesh, const LodOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator );
+
+/** @brief Generates an audio occlusion mesh for a mesh based on the specified options.
+ *
+ * This function delegates audio occlusion mesh generation to the method specified in options (currently only Simplygon is supported).
+ *
+ * @param mesh The mesh for which to generate the audio occlusion mesh.
+ * @param options The options for audio occlusion mesh generation, including the method and specific settings for each method.
+ * @param allocator The memory allocator used for allocating mesh data.
+ * @param bufferAllocator The buffer manager used for allocating vertex and index buffers.
+ */
+void GenerateAudioOcclusionMesh( cmf::Mesh& mesh, const AudioOcclusionMeshOptions& options, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator );
