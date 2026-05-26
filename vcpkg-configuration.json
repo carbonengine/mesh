@@ -9,7 +9,13 @@
       "kind": "git",
       "repository": "git@github.com:ccpgames/carbon-vcpkg-registry.git",
       "baseline": "ddc1854a3303051c9206ffac931b19174c30e707",
-      "packages": ["carbon-*", "ccp-debug-info", "tracy", "python3-prebuilt", "simplygon"]
-    }
+      "packages": [ "simplygon" ]
+    },
+	{
+	  "kind": "git",
+	  "repository": "git@github.com:carbonengine/vcpkg-registry.git",
+	  "baseline": "87fbb75936f134fecccd01718e13216a9058713d",
+	  "packages": [ "python3", "carbon-math", "ccp-debug-info" ]
+	}
   ]
 }

@@ -1,15 +1,18 @@
 cmake_minimum_required(VERSION 3.30)
 
-set(USE_SIMPLYGON_DEFAULT_FLAG OFF)
-if (WIN32)
-    set(USE_SIMPLYGON_DEFAULT_FLAG ON)
-endif()
+set(WITH_SIMPLYGON_DEFAULT_FLAG OFF)
 
-option(USE_SIMPLYGON "Use Simplygon for LOD generation" ${USE_SIMPLYGON_DEFAULT_FLAG})
+option(WITH_SIMPLYGON "Use Simplygon for LOD generation" ${WITH_SIMPLYGON_DEFAULT_FLAG})
 
-if(USE_SIMPLYGON)
-    message("Using Simplygon for LOD generation")
-    list(APPEND VCPKG_MANIFEST_FEATURES "simplygon")
+set(BUILD_TOOLS_DEFAULT_FLAG OFF)
+option(BUILD_TOOLS "Build tools such as the mesh processor and viewer" ${BUILD_TOOLS_DEFAULT_FLAG})
+if(BUILD_TOOLS)
+	message("Building tools such as the mesh processor and viewer")
+	list(APPEND VCPKG_MANIFEST_FEATURES "tools")
+	if(WITH_SIMPLYGON)
+		message("Using Simplygon for LOD generation")
+		list(APPEND VCPKG_MANIFEST_FEATURES "simplygon")
+	endif()
 endif()
 
 project(CarbonMesh VERSION 1.0.0)
@@ -72,8 +75,14 @@ generate_export_header(CarbonMesh BASE_NAME CARBON_MESH)
 set_build_flavor(CarbonMesh)
 
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
-    target_sources(CarbonMesh PUBLIC src/cmf.natvis)
-    target_link_options(CarbonMesh PUBLIC /NATVIS:${CMAKE_CURRENT_LIST_DIR}/cmf.natvis)
+    target_sources(CarbonMesh PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/src/cmf.natvis>
+        $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include/cmf/cmf.natvis>
+    )
+    target_link_options(CarbonMesh PUBLIC 
+        $<BUILD_INTERFACE:/NATVIS:${CMAKE_CURRENT_LIST_DIR}/src/cmf.natvis>
+        $<INSTALL_INTERFACE:/NATVIS:$<INSTALL_PREFIX>/include/cmf/cmf.natvis>
+    )
 endif()
 
 get_target_property(_SOURCES CarbonMesh SOURCES)
@@ -83,11 +92,14 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
-target_link_libraries(CarbonMesh PUBLIC CcpMath meshoptimizer::meshoptimizer mikktspace::mikktspace)
+target_link_libraries(CarbonMesh PUBLIC 
+	CcpMath 
+	$<BUILD_INTERFACE:meshoptimizer::meshoptimizer>
+	$<BUILD_INTERFACE:mikktspace::mikktspace>)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
-    ${CMAKE_CURRENT_BINARY_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_property(TARGET CarbonMesh PROPERTY COMPILE_WARNING_AS_ERROR ON)
 ccp_enable_vs_analizers(CarbonMesh)
@@ -128,7 +140,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
         add_dependencies(Sphinx CarbonMesh)
     endif()
 
-    option(INSTALL_TO_MONOLITH "Install this package to a perforce branch vendor folder - provided for backwards compatability" ON)
+    option(INSTALL_TO_MONOLITH "Install this package to a perforce branch vendor folder - provided for backwards compatibility" OFF)
     if (INSTALL_TO_MONOLITH)
         # Install rule to ensure that our runtime and linker files are in the expected, platform-specific folders
         install(
@@ -140,27 +152,47 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
                 RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
         )
 
-        # Install rule for available public headers
-        foreach(header_file ${PUBLIC_HEADER_FILES})
-            get_filename_component(relative_path ${header_file} DIRECTORY)
-            string(REPLACE "include/" "" relative_path ${relative_path})
-            install(FILES ${header_file} DESTINATION include/${relative_path})
-        endforeach()
+         # Install rule for available public headers
+        install(FILES ${PUBLIC_HEADER_FILES} DESTINATION include/cmf)
         install(FILES ${CMAKE_CURRENT_BINARY_DIR}/carbon_mesh_export.h DESTINATION include/cmf)
 
-
-
-        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshConfig.cmake DESTINATION .)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CarbonMeshConfig.cmake DESTINATION .)
         install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION .)
     else ()
-        # Install rules for vcpkg goes here
+        # Install rule to ensure that our runtime and linker files are in the vcpkg structure
+        install(
+                TARGETS CarbonMesh
+                EXPORT CarbonMeshTarget
+                CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+                LIBRARY DESTINATION lib
+                ARCHIVE DESTINATION lib
+                RUNTIME DESTINATION bin
+        )
+
+         # Install rule for available public headers
+        install(FILES ${PUBLIC_HEADER_FILES} DESTINATION include/cmf)
+
+        install(EXPORT CarbonMeshTarget
+                DESTINATION share/CarbonMesh
+                FILE CarbonMeshTargets.cmake
+        )
+
+        include(CMakePackageConfigHelpers)
+
+        configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CarbonMeshConfig.cmake.in 
+                                      ${CMAKE_CURRENT_BINARY_DIR}/CarbonMeshConfig.cmake
+                                      INSTALL_DESTINATION share/CarbonMesh)
+
+        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CarbonMeshConfig.cmake DESTINATION share/CarbonMesh)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/cmf.natvis DESTINATION include/cmf)
+        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/carbon_mesh_export.h DESTINATION include/cmf)
     endif()
 endif()
 
-
-add_subdirectory( carbon-mesh-viewer )
-add_subdirectory( carbon-mesh-optimizer )
-add_subdirectory( src/processor )
+if(BUILD_TOOLS)
+	add_subdirectory( carbon-mesh-viewer )
+	add_subdirectory( src/processor )
+endif()
 
 add_subdirectory (src/cmf/test) 
 enable_testing()

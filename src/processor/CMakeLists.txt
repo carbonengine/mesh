@@ -37,14 +37,15 @@ set(UFBX_SOURCES
 find_package(CLI11 CONFIG REQUIRED)
 find_package(unofficial-hash-library CONFIG REQUIRED)
 
-if(USE_SIMPLYGON)
+if(WITH_SIMPLYGON)
     find_package(Simplygon CONFIG REQUIRED)
 endif()
 
 add_executable(cmfprocessor ${PROCESSOR_SOURCES} ${UFBX_SOURCES} ${FBXIMPORT_SOURCES})
+set_build_flavor(cmfprocessor)
 target_link_libraries(cmfprocessor PRIVATE CarbonMesh CLI11::CLI11 unofficial::hash-library)
-if(USE_SIMPLYGON)
-    target_compile_definitions(cmfprocessor PRIVATE USE_SIMPLYGON)
+if(WITH_SIMPLYGON)
+    target_compile_definitions(cmfprocessor PRIVATE WITH_SIMPLYGON)
     target_link_libraries(cmfprocessor PRIVATE Simplygon)
 endif()
 target_include_directories(cmfprocessor PRIVATE "../../vendor/github.com/ufbx/ufbx")
@@ -68,7 +69,7 @@ if (INSTALL_TO_MONOLITH)
         DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
     )
     if (WIN32)
-        if(USE_SIMPLYGON)
+        if(WITH_SIMPLYGON)
             get_target_property(SIMPLYGON_DLL Simplygon SIMPLYGON_DLL_LOCATION)
             install(
                 FILES ${SIMPLYGON_DLL}
@@ -76,7 +77,12 @@ if (INSTALL_TO_MONOLITH)
             )
         endif()
     endif()
-
+else()
+    install(
+            TARGETS cmfprocessor
+            CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+            RUNTIME DESTINATION bin
+    )
 endif()
 
 if (WIN32)
@@ -85,7 +91,7 @@ if (WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:cmfprocessor> $<TARGET_FILE_DIR:cmfprocessor>
         COMMAND_EXPAND_LISTS
     )
-    if(USE_SIMPLYGON)
+    if(WITH_SIMPLYGON)
         get_target_property(SIMPLYGON_DLL Simplygon SIMPLYGON_DLL_LOCATION)
         add_custom_command(
             TARGET cmfprocessor POST_BUILD
