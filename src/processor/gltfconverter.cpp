@@ -152,14 +152,14 @@ int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t s
 	}
 	else if( element.type == cmf::ElementType::Float16 )
 	{
-		uint16_t* halfDst = reinterpret_cast<uint16_t*>( dst );
+		float* floatDst = reinterpret_cast<float*>( dst );
 		for( uint32_t v = 0; v < vertexCount; ++v )
 		{
 			const uint16_t* src = reinterpret_cast<const uint16_t*>( vbBytes + v * stride + element.offset );
 			for( int k = 0; k < componentCount; ++k )
 			{
 				const float val = static_cast<float>( Float_16( src[k] ) );
-				halfDst[v * componentCount + k] = src[k];
+				floatDst[v * componentCount + k] = val;
 				minVals[k] = std::min( minVals[k], static_cast<double>( val ) );
 				maxVals[k] = std::max( maxVals[k], static_cast<double>( val ) );
 			}
@@ -193,7 +193,7 @@ int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t s
 		acc.normalized = normalized;
 		acc.type = gltfType;
 		acc.count = vertexCount;
-		if( element.type == cmf::ElementType::Float32 || element.type == cmf::ElementType::Float16 )
+		if( vertexCount > 0 && ( element.type == cmf::ElementType::Float32 || element.type == cmf::ElementType::Float16 ) )
 		{
 			acc.minValues = minVals;
 			acc.maxValues = maxVals;
@@ -225,7 +225,7 @@ int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t 
 		throw std::runtime_error( "Cannot reconstruct TANGENT w: missing or unsupported Binormal element" );
 	}
 
-	// Rebuild the tangent buffer storing the binormal in the W component acording to the spec under "TANGENT"
+	// Rebuild the tangent buffer storing the binormal in the W component according to the spec under "TANGENT"
 	// https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes-overview
 	std::vector<float> tanBuffer( vertexCount * 4 );
 	for( uint32_t v = 0; v < vertexCount; ++v )
@@ -260,23 +260,29 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, uint32_t 
 	{
 		const uint8_t* src = vbBytes + v * stride + element.offset;
 
-		Vector4 packed;
-		if( isQuaternion )
-		{
-			// Int16Norm: signed 16-bit normalized to [-1, 1]
-			const int16_t* s = reinterpret_cast<const int16_t*>( src );
-			packed = Vector4( s[0] / 32767.0f, s[1] / 32767.0f, s[2] / 32767.0f, s[3] / 32767.0f );
-		}
-		else
-		{
-			// UInt16Norm: unsigned 16-bit normalized to [0, 1]
-			const uint16_t* s = reinterpret_cast<const uint16_t*>( src );
-			packed = Vector4( s[0] / 65535.0f, s[1] / 65535.0f, s[2] / 65535.0f, s[3] / 65535.0f );
-		}
+		auto ReadTangentComponent = [&]( const uint8_t* buffer, int k ) -> float {
+			switch( element.type )
+			{
+			// PackedTangent
+			case cmf::ElementType::Int16Norm:
+				return std::max( reinterpret_cast<const int16_t*>( buffer )[k] / 32767.0f, -1.0f );
+			case cmf::ElementType::Int8Norm:
+				return std::max( reinterpret_cast<const int8_t*>( buffer )[k] / 127.0f, -1.0f );
+			// PackedTangentLegacy
+			case cmf::ElementType::UInt16Norm:
+				return reinterpret_cast<const uint16_t*>( buffer )[k] / 65535.0f;
+			case cmf::ElementType::UInt8Norm:
+				return reinterpret_cast<const uint8_t*>( buffer )[k] / 255.0f;
+			default:
+				return 0.0f;
+			}
+		};
+
+		Vector4 packed( ReadTangentComponent( src, 0 ), ReadTangentComponent( src, 1 ), ReadTangentComponent( src, 2 ), ReadTangentComponent( src, 3 ) );
 
 		auto [normal, tangent, bitangent] = cmf::UnpackTangents( compression, packed );
 
-		// Convert the CMF normal, tangent and bitangent into gltf compatable formats with packed bitangent
+		// Convert the CMF normal, tangent and bitangent into gltf compatible formats with packed bitangent
 		// https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes-overview
 		const float w = GenerateBinormalSign( normal, tangent, bitangent );
 
@@ -339,7 +345,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 			break;
 		}
 		default: {
-			fprintf( stderr, "Unsupported MeshTopology" );
+			fprintf( stderr, "Unsupported MeshTopology\n" );
 			return;
 		}
 		}
@@ -381,8 +387,8 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 		}
 
 		// Position the packed tangents before the normal and tangent so that when we come in and add normals and tangents they are
-		// offset from the packed data by (packed data count + index), rather then normals and tangents being populated first
-		// and chaning the pairing of {(N + T),...} in the output data.
+		// offset from the packed data by (packed data count + index), rather than normals and tangents being populated first
+		// and changing the pairing of {(N + T),...} in the output data.
 		CMFUsageAttribute kMultiAttribs[] = {
 			{ cmf::Usage::Position, "POSITION" },
 			{ cmf::Usage::PackedTangent, "" },
@@ -425,7 +431,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 			if( elem.usage == cmf::Usage::BoneIndices &&
 				( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
 			{
-				const std::string name = std::string( "JOINTS_" ) + std::to_string( elem.usageIndex );
+				const std::string name = GenerateAttributeName( prim.attributes, "JOINTS_", elem.usageIndex );
 				prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 			}
 		}
@@ -437,7 +443,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 				( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt8Norm ||
 				  elem.type == cmf::ElementType::UInt16 || elem.type == cmf::ElementType::UInt16Norm ) )
 			{
-				const std::string name = std::string( "WEIGHTS_" ) + std::to_string( elem.usageIndex );
+				const std::string name = GenerateAttributeName( prim.attributes, "WEIGHTS_", elem.usageIndex );
 				prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model, true );
 			}
 		}
