@@ -3,6 +3,7 @@ set(PROCESSOR_SOURCES
     cmffile.cpp
     commands.cpp
     commands.h
+    decalbuffers.cpp
     dumpjson.cpp
     extractlod.cpp
     generateaudioocclusion.cpp
