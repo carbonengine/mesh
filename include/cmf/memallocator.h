@@ -2,6 +2,7 @@
 
 #include "cmf.h"
 #include <vector>
+#include <memory>
 
 
 namespace cmf
