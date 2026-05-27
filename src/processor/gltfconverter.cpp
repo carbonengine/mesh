@@ -207,7 +207,7 @@ float GenerateBinormalSign( const Vector3& normal, const Vector3& tangent, const
 
 int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& tangentElem, cmf::Span<cmf::VertexElement> decl, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
 {
-	const auto* normalElem   = FindSingleUsageElement( decl, cmf::Usage::Normal );
+	const auto* normalElem = FindSingleUsageElement( decl, cmf::Usage::Normal );
 	const auto* binormalElem = FindSingleUsageElement( decl, cmf::Usage::Binormal );
 
 	if( !normalElem || normalElem->type != cmf::ElementType::Float32 || normalElem->elementCount < 3 )
@@ -227,7 +227,7 @@ int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t 
 		const float* T = reinterpret_cast<const float*>( vbBytes + v * stride + tangentElem.offset );
 		const float* N = reinterpret_cast<const float*>( vbBytes + v * stride + normalElem->offset );
 		const float* B = reinterpret_cast<const float*>( vbBytes + v * stride + binormalElem->offset );
-		const float w  = GenerateBinormalSign( Vector3( N[0], N[1], N[2] ), Vector3( T[0], T[1], T[2] ), Vector3( B[0], B[1], B[2] ) );
+		const float w = GenerateBinormalSign( Vector3( N[0], N[1], N[2] ), Vector3( T[0], T[1], T[2] ), Vector3( B[0], B[1], B[2] ) );
 		tanBuffer[v * 4 + 0] = T[0];
 		tanBuffer[v * 4 + 1] = T[1];
 		tanBuffer[v * 4 + 2] = T[2];
@@ -235,9 +235,9 @@ int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t 
 	}
 
 	cmf::VertexElement tanElem{};
-	tanElem.type         = cmf::ElementType::Float32;
+	tanElem.type = cmf::ElementType::Float32;
 	tanElem.elementCount = 4;
-	tanElem.offset       = 0;
+	tanElem.offset = 0;
 
 	return AddVertexAttribute( reinterpret_cast<const uint8_t*>( tanBuffer.data() ), vertexCount, 4 * sizeof( float ), tanElem, gltfBuffer, model );
 }
@@ -285,14 +285,14 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, uint32_t 
 	}
 
 	cmf::VertexElement normalElem{};
-	normalElem.type         = cmf::ElementType::Float32;
+	normalElem.type = cmf::ElementType::Float32;
 	normalElem.elementCount = 3;
-	normalElem.offset       = 0;
+	normalElem.offset = 0;
 
 	cmf::VertexElement tanElem{};
-	tanElem.type         = cmf::ElementType::Float32;
+	tanElem.type = cmf::ElementType::Float32;
 	tanElem.elementCount = 4;
-	tanElem.offset       = 0;
+	tanElem.offset = 0;
 
 	const int normalAccIdx = AddVertexAttribute( reinterpret_cast<const uint8_t*>( normalBuffer.data() ), vertexCount, 3 * sizeof( float ), normalElem, gltfBuffer, model );
 	const int tangentAccIdx = AddVertexAttribute( reinterpret_cast<const uint8_t*>( tangentBuffer.data() ), vertexCount, 4 * sizeof( float ), tanElem, gltfBuffer, model );
@@ -401,7 +401,6 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 
 					std::string normalName = GenerateAttributeName( prim.attributes, "NORMAL", elem.usageIndex );
 					std::string tangentName = GenerateAttributeName( prim.attributes, "TANGENT", elem.usageIndex );
-					
 					prim.attributes[normalName] = normalAccIdx;
 					prim.attributes[tangentName] = tangentAccIdx;
 				}
