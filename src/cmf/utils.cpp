@@ -7,89 +7,116 @@
 namespace
 {
 template <typename T>
-bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
+std::string AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 {
 	if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
 	{
 		// Total size must be multiple of element size
 		if( value.byteSize % sizeof( typename T::value_type ) != 0 )
 		{
-			return false;
+			return "Total size must be multiple of element size";
 		}
+		// Empty spans are valid
 		if( value.size() == 0 )
 		{
-			return true;
+			return "";
 		}
+		// Pointer must be aligned to element size
+		if( reinterpret_cast<uintptr_t>( value.data() ) % alignof( typename T::value_type ) != 0 )
+		{
+			return "Pointer must be aligned to element size";
+		}
+
 		// Pointer must be within the base + totalSize range
 		if( value.data() < base || reinterpret_cast<const uint8_t*>( value.end() ) > reinterpret_cast<const uint8_t*>( base ) + totalSize )
 		{
-			return false;
+			return "Pointer must be within the base + totalSize range";
 		}
-		return std::all_of( value.begin(), value.end(), [base, totalSize]( const auto& element ) {
-			return AreSpanPointersValid( element, base, totalSize );
-		} );
+
+		for ( size_t i = 0; i < value.size(); i++ )
+		{
+			auto result = AreSpanPointersValid( value[i], base, totalSize );
+			if( !result.empty() )
+			{
+				return "[" + std::to_string( i ) + "] " + result;
+			}
+		}
+		return "";
 	}
 	else
 	{
-		bool valid = true;
-		cmf::EnumerateMembers( const_cast<T&>( value ), [&valid, base, totalSize]( auto&&, auto& value, const char* ) {
-			if( valid )
+		std::string errorMessage;
+		cmf::EnumerateMembers( const_cast<T&>( value ), [&errorMessage, base, totalSize]( auto&&, auto& value, const char* memberName ) {
+			if( errorMessage.empty() )
 			{
-				valid = AreSpanPointersValid( value, base, totalSize );
+				auto result = AreSpanPointersValid( value, base, totalSize );
+				if( !result.empty() )
+				{
+					errorMessage = std::string( memberName ) + " " + result;
+				}
 			}
 		} );
-		return valid;
+		return errorMessage;
 	}
 }
 
 template <typename T>
-bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& sections )
+std::string AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& sections )
 {
 	if constexpr( std::is_base_of_v<cmf::BufferView, T> )
 	{
 		// Empty buffer views are valid
 		if( value.size == 0 )
 		{
-			return true;
+			return "";
 		}
 		// Buffer index must be > 0 (0 is reserved for "data" segment)
 		if( value.index == 0 || value.index >= sections.size() )
 		{
-			return false;
+			return "Buffer index must be > 0 (0 is reserved for 'data' segment)";
 		}
-		if( sections[value.index - 1].type == cmf::SectionType::Metadata )
+		if( sections[value.index].type == cmf::SectionType::Metadata )
 		{
-			return false;
+			return "SectionType must not be Metadata";
 		}
 		// Offset + size must be within totalSize
-		if( value.offset + value.size > sections[value.index].uncompressedSize )
+		if( uint64_t( value.offset ) + value.size > sections[value.index].uncompressedSize )
 		{
-			return false;
+			return "Offset + size must be within totalSize";
 		}
 		// If stride is non-zero, size must be multiple of stride
-		if( value.stride != 0 && sections[value.index].gpuAlignment % value.stride != 0 )
+		if( value.stride != 0 && value.size % value.stride != 0 )
 		{
-			return false;
+			return "If stride is non-zero, size must be multiple of stride";
 		}
-		return true;
+		// Stride must match gpuAlignment
+		if( value.stride != sections[value.index].gpuAlignment )
+		{
+			return "Stride must match gpuAlignment";
+		}
+		return "";
 	}
 	else
 	{
-		bool valid = true;
-		cmf::EnumerateChildren( const_cast<T&>( value ), [&valid, &sections]( auto&&, auto& value, const char* ) {
-			if( valid )
+		std::string errorMessage;
+		cmf::EnumerateChildren( const_cast<T&>( value ), [&errorMessage, &sections]( auto&&, auto& value, const char* memberName ) {
+			if( errorMessage.empty() )
 			{
-				valid = AreBufferViewsValid( value, sections );
+				auto result = AreBufferViewsValid( value, sections );
+				if( !result.empty() )
+				{
+					errorMessage = std::string( memberName ) + " " + result;
+				}
 			}
 		} );
-		return valid;
+		return errorMessage;
 	}
 }
 
 std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& header, uint32_t lastEnd, size_t fileSize )
 {
 	// Section must be within file bounds
-	if( section.offset + section.compressedSize > fileSize )
+	if( uint64_t( section.offset ) + section.compressedSize > fileSize )
 	{
 		return "Section exceeds file bounds (offset + compressedSize > fileSize)";
 	}
@@ -111,6 +138,12 @@ std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header
 			return "Uncompressed section has mismatched uncompressedSize and compressedSize";
 		}
 	}
+	// uncompressedSize must be a multiple of gpuAlignment
+	if( section.gpuAlignment != 0 && section.uncompressedSize % section.gpuAlignment != 0 )
+	{
+		return "Section uncompressedSize must be a multiple of gpuAlignment";
+	}
+
 	switch( section.type )
 	{
 	case cmf::SectionType::Data:
@@ -265,7 +298,7 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		// Area must be within the mesh index or vertex range
 		const uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
 		const uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
-		if( area.firstElement * verticesPerElement + area.elementCount * verticesPerElement > vertexCount )
+		if( uint64_t( area.firstElement ) * verticesPerElement + uint64_t( area.elementCount ) * verticesPerElement > vertexCount )
 		{
 			return "LOD " + std::to_string( lodIndex ) + " area " + std::to_string( i ) + " exceeds vertex/index range";
 		}
@@ -295,10 +328,10 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 
 std::string MeshHasValidLodThresholds( const cmf::Mesh& mesh )
 {
-	// First LOD must have threshold of 0xffffffff
-	if( mesh.lods[0].threshold != 0xffffffff )
+	// First LOD must have threshold of MeshLod::MAX_THRESHOLD
+	if( mesh.lods[0].threshold != cmf::MeshLod::MAX_THRESHOLD )
 	{
-		return "First LOD threshold must be 0xffffffff";
+		return "First LOD threshold must be MeshLod::MAX_THRESHOLD";
 	}
 	// LOD thresholds must be in descending order
 	for( size_t i = 1; i < mesh.lods.size(); ++i )
@@ -461,7 +494,7 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	element.type = curve.knotType;
 	element.elementCount = 1;
 	const auto stride = cmf::GetVertexElementSize( element );
-	if( curve.knots.size() != curve.knotCount * stride )
+	if( curve.knots.size() != uint64_t( curve.knotCount ) * stride )
 	{
 		return "Curve keyframe buffer size does not match keyframes count and time type";
 	}
@@ -474,7 +507,7 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 		}
 	}
 
-	if( curve.values.size() != curve.knotCount * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
+	if( curve.values.size() != uint64_t( curve.knotCount ) * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
 	{
 		return "Curve value buffer size does not match keyframes count, value dimension and value type";
 	}
@@ -537,13 +570,15 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 
 std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
 {
-	if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
+	auto spanPointerErrorMessage = AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize );
+	if( !spanPointerErrorMessage.empty() )
 	{
-		return "Main data contains invalid span pointers";
+		return "Main data contains invalid span pointers: " + spanPointerErrorMessage;
 	}
-	if( !AreBufferViewsValid( mainData, header.sections ) )
+	auto bufferViewPointerErrorMessage = AreBufferViewsValid( mainData, header.sections );
+	if( !bufferViewPointerErrorMessage.empty() )
 	{
-		return "Main data contains invalid buffer views";
+		return "Main data contains invalid buffer views: " + bufferViewPointerErrorMessage;
 	}
 
 	for( size_t i = 0; i < mainData.meshes.size(); ++i )
@@ -615,9 +650,10 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		return { true, {} };
 	}
 
-	if( !AreSpanPointersValid( header, &header, header.headerSize ) )
+	auto spanPointerErrorMessage = AreSpanPointersValid( header, &header, header.headerSize );
+	if( !spanPointerErrorMessage.empty() )
 	{
-		return { false, "Header contains invalid span pointers" };
+		return { false, "Header contains invalid span pointers: " + spanPointerErrorMessage };
 	}
 	{
 		auto error = AreHeaderSectionsValid( header, size );
