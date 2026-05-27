@@ -5,6 +5,10 @@ cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+if(WIN32)
+    enable_language(RC)
+endif()
+
 find_package(glfw3 CONFIG REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(imgui REQUIRED)
@@ -53,7 +57,23 @@ file(GLOB_RECURSE SOURCES
     shaders/*.*
 )
 
-add_executable(CarbonMeshViewer ${SOURCES} ${GENERATED_SHADER_DIR})
+set(RESOURCE_FILES "")
+if(WIN32)
+    list(APPEND RESOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshViewerResource.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshViewer.rc
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-16.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-24.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-32.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-48.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-64.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-96.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-128.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-256.ico
+    )
+endif()
+
+add_executable(CarbonMeshViewer ${SOURCES} ${RESOURCE_FILES} ${GENERATED_SHADER_DIR})
 set_build_flavor(CarbonMeshViewer)
 
 set_property(TARGET CarbonMeshViewer PROPERTY COMPILE_WARNING_AS_ERROR ON)
@@ -119,7 +139,7 @@ if(CMAKE_GENERATOR STREQUAL "Xcode" OR CMAKE_GENERATOR MATCHES "Visual Studio.*"
     source_group(
         TREE "${CMAKE_CURRENT_SOURCE_DIR}"
         PREFIX "Sources"
-        FILES ${SOURCES}
+        FILES ${SOURCES} ${RESOURCE_FILES}
     )
 endif()
 
