@@ -28,7 +28,7 @@ class Publish(perforce_publish_path: String) : BuildType({
         text("eve_branch_shortname", "", label = "Branch Name", description = """The name of the branch, for example MAINLINE""", display = ParameterDisplay.PROMPT, allowEmpty = false)
         param("env.TC_BUILDID", "%teamcity.build.id%")
         param("env.TC_BUILD_NUMBER", "Carbon Template #%build.number%")
-        param("env.P4PORT", "perforce.ccp.ad.local:1666")
+        param("env.P4PORT", "p4is.ccp.ad.local:1666")
         param("env.TC_EVE_BRANCH_SHORTNAME", "%eve_branch_shortname%")
         param("env.TC_EVE_PROJECT", "%project%")
         param("carbon-pipeline-tools-ref", "refs/heads/main")
@@ -52,6 +52,30 @@ class Publish(perforce_publish_path: String) : BuildType({
     }
 
     steps {
+        python {
+            name = "Check builds have matching git tags"
+            id = "check_build_tags"
+            command = script {
+                content = """
+                    tags = set([
+                        "${MacOS.arm64_Release.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.arm64_Debug.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.arm64_Internal.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.arm64_TrinityDev.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.x64_Release.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.x64_Debug.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.x64_Internal.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${MacOS.x64_TrinityDev.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${Windows.Release.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${Windows.Debug.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${Windows.Internal.depParamRefs["env.GIT_TAG_HASH"]}",
+                        "${Windows.TrinityDev.depParamRefs["env.GIT_TAG_HASH"]}"
+                    ])
+                    if len(tags) > 1:
+                        raise ValueError(f"Multiple different build tags have been detected {tags}")
+                """.trimIndent()
+            }
+        }
         python {
             name = "Check Publish Branch"
             id = "nopublish_check"
@@ -178,13 +202,13 @@ class Publish(perforce_publish_path: String) : BuildType({
     }
 
     dependencies {
-        dependency(MacOS.Debug) {
+        dependency(CreateUniversalBuilds) {
             snapshot {
                 onDependencyFailure = FailureAction.FAIL_TO_START
             }
 
             artifacts {
-                artifactRules = "**/*=>%perforce_path_to_publish_into%/${MacOS.Debug.depParamRefs["env.GIT_TAG_HASH"]}"
+                artifactRules = "**/*=>%perforce_path_to_publish_into%/${MacOS.arm64_Release.depParamRefs["env.GIT_TAG_HASH"]}"
             }
         }
         dependency(Windows.Debug) {
@@ -196,15 +220,6 @@ class Publish(perforce_publish_path: String) : BuildType({
                 artifactRules = "**/*=>%perforce_path_to_publish_into%/${Windows.Debug.depParamRefs["env.GIT_TAG_HASH"]}"
             }
         }
-        dependency(MacOS.Internal) {
-            snapshot {
-                onDependencyFailure = FailureAction.FAIL_TO_START
-            }
-
-            artifacts {
-                artifactRules = "**/*=>%perforce_path_to_publish_into%/${MacOS.Internal.depParamRefs["env.GIT_TAG_HASH"]}"
-            }
-        }
         dependency(Windows.Internal) {
             snapshot {
                 onDependencyFailure = FailureAction.FAIL_TO_START
@@ -214,15 +229,6 @@ class Publish(perforce_publish_path: String) : BuildType({
                 artifactRules = "**/*=>%perforce_path_to_publish_into%/${Windows.Internal.depParamRefs["env.GIT_TAG_HASH"]}"
             }
         }
-        dependency(MacOS.Release) {
-            snapshot {
-                onDependencyFailure = FailureAction.FAIL_TO_START
-            }
-
-            artifacts {
-                artifactRules = "**/*=>%perforce_path_to_publish_into%/${MacOS.Release.depParamRefs["env.GIT_TAG_HASH"]}"
-            }
-        }
         dependency(Windows.Release) {
             snapshot {
                 onDependencyFailure = FailureAction.FAIL_TO_START
@@ -230,15 +236,6 @@ class Publish(perforce_publish_path: String) : BuildType({
 
             artifacts {
                 artifactRules = "**/*=>%perforce_path_to_publish_into%/${Windows.Release.depParamRefs["env.GIT_TAG_HASH"]}"
-            }
-        }
-        dependency(MacOS.TrinityDev) {
-            snapshot {
-                onDependencyFailure = FailureAction.FAIL_TO_START
-            }
-
-            artifacts {
-                artifactRules = "**/*=>%perforce_path_to_publish_into%/${MacOS.TrinityDev.depParamRefs["env.GIT_TAG_HASH"]}"
             }
         }
         dependency(Windows.TrinityDev) {

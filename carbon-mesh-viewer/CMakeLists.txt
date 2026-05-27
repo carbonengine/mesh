@@ -18,13 +18,13 @@ set( GENERATED_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedShaders)
 set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc.exe")
 set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/bin")
 set( ENV{VULKAN_SDK} "${VCPKG_INSTALLED_PATH}")
-set( PYTHON_EXECUTABLE "python")
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 if(APPLE)
     set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/share/vulkan/explicit_layer.d")
     set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc")
     set( ENV{VK_DRIVER_FILES} "${_VCPKG_INSTALLED_DIR}/../../vendor/github.com/moltenVK/MoltenVK/dylib/macOS/MoltenVK_icd.json")
-    set( PYTHON_EXECUTABLE "python3")
 endif()
 
 set( CMAKE_INSTALL_RPATH "$ORIGIN/" )
@@ -82,7 +82,7 @@ endforeach()
 add_custom_command( 
     OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     DEPENDS ${SHADERS} ${COMPILED_SHADERS} ${SHADER_BINARY_TO_SHADER_CACHE}
-    COMMAND ${PYTHON_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/" "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    COMMAND ${Python3_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/" "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     COMMENT "Generating shader cache header ${GENERATED_SHADER_DIR}/generatedShaderCache.h"
 )
 
@@ -142,24 +142,32 @@ IF (APPLE)
     add_compile_definitions("APPLE")
 ENDIF()
 
-install(
-        TARGETS CarbonMeshViewer
-        EXPORT CarbonMeshViewerTarget
-        CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
-        LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-        ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-        RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-)
+if (INSTALL_TO_MONOLITH)
+	install(
+			TARGETS CarbonMeshViewer
+			EXPORT CarbonMeshViewerTarget
+			CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+			LIBRARY DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+			ARCHIVE DESTINATION lib/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+			RUNTIME DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+	)
+	install(
+		FILES $<TARGET_RUNTIME_DLLS:CarbonMeshViewer>
+		DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
+	)
+else()
+	install(
+			TARGETS CarbonMeshViewer
+			CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES}
+			RUNTIME DESTINATION bin
+	)
+endif()
 
 set_directory_properties(
     PROPERTIES
     ADDITIONAL_MAKE_CLEAN_FILES "${GENERATED_SHADER_DIR}"
 )
 
-install(
-    FILES $<TARGET_RUNTIME_DLLS:CarbonMeshViewer>
-    DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/
-)
 
 add_custom_command(TARGET CarbonMeshViewer POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:CarbonMeshViewer> $<TARGET_RUNTIME_DLLS:CarbonMeshViewer>
