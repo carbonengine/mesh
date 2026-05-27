@@ -125,6 +125,27 @@ std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header
 	{
 		return "Section overlaps with a previous section";
 	}
+
+	switch( section.type )
+	{
+	case cmf::SectionType::Data:
+	case cmf::SectionType::GpuBuffer:
+	case cmf::SectionType::Metadata:
+		break;
+	default:
+		return "Invalid section type";
+	}
+
+	switch( section.compression )
+	{
+	case cmf::SectionCompression::MeshOptimizerIndexBuffer:
+	case cmf::SectionCompression::MeshOptimizerVertexBuffer:
+	case cmf::SectionCompression::None:
+		break;
+	default:
+		return "Invalid compression type";
+	}
+
 	// The first section must be a data section
 	if( &section == header.sections.begin() && section.type != cmf::SectionType::Data )
 	{
@@ -203,6 +224,41 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 	{
 		return false;
 	}
+
+	switch( element.usage )
+	{
+	case cmf::Usage::Position:
+	case cmf::Usage::Normal:
+	case cmf::Usage::Tangent:
+	case cmf::Usage::Binormal:
+	case cmf::Usage::TexCoord:
+	case cmf::Usage::Color:
+	case cmf::Usage::BoneIndices:
+	case cmf::Usage::BoneWeights:
+	case cmf::Usage::PackedTangent:
+	case cmf::Usage::PackedTangentLegacy:
+		break;
+	default:
+		return false;
+	}
+
+	switch( element.type )
+	{
+	case cmf::ElementType::Float32:
+	case cmf::ElementType::Float16:
+	case cmf::ElementType::UInt16Norm:
+	case cmf::ElementType::UInt16:
+	case cmf::ElementType::Int16Norm:
+	case cmf::ElementType::Int16:
+	case cmf::ElementType::UInt8Norm:
+	case cmf::ElementType::UInt8:
+	case cmf::ElementType::Int8Norm:
+	case cmf::ElementType::Int8:
+		break;
+	default:
+		return false;
+	}
+
 	// Each (usage, usageIndex) pair must be unique within the decl
 	for( const auto* other = &element + 1; other != decl.end(); ++other )
 	{
@@ -218,8 +274,8 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 		{
 			return false;
 		}
-		// Packed tangent must be 4-component signed normalized integer
-		if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
+		// Packed tangent must be 4-component signed normalized 16 bit integer
+		if( ( element.type != cmf::ElementType::Int16Norm ) || element.elementCount != 4 )
 		{
 			return false;
 		}
@@ -373,7 +429,7 @@ std::string AreMorphTargetsValid( const cmf::Mesh& mesh )
 }
 
 
-std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
+std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& skeletons )
 {
 	// Mesh must have at least one LOD
 	if( mesh.lods.empty() )
@@ -387,6 +443,21 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
 		}
 	}
+
+	if( mesh.areas.empty() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has no areas";
+	}
+
+	switch( mesh.topology )
+	{
+	case cmf::MeshTopology::PointList:
+	case cmf::MeshTopology::TriangleList:
+		break;
+	default:
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has invalid topology";
+	}
+
 	for( size_t i = 0; i < mesh.lods.size(); ++i )
 	{
 		auto error = IsMeshLodValid( mesh, mesh.lods[i], i );
@@ -420,16 +491,20 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 		}
 	}
 
-	if( const auto* boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
+	if( FindElement( mesh.decl, cmf::Usage::BoneIndices ) && mesh.boneBindings.empty() )
 	{
-		if( boneIndicesElement->type == cmf::ElementType::UInt8 )
-		{
-			// Mesh can have up to 255 bone bindings
-			if( mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
-			{
-				return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings with UInt8 bone indices";
-			}
-		}
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneIndices but no boneBindings";
+	}
+
+	if( !mesh.boneBindings.empty() && !FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBindings but no boneIndices";
+	}
+
+	// Mesh can have up to 255 bone bindings
+	if( mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings";
 	}
 
 	const size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
@@ -446,11 +521,25 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 
 	if( mesh.skeleton != 0xff )
 	{
-		if( mesh.skeleton >= skeletonCount )
+		if( mesh.skeleton >= skeletons.size() )
 		{
 			return "Mesh \"" + ToStdString( mesh.name ) + "\" references out-of-range skeleton index";
 		}
+
+		if( mesh.boneBindings.size() > skeletons[mesh.skeleton].bones.size() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" binds more bones than present in the referenced skeleton";
+		}
+
+		for( const auto& boneBinding : mesh.boneBindings )
+		{
+			if( std::find( skeletons[mesh.skeleton].bones.begin(), skeletons[mesh.skeleton].bones.end(), boneBinding.name ) == skeletons[mesh.skeleton].bones.end() )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBinding which cannot be found in referenced skeleton";
+			}
+		}
 	}
+
 	return {};
 }
 
@@ -583,7 +672,7 @@ std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& heade
 
 	for( size_t i = 0; i < mainData.meshes.size(); ++i )
 	{
-		auto error = IsMeshValid( mainData.meshes[i], mainData.skeletons.size() );
+		auto error = IsMeshValid( mainData.meshes[i], mainData.skeletons );
 		if( !error.empty() )
 		{
 			return error;
@@ -607,6 +696,33 @@ std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& heade
 			return error;
 		}
 	}
+	return {};
+}
+
+std::string IsMetadataValid( const cmf::Metadata& metaData, size_t sectionSize )
+{
+	auto spanPointerErrorMessage = AreSpanPointersValid( metaData, &metaData, sectionSize );
+	if( !spanPointerErrorMessage.empty() )
+	{
+		return "Meta data contains invalid span pointers: " + spanPointerErrorMessage;
+	}
+
+	for( size_t i = 0; i < metaData.entries.size(); i++ )
+	{
+		if( metaData.entries[i].key.empty() )
+		{
+			return "Meta data contains empty key";
+		}
+
+		for( size_t j = i + 1; j < metaData.entries.size(); j++ )
+		{
+			if( metaData.entries[i].key == metaData.entries[j].key )
+			{
+				return "Meta data contains duplicate keys";
+			}
+		}
+	}
+
 	return {};
 }
 
@@ -674,6 +790,18 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	{
 		return { false, error };
 	}
+
+	const auto& lastSection = header.sections[header.sections.size() - 1];
+	if( lastSection.type == cmf::SectionType::Metadata )
+	{
+		const auto& metaData = *reinterpret_cast<const Metadata*>( static_cast<const uint8_t*>( data ) + lastSection.offset );
+		auto error = IsMetadataValid( metaData, lastSection.uncompressedSize );
+		if( !error.empty() )
+		{
+			return { false, error };
+		}
+	}
+
 	return { true, {} };
 }
 
