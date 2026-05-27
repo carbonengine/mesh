@@ -6,7 +6,7 @@
 #include "lodsimplygon.h"
 #include "options.h"
 
-#if USE_SIMPLYGON
+#if WITH_SIMPLYGON
 
 // Include Simplygon loader implementation directly
 #include "SimplygonLoader.cpp"

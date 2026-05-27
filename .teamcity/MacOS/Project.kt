@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 package MacOS
 
 import jetbrains.buildServer.configs.kotlin.DslContext
@@ -20,22 +22,34 @@ import jetbrains.buildServer.configs.kotlin.triggers.vcs
 import jetbrains.buildServer.configs.kotlin.vcs.GitVcsRoot
 import jetbrains.buildServer.configs.kotlin.buildFeatures.provideAwsCredentials
 
-val Debug = CarbonBuildMacOS("Debug MacOS", "Debug", "universal-osx-debug")
-val Internal = CarbonBuildMacOS("Internal MacOS", "Internal", "universal-osx-internal")
-val TrinityDev = CarbonBuildMacOS("TrinityDev MacOS", "TrinityDev", "universal-osx-trinitydev")
-val Release = CarbonBuildMacOS("Release MacOS", "Release", "universal-osx-release")
+val arm64_Debug = CarbonBuildMacOS("Debug MacOS arm64", "Debug", "arm64-osx-debug", "aarch64")
+val arm64_Internal = CarbonBuildMacOS("Internal MacOS arm64", "Internal", "arm64-osx-internal", "aarch64")
+val arm64_TrinityDev = CarbonBuildMacOS("TrinityDev MacOS arm64", "TrinityDev", "arm64-osx-trinitydev", "aarch64")
+val arm64_Release = CarbonBuildMacOS("Release MacOS arm64", "Release", "arm64-osx-release", "aarch64")
+
+val x64_Debug = CarbonBuildMacOS("Debug MacOS x64", "Debug", "x64-osx-debug", "x86_64")
+val x64_Internal = CarbonBuildMacOS("Internal MacOS x64", "Internal", "x64-osx-internal", "x86_64")
+val x64_TrinityDev = CarbonBuildMacOS("TrinityDev MacOS x64", "TrinityDev", "x64-osx-trinitydev", "x86_64")
+val x64_Release = CarbonBuildMacOS("Release MacOS x64", "Release", "x64-osx-release", "x86_64")
 
 object Project : Project({
     id("MacOS")
     name = "macOS"
 
-    buildType(Debug)
-    buildType(Internal)
-    buildType(TrinityDev)
-    buildType(Release)
+    buildType(_Self.buildTypes.CreateUniversalBuilds)
+
+    buildType(arm64_Debug)
+    buildType(arm64_Internal)
+    buildType(arm64_TrinityDev)
+    buildType(arm64_Release)
+
+    buildType(x64_Debug)
+    buildType(x64_Internal)
+    buildType(x64_TrinityDev)
+    buildType(x64_Release)
 })
 
-class CarbonBuildMacOS(buildName: String, configType: String, preset: String) : BuildType({
+class CarbonBuildMacOS(buildName: String, configType: String, preset: String, agentArchitecture: String) : BuildType({
     id(buildName.toId())
     name = buildName
 
@@ -92,7 +106,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String) : 
         exec {
             name = "Configure"
             path = "cmake"
-            arguments = "--preset %env.CMAKE_PRESET% -S %teamcity.build.checkoutDir%/%github_checkout_folder% -B %env.CMAKE_BUILD_FOLDER% -DINSTALL_TO_MONOLITH=ON -DCMAKE_INSTALL_PREFIX=%env.CMAKE_INSTALL_PREFIX% -DVCPKG_INSTALL_OPTIONS=--x-buildtrees-root=%teamcity.build.checkoutDir%/%github_checkout_folder%/buildtrees"
+            arguments = "--preset %env.CMAKE_PRESET% -S %teamcity.build.checkoutDir%/%github_checkout_folder% -B %env.CMAKE_BUILD_FOLDER% -DINSTALL_TO_MONOLITH=ON -DBUILD_TOOLS=ON -DCMAKE_INSTALL_PREFIX=%env.CMAKE_INSTALL_PREFIX% -DVCPKG_INSTALL_OPTIONS=--x-buildtrees-root=%teamcity.build.checkoutDir%/%github_checkout_folder%/buildtrees"
         }
         exec {
             name = "Build"
@@ -126,8 +140,10 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String) : 
     triggers {
         vcs {
             triggerRules = "+:root=${DslContext.settingsRootId.id}:."
-
-            param("disabled", "true")
+             branchFilter = """
+                            +:<default>
+                            +pr:*
+                        """.trimIndent()
         }
     }
 
@@ -170,7 +186,6 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String) : 
 
     requirements {
         startsWith("teamcity.agent.jvm.os.name", "Mac OS X")
+        startsWith("teamcity.agent.jvm.os.arch", agentArchitecture)
     }
 })
-
-
