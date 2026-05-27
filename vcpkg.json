@@ -19,6 +19,10 @@
 	{
 	  "name": "python3",
 	  "version>=": "3.12.9"
+	},
+	{
+	  "name": "tinygltf",
+	  "version>=": "2.9.4"
 	}
   ],
   "overrides": [
