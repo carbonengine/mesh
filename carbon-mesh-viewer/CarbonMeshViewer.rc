@@ -1,0 +1,10 @@
+#include "CarbonMeshViewerResource.h"
+
+IDI_CARBON_MESH_VIEWER ICON "assets/carbon_trans-256.ico"
+IDI_CARBON_MESH_VIEWER_16 ICON "assets/carbon_trans-16.ico"
+IDI_CARBON_MESH_VIEWER_24 ICON "assets/carbon_trans-24.ico"
+IDI_CARBON_MESH_VIEWER_32 ICON "assets/carbon_trans-32.ico"
+IDI_CARBON_MESH_VIEWER_48 ICON "assets/carbon_trans-48.ico"
+IDI_CARBON_MESH_VIEWER_64 ICON "assets/carbon_trans-64.ico"
+IDI_CARBON_MESH_VIEWER_96 ICON "assets/carbon_trans-96.ico"
+IDI_CARBON_MESH_VIEWER_128 ICON "assets/carbon_trans-128.ico"
