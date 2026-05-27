@@ -18,6 +18,12 @@ struct GLTFOptions
 	bool combinedFile = false;
 };
 
+struct CMFUsageAttribute
+{
+	cmf::Usage usage;
+	const char* prefix;
+};
+
 // Find elements that do not require usageIndex and only exist in the data stream once
 const cmf::VertexElement* FindSingleUsageElement( cmf::Span<cmf::VertexElement> decl, cmf::Usage usage )
 {
@@ -377,7 +383,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 		// Position the packed tangents before the normal and tangent so that when we come in and add normals and tangents they are
 		// offset from the packed data by (packed data count + index), rather then normals and tangents being populated first
 		// and chaning the pairing of {(N + T),...} in the output data.
-		static const struct { cmf::Usage usage; const char* prefix; } kMultiAttribs[] = {
+		CMFUsageAttribute kMultiAttribs[] = {
 			{ cmf::Usage::Position, "POSITION" },
 			{ cmf::Usage::PackedTangent, "" },
 			{ cmf::Usage::PackedTangentLegacy, "" },
