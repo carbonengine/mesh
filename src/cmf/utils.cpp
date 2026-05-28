@@ -222,6 +222,26 @@ std::string AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 	return {};
 }
 
+bool IsValidElementType( cmf::ElementType type )
+{
+	switch( type )
+	{
+	case cmf::ElementType::Float32:
+	case cmf::ElementType::Float16:
+	case cmf::ElementType::UInt16Norm:
+	case cmf::ElementType::UInt16:
+	case cmf::ElementType::Int16Norm:
+	case cmf::ElementType::Int16:
+	case cmf::ElementType::UInt8Norm:
+	case cmf::ElementType::UInt8:
+	case cmf::ElementType::Int8Norm:
+	case cmf::ElementType::Int8:
+		return true;
+	default:
+		return false;
+	}
+}
+
 bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cmf::VertexElement>& decl )
 {
 	// Element count must be between 1 and 4
@@ -247,20 +267,8 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 		return false;
 	}
 
-	switch( element.type )
+	if( !IsValidElementType( element.type ) )
 	{
-	case cmf::ElementType::Float32:
-	case cmf::ElementType::Float16:
-	case cmf::ElementType::UInt16Norm:
-	case cmf::ElementType::UInt16:
-	case cmf::ElementType::Int16Norm:
-	case cmf::ElementType::Int16:
-	case cmf::ElementType::UInt8Norm:
-	case cmf::ElementType::UInt8:
-	case cmf::ElementType::Int8Norm:
-	case cmf::ElementType::Int8:
-		break;
-	default:
 		return false;
 	}
 
@@ -827,6 +835,26 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	{
 		return "Curve has no keyframes";
 	}
+
+	if( !IsValidElementType( curve.knotType ) )
+	{
+		return "Curve has invalid knotType";
+	}
+
+	switch( curve.interpolation )
+	{
+	case cmf::Interpolation::Step:
+	case cmf::Interpolation::Linear:
+		break;
+	default:
+		return "Curve has invalid interpolation";
+	}
+
+	if( !IsValidElementType( curve.valueType ) )
+	{
+		return "Curve has invalid valueType";
+	}
+
 	// Knots must be in ascending order
 	cmf::VertexElement element = {};
 	element.type = curve.knotType;
@@ -843,6 +871,11 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 		{
 			return "Curve keyframes are not in ascending order";
 		}
+	}
+
+	if( curve.valueDimension == 0 )
+	{
+		return "Curve has zero valueDimension";
 	}
 
 	if( curve.values.size() != uint64_t( curve.knotCount ) * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
@@ -873,6 +906,18 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 		switch( animation.channels[i].targetType )
 		{
 		case cmf::AnimationChannelTargetType::BonePosition:
+		case cmf::AnimationChannelTargetType::BoneRotation:
+		case cmf::AnimationChannelTargetType::BoneScale:
+		case cmf::AnimationChannelTargetType::MorphTarget:
+		case cmf::AnimationChannelTargetType::Other:
+			break;
+		default:
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " has invalid targetType";
+		}
+
+		switch( animation.channels[i].targetType )
+		{
+		case cmf::AnimationChannelTargetType::BonePosition:
 		case cmf::AnimationChannelTargetType::BoneScale:
 			if( animation.curves[animation.channels[i].curveIndex].valueDimension != 3 )
 			{
@@ -893,6 +938,11 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 			break;
 		default:
 			break;
+		}
+
+		if( animation.channels[i].target.empty() )
+		{
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " has empty target name";
 		}
 	}
 	for( size_t i = 0; i < animation.curves.size(); ++i )
