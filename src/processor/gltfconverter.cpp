@@ -1,6 +1,7 @@
 #include "commands.h"
 #include "cmffile.h"
 #include "cmf/tangents.h"
+#include "cmf/declutils.h"
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
@@ -24,42 +25,24 @@ struct CMFUsageAttribute
 	const char* prefix;
 };
 
-// Find elements that do not require usageIndex and only exist in the data stream once
-const cmf::VertexElement* FindSingleUsageElement( cmf::Span<cmf::VertexElement> decl, cmf::Usage usage )
+const cmf::VertexElement* FindElementByUsage( cmf::Span<cmf::VertexElement> decl, cmf::Usage usage, uint8_t usageIndex = 0 )
 {
 	for( const auto& element : decl )
 	{
-		if( element.usage == usage )
+		if( element.usage == usage && element.usageIndex == usageIndex )
+		{
 			return &element;
+		}
 	}
 	return nullptr;
 }
 
 void AlignBuffer( tinygltf::Buffer& buf, size_t alignment )
 {
-	while( buf.data.size() % alignment != 0 )
-		buf.data.push_back( 0 );
-}
-
-int GetElementTypeSize( cmf::ElementType element )
-{
-	switch( element )
+	while(buf.data.size() % alignment != 0)
 	{
-	case cmf::ElementType::Float32:
-		return sizeof( uint32_t );
-	case cmf::ElementType::Float16:
-	case cmf::ElementType::UInt16Norm:
-	case cmf::ElementType::UInt16:
-	case cmf::ElementType::Int16Norm:
-	case cmf::ElementType::Int16:
-		return sizeof( uint16_t );
-	case cmf::ElementType::UInt8Norm:
-	case cmf::ElementType::UInt8:
-	case cmf::ElementType::Int8Norm:
-	case cmf::ElementType::Int8:
-		return sizeof( uint8_t );
+		buf.data.push_back( 0 );
 	}
-	return 1;
 }
 
 int GetGltfComponentType( cmf::ElementType element )
@@ -67,8 +50,9 @@ int GetGltfComponentType( cmf::ElementType element )
 	switch( element )
 	{
 	case cmf::ElementType::Float32:
-		return TINYGLTF_COMPONENT_TYPE_FLOAT;
+	// We convert float16 into float32 for gltf compatability
 	case cmf::ElementType::Float16:
+		return TINYGLTF_COMPONENT_TYPE_FLOAT;
 	case cmf::ElementType::UInt16Norm:
 	case cmf::ElementType::UInt16:
 	case cmf::ElementType::Int16Norm:
@@ -83,11 +67,12 @@ int GetGltfComponentType( cmf::ElementType element )
 	return 1;
 }
 
-std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, std::string name, int index )
+std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, std::string name, int usageIndex )
 {
 	// Continue for a reasonable amount of similarly named attributes.
 	// VK and GL guarantee at least 16 elements, so we will provide a worse case senario
-	for( int i = index; i < 16; i++ )
+	static int minimumGLAttributes = 16;
+	for( int i = usageIndex; i < minimumGLAttributes; i++ )
 	{
 		std::string newName = name;
 		if( i > 0 )
@@ -99,14 +84,13 @@ std::string GenerateAttributeName( const std::map<std::string, int>& usedAtribut
 			return newName;
 		}
 	}
-	throw std::runtime_error( "Could not find a unique attribute name for '" + name + "' starting at index " + std::to_string( index ) );
+	throw std::runtime_error( "Could not find a unique attribute name for '" + name + "' starting at index " + std::to_string( usageIndex ) );
 }
-
 
 int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& element, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, bool normalized = false )
 {
 	const int componentCount = element.elementCount;
-	const size_t componentSize = GetElementTypeSize( element.type );
+	const size_t componentSize = cmf::GetElementTypeSize( element.type );
 	const int gltfComponentType = GetGltfComponentType( element.type );
 
 	int gltfType = TINYGLTF_TYPE_SCALAR;
@@ -138,10 +122,10 @@ int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t s
 
 	if( element.type == cmf::ElementType::Float32 )
 	{
-		float* floatDst = reinterpret_cast<float*>( dst );
+		auto* floatDst = reinterpret_cast<float*>( dst );
 		for( uint32_t v = 0; v < vertexCount; ++v )
 		{
-			const float* src = reinterpret_cast<const float*>( vbBytes + v * stride + element.offset );
+			const auto* src = reinterpret_cast<const float*>( vbBytes + v * stride + element.offset );
 			for( int k = 0; k < componentCount; ++k )
 			{
 				floatDst[v * componentCount + k] = src[k];
@@ -152,10 +136,10 @@ int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t s
 	}
 	else if( element.type == cmf::ElementType::Float16 )
 	{
-		float* floatDst = reinterpret_cast<float*>( dst );
+		auto* floatDst = reinterpret_cast<float*>( dst );
 		for( uint32_t v = 0; v < vertexCount; ++v )
 		{
-			const uint16_t* src = reinterpret_cast<const uint16_t*>( vbBytes + v * stride + element.offset );
+			const auto* src = reinterpret_cast<const uint16_t*>( vbBytes + v * stride + element.offset );
 			for( int k = 0; k < componentCount; ++k )
 			{
 				const float val = static_cast<float>( Float_16( src[k] ) );
@@ -193,7 +177,7 @@ int AddVertexAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t s
 		acc.normalized = normalized;
 		acc.type = gltfType;
 		acc.count = vertexCount;
-		if( vertexCount > 0 && ( element.type == cmf::ElementType::Float32 || element.type == cmf::ElementType::Float16 ) )
+		if( vertexCount > 0 && gltfComponentType == TINYGLTF_COMPONENT_TYPE_FLOAT )
 		{
 			acc.minValues = minVals;
 			acc.maxValues = maxVals;
@@ -213,8 +197,8 @@ float GenerateBinormalSign( const Vector3& normal, const Vector3& tangent, const
 
 int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& tangentElem, cmf::Span<cmf::VertexElement> decl, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
 {
-	const auto* normalElem = FindSingleUsageElement( decl, cmf::Usage::Normal );
-	const auto* binormalElem = FindSingleUsageElement( decl, cmf::Usage::Binormal );
+	const auto* normalElem = FindElementByUsage( decl, cmf::Usage::Normal );
+	const auto* binormalElem = FindElementByUsage( decl, cmf::Usage::Binormal );
 
 	if( !normalElem || normalElem->type != cmf::ElementType::Float32 || normalElem->elementCount < 3 )
 	{
@@ -230,13 +214,13 @@ int AddTangentAttribute( const uint8_t* vbBytes, uint32_t vertexCount, uint32_t 
 	std::vector<float> tanBuffer( vertexCount * 4 );
 	for( uint32_t v = 0; v < vertexCount; ++v )
 	{
-		const float* T = reinterpret_cast<const float*>( vbBytes + v * stride + tangentElem.offset );
-		const float* N = reinterpret_cast<const float*>( vbBytes + v * stride + normalElem->offset );
-		const float* B = reinterpret_cast<const float*>( vbBytes + v * stride + binormalElem->offset );
-		const float w = GenerateBinormalSign( Vector3( N[0], N[1], N[2] ), Vector3( T[0], T[1], T[2] ), Vector3( B[0], B[1], B[2] ) );
-		tanBuffer[v * 4 + 0] = T[0];
-		tanBuffer[v * 4 + 1] = T[1];
-		tanBuffer[v * 4 + 2] = T[2];
+		const auto* t = reinterpret_cast<const float*>( vbBytes + v * stride + tangentElem.offset );
+		const auto* n = reinterpret_cast<const float*>( vbBytes + v * stride + normalElem->offset );
+		const auto* b = reinterpret_cast<const float*>( vbBytes + v * stride + binormalElem->offset );
+		const float w = GenerateBinormalSign( Vector3( n[0], n[1], n[2] ), Vector3( t[0], t[1], t[2] ), Vector3( b[0], b[1], b[2] ) );
+		tanBuffer[v * 4 + 0] = t[0];
+		tanBuffer[v * 4 + 1] = t[1];
+		tanBuffer[v * 4 + 2] = t[2];
 		tanBuffer[v * 4 + 3] = w;
 	}
 
@@ -260,7 +244,7 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, uint32_t 
 	{
 		const uint8_t* src = vbBytes + v * stride + element.offset;
 
-		auto ReadTangentComponent = [&]( const uint8_t* buffer, int k ) -> float {
+		auto readTangentComponent = [&]( const uint8_t* buffer, int k ) -> float {
 			switch( element.type )
 			{
 			// PackedTangent
@@ -278,7 +262,7 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, uint32_t 
 			}
 		};
 
-		Vector4 packed( ReadTangentComponent( src, 0 ), ReadTangentComponent( src, 1 ), ReadTangentComponent( src, 2 ), ReadTangentComponent( src, 3 ) );
+		const Vector4 packed( readTangentComponent( src, 0 ), readTangentComponent( src, 1 ), readTangentComponent( src, 2 ), readTangentComponent( src, 3 ) );
 
 		auto [normal, tangent, bitangent] = cmf::UnpackTangents( compression, packed );
 
@@ -315,12 +299,7 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, uint32_t 
 void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene )
 {
 	if( mesh.lods.empty() )
-		return;
-
-	const auto* posElement = FindSingleUsageElement( mesh.decl, cmf::Usage::Position );
-	if( !posElement || ( posElement->type != cmf::ElementType::Float32 && posElement->type != cmf::ElementType::Float16 ) || posElement->elementCount != 3 )
 	{
-		fprintf( stderr, "Mesh '%.*s' has unsupported position format; skipping\n", static_cast<int>( mesh.name.size() ), mesh.name.begin() );
 		return;
 	}
 
@@ -345,7 +324,7 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 			break;
 		}
 		default: {
-			fprintf( stderr, "Unsupported MeshTopology\n" );
+			printf( "Unsupported MeshTopology\n" );
 			return;
 		}
 		}
@@ -397,6 +376,8 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 			{ cmf::Usage::Tangent, "TANGENT" },
 			{ cmf::Usage::TexCoord, "TEXCOORD" },
 			{ cmf::Usage::Color, "COLOR" },
+			{ cmf::Usage::BoneIndices, "JOINTS" },
+			{ cmf::Usage::BoneWeights, "WEIGHTS" },
 		};
 		for( const auto& attrib : kMultiAttribs )
 		{
@@ -416,35 +397,12 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 					prim.attributes[normalName] = normalAccIdx;
 					prim.attributes[tangentName] = tangentAccIdx;
 				}
-				else if( elem.usage == attrib.usage && elem.type == cmf::ElementType::Float32 )
+				else if( elem.usage == attrib.usage )
 				{
 					std::string name = GenerateAttributeName( prim.attributes, std::string( attrib.prefix ), elem.usageIndex );
 
 					prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 				}
-			}
-		}
-
-		// Integer attributes (JOINTS_n)
-		for( const auto& elem : mesh.decl )
-		{
-			if( elem.usage == cmf::Usage::BoneIndices &&
-				( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt16 ) )
-			{
-				const std::string name = GenerateAttributeName( prim.attributes, "JOINTS_", elem.usageIndex );
-				prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
-			}
-		}
-
-		// Normalized integer attributes (WEIGHTS_n for non-float bone weights)
-		for( const auto& elem : mesh.decl )
-		{
-			if( elem.usage == cmf::Usage::BoneWeights &&
-				( elem.type == cmf::ElementType::UInt8 || elem.type == cmf::ElementType::UInt8Norm ||
-				  elem.type == cmf::ElementType::UInt16 || elem.type == cmf::ElementType::UInt16Norm ) )
-			{
-				const std::string name = GenerateAttributeName( prim.attributes, "WEIGHTS_", elem.usageIndex );
-				prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model, true );
 			}
 		}
 
@@ -471,15 +429,19 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 	if( lodNodeIndices.size() > 1 )
 	{
 		tinygltf::Value::Array ids;
-		for( size_t i = 1; i < lodNodeIndices.size(); ++i )
+		for(size_t i = 1; i < lodNodeIndices.size(); ++i)
+		{
 			ids.push_back( tinygltf::Value( lodNodeIndices[i] ) );
+		}
 
 		tinygltf::Value::Object msftLod;
 		msftLod["ids"] = tinygltf::Value( ids );
 		model.nodes[lodNodeIndices[0]].extensions["MSFT_lod"] = tinygltf::Value( msftLod );
 
-		if( std::find( model.extensionsUsed.begin(), model.extensionsUsed.end(), "MSFT_lod" ) == model.extensionsUsed.end() )
+		if(std::find( model.extensionsUsed.begin(), model.extensionsUsed.end(), "MSFT_lod" ) == model.extensionsUsed.end())
+		{
 			model.extensionsUsed.push_back( "MSFT_lod" );
+		}
 	}
 
 	scene.nodes.push_back( lodNodeIndices[0] );
@@ -503,7 +465,7 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 
 		if( data.meshes.empty() )
 		{
-			fprintf( stderr, "CMF contains no mesh data" );
+			printf( "CMF contains no mesh data" );
 			return;
 		}
 
