@@ -7,6 +7,12 @@ namespace cmf
 {
 
 // NOLINTBEGIN(readability-identifier-naming)
+/**
+ * @brief A base class for data streams that provides access to elements of type T within a buffer.
+ * @tparam T The destination type of elements in the stream when they are extracted from the buffer.
+ * @tparam P The pointer type to the underlying data. Constness of P determines whether the stream allows modification of the data.
+ * @tparam Converter The type converter used to convert between raw data and T.
+ */
 template <typename T, typename P, typename Converter = DeclTypeConverter<T>>
 class BaseDataStream
 {
@@ -105,6 +111,11 @@ private:
 	Converter m_conversion;
 };
 
+/**
+ * @brief Calculates the number of elements in a buffer view based on its size and stride.
+ * @param view The buffer view containing size and stride information.
+ * @return The number of elements in the stream. Returns 0 if the view size is 0, returns 1 if stride is 0 (to avoid division by zero), otherwise returns size divided by stride.
+ */
 inline static uint32_t GetStreamElementCount( const BufferView& view )
 {
 	if( view.size == 0 )
@@ -119,6 +130,12 @@ inline static uint32_t GetStreamElementCount( const BufferView& view )
 	return view.size / view.stride;
 }
 
+/**
+ * @brief Base type for buffer element streams that provides access to vertex data stored in an interleaved buffer. This class is designed to access a specific 
+   vertex element within an interleaved buffer
+ * @tparam T The destination type of elements in the stream when they are extracted from the buffer. The stream will perform conversions from the raw buffer data to this type when accessing elements.
+ * @tparam P The pointer type to the underlying data. Constness of P determines whether the stream allows modification of the data.
+ */
 template <typename T, typename P>
 class BaseBufferElementStream : public BaseDataStream<T, P>
 {
@@ -195,6 +212,10 @@ template <typename T>
 using BufferElementStream = BaseBufferElementStream<T, void>;
 
 
+/**
+ * @brief A templated class for accessing index buffer data, providing access to index data with automatic conversion between 16-bit and 32-bit index formats.
+ * @tparam P The pointer type for the underlying buffer data. Constness of P determines whether the stream allows modification of the index data. 
+ */
 template <typename P>
 class BaseIndexBufferStream : public BaseDataStream<uint32_t, P, IndexConverter>
 {

@@ -5,8 +5,14 @@ carbon-mesh Documentation
 
 .. toctree::
     :maxdepth: 1
-    :caption: Contents
+    :caption: File Format and API documentation
 
     cmf/fileFormat
-    cmf/capi
-    tools
+    cmf/usage
+    cmf/animation
+
+.. toctree::
+    :maxdepth: 1
+    :caption: Tools
+
+    cmfprocessor/cmfprocessor
