@@ -550,17 +550,15 @@ const float* BufferToFloat32( const cmf::Span<uint8_t>& data, cmf::v1::ElementTy
 	if( type == cmf::v1::ElementType::Float16 )
 	{
 		const auto* src = reinterpret_cast<const uint16_t*>( data.data() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-		for(uint32_t i = 0; i < count; ++i)
+		for( uint32_t i = 0; i < count; ++i )
 		{
 			buffer[i] = static_cast<float>( Float_16( src[i] ) );
 		}
 		return buffer.data();
 	}
-	
 	// Handle all non float varients
 	const bool isSigned = cmf::IsSignedElementType( type );
 	const uint32_t elementSize = cmf::GetElementTypeSize( type );
-	
 	const auto* src = reinterpret_cast<const char*>( data.data() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 	const uint32_t int32SignBit = ( sizeof( int32_t ) * 8 ) - 1;
 	const uint32_t signBit = ( elementSize * 8 ) - 1;
@@ -579,7 +577,7 @@ const float* BufferToFloat32( const cmf::Span<uint8_t>& data, cmf::v1::ElementTy
 
 void AddAnimation( const cmf::v1::Animation& animation, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
 {
-	if(animation.channels.empty())
+	if( animation.channels.empty() )
 	{
 		return;
 	}
