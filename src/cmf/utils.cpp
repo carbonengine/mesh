@@ -298,6 +298,12 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 			return false;
 		}
 	}
+
+	if( element.offset % cmf::GetElementTypeSize( element.type ) != 0 )
+	{
+		return false;
+	}
+
 	return true;
 }
 
@@ -312,6 +318,22 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 	{
 		return false;
 	}
+
+	for( size_t i = 0; i < decl.size(); i++ )
+	{
+		uint64_t a_lo = decl[i].offset;
+		uint64_t a_hi = a_lo + cmf::GetVertexElementSize( decl[i] );
+		for( size_t j = i + 1; j < decl.size(); j++ )
+		{
+			uint64_t b_lo = decl[j].offset;
+			uint64_t b_hi = b_lo + cmf::GetVertexElementSize( decl[j] );
+			if( a_lo < b_hi && b_lo < a_hi )
+			{
+				return false;
+			}
+		}
+	}
+
 	return std::all_of( decl.begin(), decl.end(), [&decl]( const auto& element ) {
 		return IsVertexElementValid( element, decl );
 	} );
@@ -345,6 +367,14 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		if( lod.ib.stride != 2 && lod.ib.stride != 4 )
 		{
 			return "LOD " + std::to_string( lodIndex ) + " index buffer stride must be 2 or 4";
+		}
+	}
+
+	if( mesh.topology == cmf::MeshTopology::TriangleList && lod.ib.size > 0 )
+	{
+		if( ( lod.ib.size / lod.ib.stride ) % 3 != 0 )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " index buffer must contain multiples of 3 for TriangleList topology";
 		}
 	}
 
@@ -384,6 +414,46 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 			return "LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " vertex count does not match LOD vertex count";
 		}
 	}
+
+	for( const auto& element : mesh.decl )
+	{
+		uint32_t elementSize = cmf::GetVertexElementSize( element );
+		if( uint64_t( element.offset ) + elementSize > lod.vb.stride )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " has a vertex element that extends past vb stride";
+		}
+	}
+
+	uint32_t morphStride = std::numeric_limits<uint32_t>::max();
+	for( const auto& morphTarget : lod.morphTargets )
+	{
+		if( morphTarget.vb.size == 0 )
+		{
+			continue;
+		}
+
+		if( morphStride == std::numeric_limits<uint32_t>::max() )
+		{
+			morphStride = morphTarget.vb.stride;
+		}
+		else if( morphStride != morphTarget.vb.stride )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " has morph targets with varying strides";
+		}
+	}
+
+	if( morphStride != std::numeric_limits<uint32_t>::max() )
+	{
+		for( const auto& element : mesh.morphTargets.decl )
+		{
+			uint32_t elementSize = cmf::GetVertexElementSize( element );
+			if( uint64_t( element.offset ) + elementSize > morphStride )
+			{
+				return "LOD " + std::to_string( lodIndex ) + " has a morph target with vertex element that extends past vb stride";
+			}
+		}
+	}
+
 	return {};
 }
 
@@ -469,6 +539,14 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		if( !error.empty() )
 		{
 			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
+		}
+	}
+
+	for( const auto& lod : mesh.lods )
+	{
+		if( lod.vb.stride != mesh.lods[0].vb.stride )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has lods with varying strides";
 		}
 	}
 
