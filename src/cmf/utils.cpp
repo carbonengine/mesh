@@ -2,7 +2,7 @@
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
 #include <numeric>
-
+#include <cmath>
 
 namespace
 {
@@ -481,6 +481,17 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 				return "Mesh \"" + ToStdString( mesh.name ) + "\" area " + std::to_string( areaIdx ) + " references out-of-range bone binding";
 			}
 		}
+
+		if( mesh.areas[areaIdx].bounds.IsInitialized() )
+		{
+			for( int i = 0; i < 3; i++ )
+			{
+				if( mesh.areas[areaIdx].bounds.m_max[i] < mesh.areas[areaIdx].bounds.m_min[i] )
+				{
+					return "Mesh \"" + ToStdString( mesh.name ) + "\" area " + std::to_string( areaIdx ) + " has invalid bounds";
+				}
+			}
+		}
 	}
 
 	if( !IsVertexDeclarationValid( mesh.decl ) )
@@ -506,10 +517,17 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBindings but no boneIndices";
 	}
 
-	// Mesh can have up to 255 bone bindings
-	if( mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
+	if( mesh.boneBindings.size() > std::numeric_limits<uint16_t>::max() )
 	{
-		return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings";
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 65535 bone bindings";
+	}
+
+	for( const auto& boneBinding : mesh.boneBindings )
+	{
+		if( boneBinding.name.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBinding with empty name";
+		}
 	}
 
 	const size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
@@ -545,6 +563,69 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		}
 	}
 
+	if( !mesh.audioOcclusionMesh.vertices.empty() && mesh.audioOcclusionMesh.indices.empty() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh without indices";
+	}
+
+	if( !mesh.audioOcclusionMesh.indices.empty() && mesh.audioOcclusionMesh.vertices.empty() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh without vertices";
+	}
+
+	if( mesh.audioOcclusionMesh.indices.size() % 3 != 0 )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh that does not consist of triangles";
+	}
+
+	if( mesh.audioOcclusionMesh.bounds.IsInitialized() )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( mesh.audioOcclusionMesh.bounds.m_max[i] < mesh.audioOcclusionMesh.bounds.m_min[i] )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh with invalid bounds";
+			}
+		}
+	}
+
+	for( uint16_t idx : mesh.audioOcclusionMesh.indices )
+	{
+		if( idx >= mesh.audioOcclusionMesh.vertices.size() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh with out-of-range index";
+		}
+	}
+
+	if( mesh.bounds.IsInitialized() )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( mesh.bounds.m_max[i] < mesh.bounds.m_min[i] )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has invalid bounds";
+			}
+		}
+	}
+
+	for( const auto& morphTarget : mesh.morphTargets.targets )
+	{
+		if( morphTarget.name.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has empty morphTarget name";
+		}
+	}
+	for( size_t i = 0; i < mesh.morphTargets.targets.size(); i++ )
+	{
+		for( size_t j = i + 1; j < mesh.morphTargets.targets.size(); j++ )
+		{
+			if( mesh.morphTargets.targets[i].name == mesh.morphTargets.targets[j].name )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has duplicate morphTarget name " + ToStdString( mesh.morphTargets.targets[i].name );
+			}
+		}
+	}
+
 	return {};
 }
 
@@ -572,6 +653,91 @@ std::string IsSkeletonValid( const cmf::Skeleton& skeleton )
 		if( parent != 0xffffffff && parent >= static_cast<uint32_t>( idx ) )
 		{
 			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" bone " + std::to_string( idx ) + " has parent index >= own index (would form a cycle)";
+		}
+	}
+	for( const auto& boneName : skeleton.bones )
+	{
+		if( boneName.empty() )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has empty bone name";
+		}
+	}
+	for( size_t i = 0; i < skeleton.bones.size(); i++ )
+	{
+		for( size_t j = i + 1; j < skeleton.bones.size(); j++ )
+		{
+			if( skeleton.bones[i] == skeleton.bones[j] )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has duplicate bone name " + ToStdString( skeleton.bones[i] );
+			}
+		}
+	}
+	for( const auto& mask : skeleton.boneMasks )
+	{
+		if( mask.name.empty() )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has empty boneMask name";
+		}
+	}
+	for( size_t i = 0; i < skeleton.boneMasks.size(); i++ )
+	{
+		for( size_t j = i + 1; j < skeleton.boneMasks.size(); j++ )
+		{
+			if( skeleton.boneMasks[i].name == skeleton.boneMasks[j].name )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has duplicate boneMask name " + ToStdString( skeleton.boneMasks[i].name );
+			}
+		}
+	}
+	for( const auto& mask : skeleton.boneMasks )
+	{
+		for( const auto& weight : mask.weights )
+		{
+			if( weight.index >= skeleton.bones.size() )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has boneMask " + ToStdString( mask.name ) + " with invalid index";
+			}
+			if( std::clamp( weight.weight, 0.f, 1.f ) != weight.weight )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has boneMask " + ToStdString( mask.name ) + " with weight outside range [0, 1]";
+			}
+		}
+	}
+	for( const auto& transform : skeleton.restTransforms )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( std::isinf( transform.position[i] ) || std::isnan( transform.position[i] ) )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform position with invalid float";
+			}
+		}
+		if( std::isinf( transform.rotation.x ) || std::isnan( transform.rotation.x ) || 
+			std::isinf( transform.rotation.y ) || std::isnan( transform.rotation.y ) || 
+			std::isinf( transform.rotation.z ) || std::isnan( transform.rotation.z ) || 
+			std::isinf( transform.rotation.w ) || std::isnan( transform.rotation.w ) )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform rotation with invalid float";
+		}
+		for( int i = 0; i < 3; i++ )
+		{
+			if( std::isinf( transform.scale[i] ) || std::isnan( transform.scale[i] ) )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform scale with invalid float";
+			}
+		}
+	}
+	for( const auto& transform : skeleton.invBindTransforms )
+	{
+		for( int i = 0; i < 4; i++ )
+		{
+			for( int j = 0; j < 4; j++ )
+			{
+				if( std::isinf( transform.m[i][j] ) || std::isnan( transform.m[i][j] ) )
+				{
+					return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has invBindTransform with invalid float";
+				}
+			}
 		}
 	}
 	return {};
