@@ -67,6 +67,52 @@ int GetGltfComponentType( cmf::ElementType element )
 	return 1;
 }
 
+const float* BufferToFloat32( const void* data, cmf::v1::ElementType type, uint32_t count, std::vector<float>& buffer )
+{
+	if( type == cmf::v1::ElementType::Float32 )
+	{
+		return reinterpret_cast<const float*>( data ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+	}
+
+	buffer.resize( count );
+
+	if( type == cmf::v1::ElementType::Float16 )
+	{
+		const auto* src = reinterpret_cast<const uint16_t*>( data ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+		for( uint32_t i = 0; i < count; ++i )
+		{
+			buffer[i] = static_cast<float>( Float_16( src[i] ) );
+		}
+		return buffer.data();
+	}
+
+	// Handle all non float varients
+	const bool isSigned = cmf::IsSignedElementType( type );
+	const uint32_t elementSize = cmf::GetElementTypeSize( type );
+
+	const auto* src = reinterpret_cast<const char*>( data ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+	const uint32_t int32SignBit = ( sizeof( int32_t ) * 8 ) - 1;
+	const uint32_t signBit = ( elementSize * 8 ) - 1;
+	const uint32_t shift = ( int32SignBit - signBit ) * isSigned;
+
+	int32_t signedData = 0;
+	for( uint32_t i = 0; i < count; ++i )
+	{
+		memcpy( &signedData, src + i * elementSize, elementSize );
+		signedData = ( signedData << shift ) >> shift;
+		buffer[i] = float( signedData );
+	}
+
+	return buffer.data();
+}
+
+Vector3 BufferToVector3( const void* data, cmf::v1::ElementType type )
+{
+	std::vector<float> float32Buffer;
+	const float* convertedData = BufferToFloat32( data, type, 3, float32Buffer );
+	return Vector3( convertedData[0], convertedData[1], convertedData[2] );
+}
+
 std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, const std::string& name, int usageIndex )
 {
 	// Continue for a reasonable amount of similarly named attributes.
@@ -200,24 +246,15 @@ int AddTangentAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uin
 	const auto* normalElem = FindElementByUsage( decl, cmf::Usage::Normal );
 	const auto* binormalElem = FindElementByUsage( decl, cmf::Usage::Binormal );
 
-	if( !normalElem || normalElem->type != cmf::ElementType::Float32 || normalElem->elementCount < 3 )
-	{
-		throw std::runtime_error( "Cannot reconstruct TANGENT w: missing or unsupported Normal element" );
-	}
-	if( !binormalElem || binormalElem->type != cmf::ElementType::Float32 || binormalElem->elementCount < 3 )
-	{
-		throw std::runtime_error( "Cannot reconstruct TANGENT w: missing or unsupported Binormal element" );
-	}
-
 	// Rebuild the tangent buffer storing the binormal in the W component according to the spec under "TANGENT"
 	// https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes-overview
 	std::vector<float> tanBuffer( vertexCount * 4 );
 	for( uint32_t v = 0; v < vertexCount; ++v )
 	{
-		const auto* t = reinterpret_cast<const float*>( vbBytes + v * stride + tangentElem.offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-		const auto* n = reinterpret_cast<const float*>( vbBytes + v * stride + normalElem->offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-		const auto* b = reinterpret_cast<const float*>( vbBytes + v * stride + binormalElem->offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-		const float w = GenerateBinormalSign( Vector3( n[0], n[1], n[2] ), Vector3( t[0], t[1], t[2] ), Vector3( b[0], b[1], b[2] ) );
+		const auto t = BufferToVector3( vbBytes + v * stride + tangentElem.offset, tangentElem.type );
+		const auto n = BufferToVector3( vbBytes + v * stride + normalElem->offset, normalElem->type );
+		const auto b = BufferToVector3( vbBytes + v * stride + binormalElem->offset, binormalElem->type );
+		const float w = GenerateBinormalSign( n, t, b);
 		tanBuffer[v * 4 + 0] = t[0];
 		tanBuffer[v * 4 + 1] = t[1];
 		tanBuffer[v * 4 + 2] = t[2];
@@ -648,7 +685,7 @@ void AddAnimation( const cmf::v1::Animation& animation, tinygltf::Buffer& gltfBu
 		const std::string interpolation = curve.interpolation == cmf::v1::Interpolation::Linear ? "LINEAR" : "STEP";
 
 		std::vector<float> knotFloat32Buffer;
-		const float* knotFloats = BufferToFloat32( curve.knots, curve.knotType, curve.knotCount, knotFloat32Buffer );
+		const float* knotFloats = BufferToFloat32( curve.knots.data(), curve.knotType, curve.knotCount, knotFloat32Buffer );
 
 		AlignBuffer( gltfBuffer, sizeof( float ) );
 		const size_t knotsByteOffset = gltfBuffer.data.size();
@@ -683,7 +720,7 @@ void AddAnimation( const cmf::v1::Animation& animation, tinygltf::Buffer& gltfBu
 		}
 
 		std::vector<float> valuesFloat32Buffer;
-		const float* valueFloats = BufferToFloat32( curve.values, curve.valueType, curve.knotCount * curve.valueDimension, valuesFloat32Buffer );
+		const float* valueFloats = BufferToFloat32( curve.values.data(), curve.valueType, curve.knotCount * curve.valueDimension, valuesFloat32Buffer );
 
 		// Write animation values
 		AlignBuffer( gltfBuffer, sizeof( float ) );
