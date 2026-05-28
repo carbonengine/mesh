@@ -103,6 +103,10 @@ private:
 	std::vector<std::unique_ptr<Buffer>> m_buffers;
 };
 
+/**
+ * @brief A helper class with std::vector-like interface to modify cmf::Span objects.
+ * @tparam T The type of elements stored in the span.
+ */
 template <typename T>
 struct SpanModifier
 {
@@ -220,6 +224,13 @@ struct SpanModifier
 	MemoryAllocator& allocator;
 };
 
+/**
+ * @brief Creates a SpanModifier for the given span and memory allocator.
+ * @tparam T The element type of the span.
+ * @param data The span to be modified.
+ * @param allocator The memory allocator to use for modifications.
+ * @return A SpanModifier object that can modify the span using the provided allocator.
+ */
 template <typename T>
 SpanModifier<T> Modify( Span<T>& data, MemoryAllocator& allocator )
 {

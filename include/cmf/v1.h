@@ -55,6 +55,7 @@ enum class Usage : uint8_t
 	PackedTangentLegacy,
 };
 
+/** @brief Enum defining the storage type for the element. */
 enum class ElementType : uint8_t
 {
 	Float32,
@@ -69,6 +70,7 @@ enum class ElementType : uint8_t
 	Int8
 };
 
+/** @brief Number of elements in the ElementType enum. */
 static constexpr uint8_t ElementTypeCount = 10;
 
 struct VertexElement
@@ -76,7 +78,9 @@ struct VertexElement
 	Usage usage = Usage::Position;
 	uint8_t usageIndex = 0;
 	ElementType type = ElementType::Float32;
+	/// Number of components for this element (e.g., 3 for a Vector3, 2 for a UV coordinate, etc.), must be between 1 and 4
 	uint8_t elementCount = 0;
+	/// Byte offset from the start of the vertex to this element
 	uint32_t offset = 0;
 
 	static constexpr std::string_view TypeName = "VertexElement";
@@ -117,7 +121,6 @@ struct MeshArea
 
 struct LodMeshArea
 {
-	//TODO: These should be changed to be index counts, not primitive counts.
 	uint32_t firstElement = 0;
 	uint32_t elementCount = 0;
 
@@ -149,6 +152,7 @@ struct BoneBinding
 struct MorphTarget
 {
 	String name;
+	/// Maximum displacement of any vertex in this morph target, used for culling and LOD purposes. This is the maximum distance that any vertex moves when this morph target is applied at full weight.
 	float maxDisplacement = 0.0f;
 
 	static constexpr std::string_view TypeName = "MorphTarget";
@@ -254,6 +258,7 @@ struct Mesh
 	CcpMath::AxisAlignedBox bounds;
 	AudioOcclusionMesh audioOcclusionMesh;
 	MeshTopology topology = MeshTopology::TriangleList;
+	/// Index of the skeleton in the parent data `skeletons` list used for this mesh, or 0xff if the mesh is not skinned
 	uint8_t skeleton = 0xff;
 
 	static constexpr std::string_view TypeName = "Mesh";
@@ -361,6 +366,7 @@ struct AnimationChannel
 {
 	String target;
 	AnimationChannelTargetType targetType = AnimationChannelTargetType::BonePosition;
+	/// Index of the curve in the parent data `curves` list used for this channel
 	uint32_t curveIndex = 0;
 
 	static constexpr std::string_view TypeName = "BoneAnimationChannel";
@@ -463,8 +469,10 @@ enum class SectionType : uint8_t
 struct Section
 {
 	uint32_t offset = 0;
+	/// Size of the section data in bytes after compression. If compression is None, this is the same as uncompressedSize.
 	uint32_t compressedSize = 0;
 	uint32_t uncompressedSize = 0;
+	/// Alignment in bytes required for the GPU when using this section as a sub-buffer. This should match the stride of the vertex/index buffers contained in this section.
 	uint16_t gpuAlignment = 0;
 	SectionType type = SectionType::Data;
 	SectionCompression compression = SectionCompression::None;

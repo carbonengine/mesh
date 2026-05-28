@@ -42,21 +42,28 @@ constexpr inline typename std::enable_if<!IsCmfDataType<U>::value>::type Enumera
 template <typename U, typename T>
 constexpr inline void EnumerateChildren( U& data, T&& visitor )
 {
-	if constexpr ( std::is_base_of_v<SpanRepr, U> )
-    {
-        for( auto& element : data )
-        {
+	if constexpr( std::is_base_of_v<SpanRepr, U> )
+	{
+		for( auto& element : data )
+		{
 			visitor( data, element, "" );
-        }
-    }
-    else
-    {
-        EnumerateMembers( data, [&visitor]( auto&&, auto& value, const char* ) {
-            EnumerateChildren( value, visitor );
-        } );
+		}
+	}
+	else
+	{
+		EnumerateMembers( data, [&visitor]( auto&&, auto& value, const char* ) {
+			EnumerateChildren( value, visitor );
+		} );
 	}
 }
 
+/**
+ * @brief Recursively walk along the object hierarchy and converts cmf::Span objects from offset-based references to pointer-based references.
+ * This function should be called after loading a CMF file to convert all offset-based references in the data structure to pointers for easier access. It processes the data structure recursively, 
+ * converting offsets to pointers for any cmf::Span objects.
+ * @tparam T The type of the data structure to process.
+ * @param data A reference to the data structure to process. If it is a cmf::Span, offsets are converted to pointers; otherwise, members are enumerated and processed recursively.
+ */
 template <typename T>
 void OffsetsToPointers( T& data )
 {
@@ -80,6 +87,13 @@ void OffsetsToPointers( T& data )
 }
 
 
+/**
+ * @brief Recursively walk along the object hierarchy and converts cmf::Span objects from pointer-based references to offset-based references.
+ * This function should be called before saving a CMF file to convert all pointer-based references in the data structure to offsets. It processes the data structure recursively,
+ * converting pointers to offsets for any cmf::Span objects.
+ * @tparam T The type of the data structure to process.
+ * @param data A reference to the data structure to process. If it is a cmf::Span, pointers are converted to offsets; otherwise, members are enumerated and processed recursively.
+ */
 template <typename T>
 void PointersToOffsets( T& data )
 {
