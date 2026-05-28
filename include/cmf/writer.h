@@ -133,6 +133,15 @@ FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
 	return result;
 }
 
+/**
+ * @brief Builds a file by serializing data and buffers into a byte vector. The resulting vector can be written to a file to create a valid CMF file. 
+ * The function takes care of flattening the data structure, aligning buffer data, and including optional metadata if provided. Only buffers referenced 
+ * by the data structure will be included in the output. The caller is responsible for ensuring that the data and buffers provided are valid and consistent with each other.
+ * @param data The data to be serialized into the file.
+ * @param buffers The buffer manager containing buffers to be included in the file.
+ * @param metadata Optional metadata to include in the file. If null, no metadata is added.
+ * @return A vector of bytes representing the built file contents.
+ */
 CARBON_MESH_EXPORT std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, const Metadata* metadata = nullptr );
 
 
