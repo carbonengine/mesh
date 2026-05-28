@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "rendering/vulkan/shadercache.h"
 #include "rendering/vulkan/vulkanerrors.h"
+#include "viewerIcon.h"
 
 Application::Application()
 {
@@ -36,6 +37,7 @@ void Application::Initialize()
 		Log::Error( "Failed to create GLFW window" );
 		return;
 	}
+	SetCarbonMeshViewerWindowIcon( m_window );
 
 	// we may ask for a given size (see above) but it is not guaranteed to be the actual framebuffer size
 	int actualHeight, actualWidth;
