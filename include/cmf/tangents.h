@@ -11,7 +11,7 @@ namespace cmf
 // Generates tangents and bitangents for the specified mesh. If the mesh already has tangents and bitangents, they will be reused unless forceRebuild is true.
 // The vertex declaration must contain position, normal and texcoord (with the corresponding usageIndex) attributes. The function will regenerate
 // index buffers for the mesh as some vertices may need to be duplicated to accommodate the new tangents.
-CARBON_MESH_EXPORT void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
+CARBON_MESH_EXPORT bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
 
 enum class TangentCompression
 {

@@ -45,8 +45,9 @@ namespace cmf
 {
 
 
-void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
+bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
+	bool success = true;
 
 	// TODO: check for already existing packed tangents
 
@@ -62,9 +63,9 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 	bool shouldGenerate = rebuildMeshTangents || rebuildMorphTargetTangents;
 	if( !shouldGenerate )
 	{
-		printf( "Mesh %s already has tangents, using existing ones.\n", ToStdString( mesh.name ).c_str() );
-		return;
+		return success;
 	}
+
 
 	//Completely un-index the mesh.
 	for( auto& lod : mesh.lods )
@@ -89,22 +90,9 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 		if( !positionElement || !normalElement || !texCoordElement )
 		{
-			printf( "Failed to generate mesh tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-
-			if( !positionElement )
-			{
-				printf( "    No Position%d attribute found.\n", 0 );
-			}
-			if( !normalElement )
-			{
-				printf( "    No Normal%d attribute found.\n", 0 );
-			}
-			if( !texCoordElement )
-			{
-				printf( "    No TexCoord%d attribute found.\n", usageIndex );
-			}
+			success = false;
 		}
-		else 
+		else
 		{
 
 			// Create a new vertex declaration with the new tangents
@@ -249,20 +237,7 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 		if( !positionElement || !normalElement || ( !morphTexCoordElement && !meshTexCoordElement ) )
 		{
-			printf( "Failed to generate morph target tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-
-			if( !positionElement )
-			{
-				printf( "    No morph target Position%d attribute found.\n", 0 );
-			}
-			if( !normalElement )
-			{
-				printf( "    No morph target Normal%d attribute found.\n", 0 );
-			}
-			if( !morphTexCoordElement && !meshTexCoordElement )
-			{
-				printf( "    No TexCoord%d attribute found, neither in morph targets or mesh.\n", usageIndex );
-			}
+			success = false;
 		}
 		else
 		{
@@ -329,8 +304,8 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 						ConstBufferElementStream<Vector3>( *positionElement, morphTarget.vb, bufferManager ),
 						ConstBufferElementStream<Vector3>( *normalElement, morphTarget.vb, bufferManager ),
 						morphTexCoordElement ?
-								ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
-								ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
+							ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
+							ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
 
 						tangentData
 					};
@@ -389,15 +364,11 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
 					for( uint32_t i = 0; i < uint32_t( tangentData.size() ); ++i )
 					{
-
-						//auto normal = data.normals[i];
 						auto normal = newNormals[i];
 						auto tangent = tangentData[i];
 						auto bitangent = Cross( tangent.GetXYZ(), normal ) * tangentData[i].w;
-						//newNormals.set( i, data.normals[i] );
 						newTangents.set( i, tangent.GetXYZ() );
 						newBitangents.set( i, bitangent );
-
 					}
 
 					morphTarget.vb = newVb;
@@ -407,13 +378,15 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 			mesh.morphTargets.decl = newVertexDeclaration;
 		}
 	}
-	
+
 
 	for( auto& lod : mesh.lods )
 	{
 		//Re-index the data again.
 		RemoveDuplicateVertices( lod, bufferManager );
 	}
+
+	return success;
 }
 
 
