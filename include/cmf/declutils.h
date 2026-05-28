@@ -10,5 +10,6 @@ CARBON_MESH_EXPORT VertexElement* FindElement( Span<VertexElement>& decl, Usage 
 
 CARBON_MESH_EXPORT uint32_t GetElementTypeSize( ElementType type );
 CARBON_MESH_EXPORT uint32_t GetVertexElementSize( const VertexElement& element );
+CARBON_MESH_EXPORT bool IsSignedElementType( ElementType type );
 
 }
