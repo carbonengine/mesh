@@ -89,6 +89,11 @@ std::string AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& 
 		{
 			return "If stride is non-zero, size must be multiple of stride";
 		}
+		// If stride is non-zero, offset must be multiple of stride
+		if( value.stride != 0 && value.offset % value.stride != 0 )
+		{
+			return "If stride is non-zero, offset must be multiple of stride";
+		}
 		// Stride must match gpuAlignment
 		if( value.stride != sections[value.index].gpuAlignment )
 		{
@@ -784,7 +789,13 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		return { true, {} };
 	}
 
-	const auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
+	const auto mainDataAddress = static_cast<const uint8_t*>( data ) + header.sections[0].offset;
+	if( reinterpret_cast<uintptr_t>( mainDataAddress ) % alignof( cmf::Data ) != 0 )
+	{
+		return { false, "Data section not aligned" };
+	}
+
+	const auto& mainData = *reinterpret_cast<const Data*>( mainDataAddress );
 	auto error = IsMainDataValid( mainData, header );
 	if( !error.empty() )
 	{
@@ -794,8 +805,14 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	const auto& lastSection = header.sections[header.sections.size() - 1];
 	if( lastSection.type == cmf::SectionType::Metadata )
 	{
-		const auto& metaData = *reinterpret_cast<const Metadata*>( static_cast<const uint8_t*>( data ) + lastSection.offset );
-		auto error = IsMetadataValid( metaData, lastSection.uncompressedSize );
+		const auto metadataAddress = static_cast<const uint8_t*>( data ) + lastSection.offset;
+		if( reinterpret_cast<uintptr_t>( metadataAddress ) % alignof( cmf::Metadata ) != 0 )
+		{
+			return { false, "Metadata section not aligned" };
+		}
+
+		const auto& metadata = *reinterpret_cast<const Metadata*>( metadataAddress );
+		auto error = IsMetadataValid( metadata, lastSection.uncompressedSize );
 		if( !error.empty() )
 		{
 			return { false, error };
