@@ -33,7 +33,7 @@ std::string AreSpanPointersValid( const T& value, const void* base, size_t total
 			return "Pointer must be within the base + totalSize range";
 		}
 
-		for ( size_t i = 0; i < value.size(); i++ )
+		for( size_t i = 0; i < value.size(); i++ )
 		{
 			auto result = AreSpanPointersValid( value[i], base, totalSize );
 			if( !result.empty() )
@@ -798,9 +798,9 @@ std::string IsSkeletonValid( const cmf::Skeleton& skeleton )
 				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform position with invalid float";
 			}
 		}
-		if( std::isinf( transform.rotation.x ) || std::isnan( transform.rotation.x ) || 
-			std::isinf( transform.rotation.y ) || std::isnan( transform.rotation.y ) || 
-			std::isinf( transform.rotation.z ) || std::isnan( transform.rotation.z ) || 
+		if( std::isinf( transform.rotation.x ) || std::isnan( transform.rotation.x ) ||
+			std::isinf( transform.rotation.y ) || std::isnan( transform.rotation.y ) ||
+			std::isinf( transform.rotation.z ) || std::isnan( transform.rotation.z ) ||
 			std::isinf( transform.rotation.w ) || std::isnan( transform.rotation.w ) )
 		{
 			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform rotation with invalid float";
