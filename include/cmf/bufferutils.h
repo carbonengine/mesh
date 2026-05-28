@@ -6,19 +6,53 @@
 namespace cmf
 {
 
-// Unapplies the index buffer to the vertex buffer, duplicating vertices as needed. Returns a new vertex buffer.
+/**
+ * @brief Converts indexed geometry to non-indexed geometry by expanding vertices according to the index buffer.
+ * @param vb The original vertex buffer containing the indexed vertex data.
+ * @param ib The original index buffer referencing vertices in the vertex buffer.
+ * @param allocator The memory allocator used for allocating the expanded vertex buffer.
+ * @param bufferManager The buffer manager used for managing the resulting buffer.
+ * @return A buffer view containing the expanded non-indexed vertex data.
+ */
 CARBON_MESH_EXPORT BufferView UnapplyIndexBuffer( const BufferView& vb, const BufferView& ib, MemoryAllocator& allocator, BufferManager& bufferManager );
 
-// Makes a new identity index buffer (containing a sequence 0, 1, 2, 3, ... indexCount - 1).
+/**
+ * @brief Creates an identity index buffer with sequential indices from 0 to indexCount-1.
+ * @param indexCount The number of indices to generate in the buffer.
+ * @param allocator The memory allocator used to allocate the buffer's memory.
+ * @param bufferManager The buffer manager responsible for managing the created buffer.
+ * @return A BufferView representing the created identity index buffer.
+ */
 CARBON_MESH_EXPORT BufferView MakeIdentityIndexBuffer( uint32_t indexCount, MemoryAllocator& allocator, BufferManager& bufferManager );
 
-// Changes the vertex declaration of a buffer view, copying existing elements and zeroing new ones.
+/**
+ * @brief Changes the layout of the interleaved vertex buffer to match the new vertex declaration. Copies vertex data from the old buffer to a new 
+   buffer according to the mapping between the old and new vertex declarations. Zeroes out any new vertex elements that do not have a corresponding
+   element in the old declaration. The function does not modify the original buffer.
+ * @param bufferView The buffer view whose vertex declaration will be changed.
+ * @param oldDecl The old vertex declaration describing the current layout of the buffer.
+ * @param newDecl The new vertex declaration describing the desired layout of the buffer.
+ * @param allocator The memory allocator used to allocate memory for the new buffer.
+ * @param bufferManager The buffer manager responsible for managing the new buffer.
+ * @return A BufferView representing the buffer with the layout matching the new vertex declaration.
+ */
 CARBON_MESH_EXPORT BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager );
 
-// Removes duplicate vertices from the given LOD vertex buffer and morph targets
+/**
+ * @brief Removes duplicate vertices from the given LOD vertex buffer and morph targets.
+ * @param lod The mesh level of detail whose duplicate vertices will be removed.
+ * @param bufferManager The buffer manager used to handle the operation.
+ */
 CARBON_MESH_EXPORT void RemoveDuplicateVertices( MeshLod& lod, BufferManager& bufferManager );
 
-// Converts an index buffer to 16-bit format if possible, returning the new index buffer. If the index buffer contains indices that are too large to fit in 16 bits, the original buffer view is returned.
+/**
+ * @brief Converts an index buffer to 16-bit format. If the original index buffer is already 16-bit or if it contains indices that cannot be represented in 16 bits, 
+   the original buffer will be returned without modification.
+ * @param ib The source index buffer to convert.
+ * @param allocator The memory allocator to use for the conversion.
+ * @param bufferManager The buffer manager for handling buffer operations.
+ * @return A BufferView representing the converted 16-bit index buffer.
+ */
 CARBON_MESH_EXPORT BufferView ConvertTo16BitIndexBuffer( const BufferView& ib, MemoryAllocator& allocator, BufferManager& bufferManager );
 
 /**
