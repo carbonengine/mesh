@@ -254,7 +254,7 @@ int AddTangentAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uin
 		const auto t = BufferToVector3( vbBytes + v * stride + tangentElem.offset, tangentElem.type );
 		const auto n = BufferToVector3( vbBytes + v * stride + normalElem->offset, normalElem->type );
 		const auto b = BufferToVector3( vbBytes + v * stride + binormalElem->offset, binormalElem->type );
-		const float w = GenerateBinormalSign( n, t, b);
+		const float w = GenerateBinormalSign( n, t, b );
 		tanBuffer[v * 4 + 0] = t[0];
 		tanBuffer[v * 4 + 1] = t[1];
 		tanBuffer[v * 4 + 2] = t[2];
