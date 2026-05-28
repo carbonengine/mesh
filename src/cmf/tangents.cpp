@@ -228,6 +228,8 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					newTangents.set( i, tangent.GetXYZ() );
 					newBitangents.set( i, bitangent );
 				}
+
+				lod.vb = newVb;
 			}
 
 			mesh.decl = newVertexDeclaration;
@@ -251,15 +253,15 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 			if( !positionElement )
 			{
-				printf( "    No mesh Position%d attribute found.\n", 0 );
+				printf( "    No morph target Position%d attribute found.\n", 0 );
 			}
 			if( !normalElement )
 			{
-				printf( "    No mesh Normal%d attribute found.\n", 0 );
+				printf( "    No morph target Normal%d attribute found.\n", 0 );
 			}
 			if( !morphTexCoordElement && !meshTexCoordElement )
 			{
-				printf( "    No mesh TexCoord%d attribute found, neither in morph targets or mesh.\n", usageIndex );
+				printf( "    No TexCoord%d attribute found, neither in morph targets or mesh.\n", usageIndex );
 			}
 		}
 		else
@@ -322,7 +324,7 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 
 					MikkTSpaceData data = {
 
-						(int)(vertexCount / 3),
+						(int)( vertexCount / 3 ),
 
 						ConstBufferElementStream<Vector3>( *positionElement, morphTarget.vb, bufferManager ),
 						ConstBufferElementStream<Vector3>( *normalElement, morphTarget.vb, bufferManager ),
@@ -387,12 +389,18 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
 					for( uint32_t i = 0; i < uint32_t( tangentData.size() ); ++i )
 					{
+
+						//auto normal = data.normals[i];
 						auto normal = newNormals[i];
 						auto tangent = tangentData[i];
 						auto bitangent = Cross( tangent.GetXYZ(), normal ) * tangentData[i].w;
+						//newNormals.set( i, data.normals[i] );
 						newTangents.set( i, tangent.GetXYZ() );
 						newBitangents.set( i, bitangent );
+
 					}
+
+					morphTarget.vb = newVb;
 				}
 			}
 
@@ -607,7 +615,7 @@ bool CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 
 			if( !retainNormal && element.usage == Usage::Normal && element.usageIndex == 0 )
 			{
-				// Omit the normal. //TODO: This should be a separate cleanup pass.
+				// Omit the normal.
 				continue;
 			}
 
