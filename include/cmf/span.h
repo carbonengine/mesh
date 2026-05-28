@@ -6,6 +6,14 @@
 namespace cmf
 {
 
+/**
+ * @brief Memory representation for cmf::Span. The first element of the span is pointed with `ptr`, or using `offset` from the location of the ptr field itself.
+ * This allows cmf::Span to be used in data structures loaded directly from a file without needing to convert offsets to pointers first, and also allows cmf::Span 
+ * to be used in memory buffers that may be relocated without needing to update internal pointers. The least significant bit of the offset field is used as a flag 
+ * to indicate whether the offset-based addressing is used (if set) or pointer-based addressing is used (if not set). When using offset-based addressing, the actual 
+ * offset value is stored in the remaining bits of the offset field, and the pointer can be calculated by adding this offset to the address of the ptr field itself. 
+ * When using pointer-based addressing, the ptr field directly contains the pointer to the first element of the span.
+ */
 struct SpanRepr
 {
 	union
@@ -17,6 +25,12 @@ struct SpanRepr
 };
 
 // NOLINTBEGIN(readability-identifier-naming, cppcoreguidelines-pro-type-reinterpret-cast, cppcoreguidelines-pro-type-union-access)
+
+/**
+ * @brief A view over a contiguous sequence of objects of type T, similar to std::span in C++20. It provides a lightweight, 
+ * non-owning reference to an array of elements, allowing for easy access and iteration over the elements without copying.
+ * @tparam T The type of elements in the span.
+ */
 template <typename T>
 struct Span : public SpanRepr
 {

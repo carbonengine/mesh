@@ -6,10 +6,21 @@
 namespace cmf
 {
 
-// Calculate axis-aligned bounding box for the entire mesh based on the first LOD
+/**
+ * @brief Calculates the axis-aligned bounding box for a mesh.
+ * @param mesh The mesh to calculate bounds for.
+ * @param buffers The buffer manager providing access to mesh data.
+ * @return An axis-aligned bounding box that encompasses the mesh.
+ */
 CARBON_MESH_EXPORT CcpMath::AxisAlignedBox CalculateBounds( const Mesh& mesh, const BufferManager& buffers );
 
-// Calculate axis-aligned bounding box for a specific mesh area based on the first LOD
+/**
+ * @brief Calculates the axis-aligned bounding box for a specific area of a mesh.
+ * @param mesh The mesh containing the area.
+ * @param areaIndex The index of the area to calculate bounds for.
+ * @param buffers The buffer manager providing access to mesh data.
+ * @return The axis-aligned bounding box enclosing the specified area.
+ */
 CARBON_MESH_EXPORT CcpMath::AxisAlignedBox CalculateAreaBounds( const Mesh& mesh, uint32_t areaIndex, const BufferManager& buffers );
 
 }

@@ -5,7 +5,10 @@
 namespace cmf
 {
 
-
+/**
+ * @brief Represents a pair of function pointers for bidirectional conversion between a type and raw data stored at a given pointer.
+ * @tparam T The type to convert to and from.
+ */
 template <typename T>
 struct ConversionFunction
 {
@@ -14,6 +17,13 @@ struct ConversionFunction
 };
 
 
+/**
+ * @brief Creates a ConversionFunction for converting between two types. The conversion is a simple cast for most types, but for Float_16 
+ * it requires special handling to convert to/from float.
+ * @tparam From The source type.
+ * @tparam To The destination type.
+ * @return A ConversionFunction for converting between From and To.
+ */
 template <typename From, typename To>
 inline ConversionFunction<To> MakeConversionFunction()
 {
@@ -33,6 +43,13 @@ inline ConversionFunction<To> MakeConversionFunction()
 	}
 }
 
+/**
+ * @brief Creates a bidirectional conversion function for normalized types (UInt8Norm, Int8Norm, UInt16Norm, Int16Norm) to convert between the normalized integer 
+ * representation and a floating-point representation in the range [-1, 1] for signed types or [0, 1] for unsigned types.
+ * @tparam From The source numeric type to convert from (typically an integer type).
+ * @tparam To The destination numeric type to convert to (typically a floating-point type).
+ * @return A ConversionFunction for converting between From and To.
+ */
 template <typename From, typename To>
 inline ConversionFunction<To> MakeNormalizedConversionFunction()
 {
@@ -60,6 +77,13 @@ inline ConversionFunction<To> MakeNormalizedConversionFunction()
 	};
 }
 
+/**
+ * @brief Gets a scalar conversion function and element size for a given element type.
+ * @tparam T The target type for the conversion.
+ * @param type The element type that specifies the source type stored in the buffer.
+ * @return A pair containing the conversion function from the specified element type to T, and the size in bytes of the source element type. 
+ * Returns an empty function and 0 if the element type is not supported.
+ */
 template <typename T>
 inline std::pair<ConversionFunction<T>, size_t> GetScalarConversionFunction( ElementType type )
 {
@@ -90,6 +114,11 @@ inline std::pair<ConversionFunction<T>, size_t> GetScalarConversionFunction( Ele
 	}
 }
 
+/**
+ * @brief A template adapter struct that allows access to a memory buffer and converts between type T and raw data representations based on a specified ElementType. 
+ * Provides bidirectional conversion through operator() for reading and set() for writing.
+ * @tparam T The target type for conversion operations.
+ */
 template <typename T>
 struct DeclTypeConverter
 {
@@ -277,7 +306,9 @@ struct DeclTypeConverter<std::array<T, N>>
 };
 
 
-
+/**
+ * @brief Converts index data between different integer formats for index buffers based on stride size.
+ */
 struct IndexConverter
 {
 	IndexConverter( uint32_t stride )
