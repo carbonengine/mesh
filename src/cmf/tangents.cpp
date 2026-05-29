@@ -137,9 +137,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 		return success;
 	}
 
-
 	auto createVertexDeclarationWithTangents = []( const Span<VertexElement>& decl, uint32_t usageIndex, MemoryAllocator& allocator ) {
-
 		Span<VertexElement> newVertexDeclaration;
 		{
 			uint32_t offset = 0;
