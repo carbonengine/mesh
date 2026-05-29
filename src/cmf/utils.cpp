@@ -354,6 +354,10 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 	{
 		return "LOD " + std::to_string( lodIndex ) + " has no vertex buffer";
 	}
+	if( lod.vb.stride == 0 )
+	{
+		return "LOD " + std::to_string( lodIndex ) + " has stride 0";
+	}
 	// If not a point list, LOD must have an index buffer
 	if( mesh.topology != cmf::MeshTopology::PointList )
 	{
@@ -415,6 +419,10 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		if( morph.vb.size == 0 )
 		{
 			continue;
+		}
+		if( morph.vb.stride == 0 )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " contains data but has stride 0";
 		}
 		// Morph target vertex buffer must have the same number of vertices as the LOD
 		if( morph.vb.size / morph.vb.stride != lod.vb.size / lod.vb.stride )
