@@ -5,25 +5,25 @@ namespace cmf
 
 const VertexElement* FindElement( const Span<VertexElement>& decl, Usage usage, uint8_t usageIndex )
 {
-    for( auto& element : decl )
-    {
-        if( element.usage == usage && element.usageIndex == usageIndex )
-        {
-            return &element;
-        }
-    }
+	for( auto& element : decl )
+	{
+		if( element.usage == usage && element.usageIndex == usageIndex )
+		{
+			return &element;
+		}
+	}
 	return nullptr;
 }
 
 VertexElement* FindElement( Span<VertexElement>& decl, Usage usage, uint8_t usageIndex )
 {
-    for( auto& element : decl )
-    {
-        if( element.usage == usage && element.usageIndex == usageIndex )
-        {
-            return &element;
-        }
-    }
+	for( auto& element : decl )
+	{
+		if( element.usage == usage && element.usageIndex == usageIndex )
+		{
+			return &element;
+		}
+	}
 	return nullptr;
 }
 
