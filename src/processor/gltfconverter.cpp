@@ -113,10 +113,10 @@ Vector3 BufferToVector3( const void* data, cmf::v1::ElementType type )
 	return Vector3( convertedData[0], convertedData[1], convertedData[2] );
 }
 
-std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, const CMFUsageAttribute& atribute, int usageIndex )
+std::string GenerateAttributeName( const std::map<std::string, int>& usedAttributeNames, const CMFUsageAttribute& atribute, int usageIndex )
 {
 	// Continue for a reasonable amount of similarly named attributes.
-	// VK and GL guarantee at least 16 elements, so we will provide a worse case senario
+	// VK and GL guarantee at least 16 elements, so we will provide a worst case senario
 	const int minimumGLAttributes = 16;
 	for( int i = usageIndex; i < minimumGLAttributes; i++ )
 	{
@@ -125,7 +125,7 @@ std::string GenerateAttributeName( const std::map<std::string, int>& usedAtribut
 		{
 			newName += "_" + std::to_string( i );
 		}
-		if( usedAtributeNames.find( newName ) == usedAtributeNames.end() )
+		if( usedAttributeNames.find( newName ) == usedAttributeNames.end() )
 		{
 			return newName;
 		}
@@ -133,11 +133,12 @@ std::string GenerateAttributeName( const std::map<std::string, int>& usedAtribut
 	throw std::runtime_error( "Could not find a unique attribute name for '" + std::string( atribute.prefix ) + "' starting at index " + std::to_string( usageIndex ) );
 }
 
-int AddVertexAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& element, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, bool normalized = false )
+int AddVertexAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& element, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
 {
 	const int componentCount = element.elementCount;
 	const size_t componentSize = cmf::GetElementTypeSize( element.type );
 	const int gltfComponentType = GetGltfComponentType( element.type );
+	const bool normalized = cmf::IsNormalizedElementType( element.type );
 
 	int gltfType = TINYGLTF_TYPE_SCALAR;
 	switch( componentCount )
@@ -223,11 +224,8 @@ int AddVertexAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uint
 		acc.normalized = normalized;
 		acc.type = gltfType;
 		acc.count = vertexCount;
-		if( vertexCount > 0 && gltfComponentType == TINYGLTF_COMPONENT_TYPE_FLOAT )
-		{
-			acc.minValues = minVals;
-			acc.maxValues = maxVals;
-		}
+		acc.minValues = minVals;
+		acc.maxValues = maxVals;
 		model.accessors.push_back( acc );
 	}
 	return accIdx;

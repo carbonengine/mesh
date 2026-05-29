@@ -77,4 +77,24 @@ bool IsSignedElementType( ElementType type )
 	return false;
 }
 
+bool IsNormalizedElementType( ElementType type )
+{
+	switch( type )
+	{
+	case ElementType::Int16Norm:
+	case ElementType::Int8Norm:
+	case ElementType::UInt16Norm:
+	case ElementType::UInt8Norm:
+		return true;
+	case ElementType::Float32:
+	case ElementType::Float16:
+	case ElementType::Int16:
+	case ElementType::Int8:
+	case ElementType::UInt16:
+	case ElementType::UInt8:
+		return false;
+	}
+	return false;
+}
+
 }

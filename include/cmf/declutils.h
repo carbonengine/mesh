@@ -36,6 +36,19 @@ CARBON_MESH_EXPORT uint32_t GetElementTypeSize( ElementType type );
  * @return The total size of the vertex element in bytes, calculated as the size of the element type multiplied by the element count.
  */
 CARBON_MESH_EXPORT uint32_t GetVertexElementSize( const VertexElement& element );
+
+/**
+ * @brief Returns if the element type is signed or unsigned
+ * @param type The element type to query.
+ * @return A bool returning the state of if the element is signed or unsigned
+ */
 CARBON_MESH_EXPORT bool IsSignedElementType( ElementType type );
+
+/**
+ * @brief Returns if the element type is normalized
+ * @param type The element type to query.
+ * @return A bool returning if the element is normalized
+ */
+CARBON_MESH_EXPORT bool IsNormalizedElementType( ElementType type );
 
 }
