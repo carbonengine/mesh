@@ -60,8 +60,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 	auto morphTargetBitangentElement = FindElement( mesh.morphTargets.decl, Usage::Binormal, usageIndex );
 	bool rebuildMorphTargetTangents = !mesh.morphTargets.targets.empty() && ( forceRebuild || !morphTargetTangentElement || !morphTargetBitangentElement );
 
-	bool shouldGenerate = rebuildMeshTangents || rebuildMorphTargetTangents;
-	if( !shouldGenerate )
+	if( !rebuildMeshTangents && !rebuildMorphTargetTangents )
 	{
 		return success;
 	}
