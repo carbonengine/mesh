@@ -95,7 +95,7 @@ std::string AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& 
 			return "If stride is non-zero, offset must be multiple of stride";
 		}
 		// Stride must match gpuAlignment
-		if( value.stride != sections[value.index].gpuAlignment )
+		if( sections[value.index].gpuAlignment != 0 && value.stride != sections[value.index].gpuAlignment )
 		{
 			return "Stride must match gpuAlignment";
 		}
@@ -168,6 +168,11 @@ std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header
 	if( section.gpuAlignment != 0 && section.uncompressedSize % section.gpuAlignment != 0 )
 	{
 		return "Section uncompressedSize must be a multiple of gpuAlignment";
+	}
+
+	if( section.compression != cmf::SectionCompression::None && section.gpuAlignment == 0 )
+	{
+		return "Compressed section must have a non-zero gpuAlignment";
 	}
 
 	switch( section.type )
