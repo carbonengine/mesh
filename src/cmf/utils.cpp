@@ -540,11 +540,6 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		}
 	}
 
-	if( mesh.areas.empty() )
-	{
-		return "Mesh \"" + ToStdString( mesh.name ) + "\" has no areas";
-	}
-
 	switch( mesh.topology )
 	{
 	case cmf::MeshTopology::PointList:
