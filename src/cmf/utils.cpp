@@ -317,6 +317,19 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 		return false;
 	}
 
+	if( element.usage == cmf::Usage::BoneIndices )
+	{
+		if( element.type != cmf::ElementType::UInt8 && element.type != cmf::ElementType::UInt16 )
+		{
+			return false;
+		}
+
+		if( element.usageIndex != 0 )
+		{
+			return false;
+		}
+	}
+
 	return true;
 }
 
@@ -601,14 +614,26 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		}
 	}
 
-	if( FindElement( mesh.decl, cmf::Usage::BoneIndices ) && mesh.boneBindings.empty() )
 	{
-		return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneIndices but no boneBindings";
-	}
+		const auto* boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices );
 
-	if( !mesh.boneBindings.empty() && !FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
-	{
-		return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBindings but no boneIndices";
+		if( boneIndicesElement && mesh.boneBindings.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneIndices but no boneBindings";
+		}
+
+		if( !mesh.boneBindings.empty() && !boneIndicesElement )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBindings but no boneIndices";
+		}
+
+		if( boneIndicesElement )
+		{
+			if( boneIndicesElement->type == cmf::ElementType::UInt8 && mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings with UInt8 bone indices";
+			}
+		}
 	}
 
 	if( mesh.boneBindings.size() > std::numeric_limits<uint16_t>::max() )
