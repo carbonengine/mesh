@@ -95,7 +95,6 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 
 	interface.m_setTSpaceBasic = []( const SMikkTSpaceContext* ctx, const float tangentFloats[3], float sign, int face, int vert ) {
 		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
-		
 		const int index = face * 3 + vert;
 		auto normal = data->normals[index];
 		Vector3 tangent = Vector3( tangentFloats[0], tangentFloats[1], tangentFloats[2] );
