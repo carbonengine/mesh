@@ -113,15 +113,15 @@ Vector3 BufferToVector3( const void* data, cmf::v1::ElementType type )
 	return Vector3( convertedData[0], convertedData[1], convertedData[2] );
 }
 
-std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, const std::string& name, int usageIndex )
+std::string GenerateAttributeName( const std::map<std::string, int>& usedAtributeNames, const CMFUsageAttribute& atribute, int usageIndex )
 {
 	// Continue for a reasonable amount of similarly named attributes.
 	// VK and GL guarantee at least 16 elements, so we will provide a worse case senario
 	const int minimumGLAttributes = 16;
 	for( int i = usageIndex; i < minimumGLAttributes; i++ )
 	{
-		std::string newName = name;
-		if( i > 0 )
+		std::string newName = atribute.prefix;
+		if( i > 0 || ( atribute.usage == cmf::Usage::TexCoord || atribute.usage == cmf::Usage::Color || atribute.usage == cmf::Usage::BoneIndices || atribute.usage == cmf::Usage::BoneWeights ) )
 		{
 			newName += "_" + std::to_string( i );
 		}
@@ -130,7 +130,7 @@ std::string GenerateAttributeName( const std::map<std::string, int>& usedAtribut
 			return newName;
 		}
 	}
-	throw std::runtime_error( "Could not find a unique attribute name for '" + name + "' starting at index " + std::to_string( usageIndex ) );
+	throw std::runtime_error( "Could not find a unique attribute name for '" + std::string( atribute.prefix ) + "' starting at index " + std::to_string( usageIndex ) );
 }
 
 int AddVertexAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uint32_t stride, const cmf::VertexElement& element, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, bool normalized = false )
@@ -156,9 +156,9 @@ int AddVertexAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uint
 		break;
 	}
 
-	AlignBuffer( gltfBuffer, componentSize );
+	AlignBuffer( gltfBuffer, sizeof( float ) );
 	const size_t byteOffset = gltfBuffer.data.size();
-	const size_t byteLength = static_cast<size_t>( vertexCount ) * componentCount * componentSize;
+	const size_t byteLength = static_cast<size_t>( vertexCount ) * componentCount * sizeof( float );
 	gltfBuffer.data.resize( byteOffset + byteLength );
 
 	std::vector<double> minVals( componentCount, DBL_MAX );
@@ -286,14 +286,14 @@ std::pair<int, int> AddPackedTangentAttribute( const uint8_t* vbBytes, const uin
 			{
 			// PackedTangent
 			case cmf::ElementType::Int16Norm:
-				return std::max( reinterpret_cast<const int16_t*>( buffer )[k] / 32767.0f, -1.0f ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				return std::max( static_cast<float>( reinterpret_cast<const int16_t*>( buffer )[k] ) / 32767.0f, -1.0f ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 			case cmf::ElementType::Int8Norm:
-				return std::max( reinterpret_cast<const int8_t*>( buffer )[k] / 127.0f, -1.0f ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				return std::max( static_cast<float>( reinterpret_cast<const int8_t*>( buffer )[k] ) / 127.0f, -1.0f ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 			// PackedTangentLegacy
 			case cmf::ElementType::UInt16Norm:
-				return reinterpret_cast<const uint16_t*>( buffer )[k] / 65535.0f; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				return static_cast<float>( reinterpret_cast<const uint16_t*>( buffer )[k] ) / 65535.0f; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 			case cmf::ElementType::UInt8Norm:
-				return reinterpret_cast<const uint8_t*>( buffer )[k] / 255.0f; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				return static_cast<float>( reinterpret_cast<const uint8_t*>( buffer )[k] ) / 255.0f; // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 			default:
 				return 0.0f;
 			}
@@ -422,21 +422,21 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 			{
 				if( elem.usage == attrib.usage && attrib.usage == cmf::Usage::Tangent )
 				{
-					std::string tangentName = GenerateAttributeName( prim.attributes, attrib.prefix, elem.usageIndex );
+					std::string tangentName = GenerateAttributeName( prim.attributes, attrib, elem.usageIndex );
 					prim.attributes[tangentName] = AddTangentAttribute( vbBytes, vertexCount, lod.vb.stride, elem, mesh.decl, gltfBuffer, model );
 				}
 				else if( elem.usage == attrib.usage && ( attrib.usage == cmf::Usage::PackedTangent || attrib.usage == cmf::Usage::PackedTangentLegacy ) )
 				{
 					auto [normalAccIdx, tangentAccIdx] = AddPackedTangentAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 
-					std::string normalName = GenerateAttributeName( prim.attributes, "NORMAL", elem.usageIndex );
-					std::string tangentName = GenerateAttributeName( prim.attributes, "TANGENT", elem.usageIndex );
+					std::string normalName = GenerateAttributeName( prim.attributes, { cmf::Usage::Normal, "NORMAL" }, elem.usageIndex );
+					std::string tangentName = GenerateAttributeName( prim.attributes, { cmf::Usage::Tangent, "TANGENT" }, elem.usageIndex );
 					prim.attributes[normalName] = normalAccIdx;
 					prim.attributes[tangentName] = tangentAccIdx;
 				}
 				else if( elem.usage == attrib.usage )
 				{
-					std::string name = GenerateAttributeName( prim.attributes, std::string( attrib.prefix ), elem.usageIndex );
+					std::string name = GenerateAttributeName( prim.attributes, attrib, elem.usageIndex );
 
 					prim.attributes[name] = AddVertexAttribute( vbBytes, vertexCount, lod.vb.stride, elem, gltfBuffer, model );
 				}
@@ -465,13 +465,13 @@ void AddMesh( const cmf::v1::Mesh& mesh, cmf::BufferManager& bufferManager, tiny
 	// Attach lower LODs to the LOD0 node via MSFT_lod. Only LOD0 is in the scene
 	if( lodNodeIndices.size() > 1 )
 	{
-		tinygltf::Value::Array ids;
+		tinygltf::Value::Array ids{};
 		for( size_t i = 1; i < lodNodeIndices.size(); ++i )
 		{
 			ids.push_back( tinygltf::Value( lodNodeIndices[i] ) );
 		}
 
-		tinygltf::Value::Object msftLod;
+		tinygltf::Value::Object msftLod{};
 		msftLod["ids"] = tinygltf::Value( ids );
 		model.nodes[lodNodeIndices[0]].extensions["MSFT_lod"] = tinygltf::Value( msftLod );
 
