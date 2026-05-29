@@ -95,7 +95,6 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 
 	interface.m_setTSpaceBasic = []( const SMikkTSpaceContext* ctx, const float tangentFloats[3], float sign, int face, int vert ) {
 		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
-		
 		const int index = face * 3 + vert;
 		auto normal = data->normals[index];
 		Vector3 tangent = Vector3( tangentFloats[0], tangentFloats[1], tangentFloats[2] );
@@ -214,8 +213,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
 					ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
 					BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
-					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager )
-				);
+					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 
 				lod.vb = newVb;
 			}
@@ -260,8 +258,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 							ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
 							ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
 						BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
-						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager )
-					);
+						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 
 					morphTarget.vb = newVb;
 				}
