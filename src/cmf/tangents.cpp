@@ -260,8 +260,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 							ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
 							ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
 						BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
-						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager )
-					);
+						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 
 					morphTarget.vb = newVb;
 				}
