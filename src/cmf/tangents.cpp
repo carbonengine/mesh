@@ -215,8 +215,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
 					ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
 					BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
-					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager )
-				);
+					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 
 				lod.vb = newVb;
 			}
