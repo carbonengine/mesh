@@ -18,6 +18,7 @@ find_package(tinyfiledialogs  CONFIG REQUIRED)
 set(VCPKG_INSTALLED_PATH "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
 
 set( SHADER_BINARY_TO_SHADER_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/scripts/shaderCacheCreator.py)  
+set( SOURCE_SHADER_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/)  
 set( GENERATED_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedShaders)  
 set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc.exe")
 set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/bin")
@@ -39,22 +40,18 @@ message(STATUS "VK VK_DRIVER_FILES path: $ENV{VK_DRIVER_FILES}")
 
 
 file( GLOB SHADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.*
+    ${SOURCE_SHADER_DIR}/*.*
 )
 
 include_directories(
-    src
-    src/vulkan
-    src/mesh
-    src/input
+	.
     $ENV{VULKAN_SDK}/include
 )
 
 link_directories($ENV{VULKAN_SDK}/lib)
 
 file(GLOB_RECURSE SOURCES
-    src/*.*
-    shaders/*.*
+    *.*
 )
 
 set(RESOURCE_FILES "")
@@ -62,14 +59,14 @@ if(WIN32)
     list(APPEND RESOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshViewerResource.h
         ${CMAKE_CURRENT_SOURCE_DIR}/CarbonMeshViewer.rc
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-16.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-24.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-32.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-48.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-64.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-96.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-128.ico
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/carbon_trans-256.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-16.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-24.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-32.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-48.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-64.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-96.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-128.ico
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/carbon_trans-256.ico
     )
 endif()
 
@@ -82,7 +79,7 @@ ccp_enable_vs_analizers(CarbonMeshViewer)
 set(COMPILED_SHADERS "")
 
 foreach( SHADER_PATH ${SHADERS} )
-    file( RELATIVE_PATH SHADER_RELATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shaders ${SHADER_PATH} )
+    file( RELATIVE_PATH SHADER_RELATIVE_PATH ${SOURCE_SHADER_DIR} ${SHADER_PATH} )
 
     get_filename_component( SHADER_NAME ${SHADER_RELATIVE_PATH} NAME )
 
@@ -102,19 +99,19 @@ endforeach()
 add_custom_command( 
     OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     DEPENDS ${SHADERS} ${COMPILED_SHADERS} ${SHADER_BINARY_TO_SHADER_CACHE}
-    COMMAND ${Python3_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/" "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
+    COMMAND ${Python3_EXECUTABLE} ${SHADER_BINARY_TO_SHADER_CACHE} "${SOURCE_SHADER_DIR}" "${GENERATED_SHADER_DIR}" "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     COMMENT "Generating shader cache header ${GENERATED_SHADER_DIR}/generatedShaderCache.h"
 )
 
 list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/generatedShaderCache.h" )
 
-message(STATUS "generated files: ${GENERATED_FILES}")
+message(STATUS "generated files: ${COMPILED_SHADERS}")
 
 add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 add_dependencies(CarbonMeshViewer CompileShaders)
 
 target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath glfw Vulkan::Vulkan imgui::imgui tinyfiledialogs::tinyfiledialogs)
-target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/stdafx.h)
+target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stdafx.h)
 target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_SHADER_DIR})
 
 target_compile_options(CarbonMeshViewer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)
