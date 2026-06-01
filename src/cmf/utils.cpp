@@ -2,94 +2,126 @@
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
 #include <numeric>
-
+#include <cmath>
 
 namespace
 {
 template <typename T>
-bool AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
+std::string AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
 {
 	if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
 	{
 		// Total size must be multiple of element size
 		if( value.byteSize % sizeof( typename T::value_type ) != 0 )
 		{
-			return false;
+			return "Total size must be multiple of element size";
 		}
+		// Empty spans are valid
 		if( value.size() == 0 )
 		{
-			return true;
+			return "";
 		}
+		// Pointer must be aligned to element size
+		if( reinterpret_cast<uintptr_t>( value.data() ) % alignof( typename T::value_type ) != 0 )
+		{
+			return "Pointer must be aligned to element size";
+		}
+
 		// Pointer must be within the base + totalSize range
 		if( value.data() < base || reinterpret_cast<const uint8_t*>( value.end() ) > reinterpret_cast<const uint8_t*>( base ) + totalSize )
 		{
-			return false;
+			return "Pointer must be within the base + totalSize range";
 		}
-		return std::all_of( value.begin(), value.end(), [base, totalSize]( const auto& element ) {
-			return AreSpanPointersValid( element, base, totalSize );
-		} );
+
+		for( size_t i = 0; i < value.size(); i++ )
+		{
+			auto result = AreSpanPointersValid( value[i], base, totalSize );
+			if( !result.empty() )
+			{
+				return "[" + std::to_string( i ) + "] " + result;
+			}
+		}
+		return "";
 	}
 	else
 	{
-		bool valid = true;
-		cmf::EnumerateMembers( const_cast<T&>( value ), [&valid, base, totalSize]( auto&&, auto& value, const char* ) {
-			if( valid )
+		std::string errorMessage;
+		cmf::EnumerateMembers( const_cast<T&>( value ), [&errorMessage, base, totalSize]( auto&&, auto& value, const char* memberName ) {
+			if( errorMessage.empty() )
 			{
-				valid = AreSpanPointersValid( value, base, totalSize );
+				auto result = AreSpanPointersValid( value, base, totalSize );
+				if( !result.empty() )
+				{
+					errorMessage = std::string( memberName ) + " " + result;
+				}
 			}
 		} );
-		return valid;
+		return errorMessage;
 	}
 }
 
 template <typename T>
-bool AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& sections )
+std::string AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& sections )
 {
 	if constexpr( std::is_base_of_v<cmf::BufferView, T> )
 	{
 		// Empty buffer views are valid
 		if( value.size == 0 )
 		{
-			return true;
+			return "";
 		}
 		// Buffer index must be > 0 (0 is reserved for "data" segment)
 		if( value.index == 0 || value.index >= sections.size() )
 		{
-			return false;
+			return "Buffer index must be > 0 (0 is reserved for 'data' segment)";
 		}
-		if( sections[value.index - 1].type == cmf::SectionType::Metadata )
+		if( sections[value.index].type == cmf::SectionType::Metadata )
 		{
-			return false;
+			return "SectionType must not be Metadata";
 		}
 		// Offset + size must be within totalSize
-		if( value.offset + value.size > sections[value.index].uncompressedSize )
+		if( uint64_t( value.offset ) + value.size > sections[value.index].uncompressedSize )
 		{
-			return false;
+			return "Offset + size must be within totalSize";
 		}
 		// If stride is non-zero, size must be multiple of stride
-		if( value.stride != 0 && sections[value.index].gpuAlignment % value.stride != 0 )
+		if( value.stride != 0 && value.size % value.stride != 0 )
 		{
-			return false;
+			return "If stride is non-zero, size must be multiple of stride";
 		}
-		return true;
+		// If stride is non-zero, offset must be multiple of stride
+		if( value.stride != 0 && value.offset % value.stride != 0 )
+		{
+			return "If stride is non-zero, offset must be multiple of stride";
+		}
+		// Stride must match gpuAlignment
+		if( sections[value.index].gpuAlignment != 0 && value.stride != sections[value.index].gpuAlignment )
+		{
+			return "Stride must match gpuAlignment";
+		}
+		return "";
 	}
 	else
 	{
-		bool valid = true;
-		cmf::EnumerateChildren( const_cast<T&>( value ), [&valid, &sections]( auto&&, auto& value, const char* ) {
-			if( valid )
+		std::string errorMessage;
+		cmf::EnumerateChildren( const_cast<T&>( value ), [&errorMessage, &sections]( auto&&, auto& value, const char* memberName ) {
+			if( errorMessage.empty() )
 			{
-				valid = AreBufferViewsValid( value, sections );
+				auto result = AreBufferViewsValid( value, sections );
+				if( !result.empty() )
+				{
+					errorMessage = std::string( memberName ) + " " + result;
+				}
 			}
 		} );
-		return valid;
+		return errorMessage;
 	}
 }
 
 std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header& header, uint32_t lastEnd, size_t fileSize )
 {
 	// Section must be within file bounds
-	if( section.offset + section.compressedSize > fileSize )
+	if( uint64_t( section.offset ) + section.compressedSize > fileSize )
 	{
 		return "Section exceeds file bounds (offset + compressedSize > fileSize)";
 	}
@@ -98,6 +130,27 @@ std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header
 	{
 		return "Section overlaps with a previous section";
 	}
+
+	switch( section.type )
+	{
+	case cmf::SectionType::Data:
+	case cmf::SectionType::GpuBuffer:
+	case cmf::SectionType::Metadata:
+		break;
+	default:
+		return "Invalid section type";
+	}
+
+	switch( section.compression )
+	{
+	case cmf::SectionCompression::MeshOptimizerIndexBuffer:
+	case cmf::SectionCompression::MeshOptimizerVertexBuffer:
+	case cmf::SectionCompression::None:
+		break;
+	default:
+		return "Invalid compression type";
+	}
+
 	// The first section must be a data section
 	if( &section == header.sections.begin() && section.type != cmf::SectionType::Data )
 	{
@@ -111,6 +164,17 @@ std::string IsHeaderSectionValid( const cmf::Section& section, const cmf::Header
 			return "Uncompressed section has mismatched uncompressedSize and compressedSize";
 		}
 	}
+	// uncompressedSize must be a multiple of gpuAlignment
+	if( section.gpuAlignment != 0 && section.uncompressedSize % section.gpuAlignment != 0 )
+	{
+		return "Section uncompressedSize must be a multiple of gpuAlignment";
+	}
+
+	if( section.compression != cmf::SectionCompression::None && section.gpuAlignment == 0 )
+	{
+		return "Compressed section must have a non-zero gpuAlignment";
+	}
+
 	switch( section.type )
 	{
 	case cmf::SectionType::Data:
@@ -163,6 +227,26 @@ std::string AreHeaderSectionsValid( const cmf::Header& header, size_t fileSize )
 	return {};
 }
 
+bool IsValidElementType( cmf::ElementType type )
+{
+	switch( type )
+	{
+	case cmf::ElementType::Float32:
+	case cmf::ElementType::Float16:
+	case cmf::ElementType::UInt16Norm:
+	case cmf::ElementType::UInt16:
+	case cmf::ElementType::Int16Norm:
+	case cmf::ElementType::Int16:
+	case cmf::ElementType::UInt8Norm:
+	case cmf::ElementType::UInt8:
+	case cmf::ElementType::Int8Norm:
+	case cmf::ElementType::Int8:
+		return true;
+	default:
+		return false;
+	}
+}
+
 bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cmf::VertexElement>& decl )
 {
 	// Element count must be between 1 and 4
@@ -170,6 +254,29 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 	{
 		return false;
 	}
+
+	switch( element.usage )
+	{
+	case cmf::Usage::Position:
+	case cmf::Usage::Normal:
+	case cmf::Usage::Tangent:
+	case cmf::Usage::Binormal:
+	case cmf::Usage::TexCoord:
+	case cmf::Usage::Color:
+	case cmf::Usage::BoneIndices:
+	case cmf::Usage::BoneWeights:
+	case cmf::Usage::PackedTangent:
+	case cmf::Usage::PackedTangentLegacy:
+		break;
+	default:
+		return false;
+	}
+
+	if( !IsValidElementType( element.type ) )
+	{
+		return false;
+	}
+
 	// Each (usage, usageIndex) pair must be unique within the decl
 	for( const auto* other = &element + 1; other != decl.end(); ++other )
 	{
@@ -185,8 +292,8 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 		{
 			return false;
 		}
-		// Packed tangent must be 4-component signed normalized integer
-		if( ( element.type != cmf::ElementType::Int16Norm && element.type != cmf::ElementType::Int8Norm ) || element.elementCount != 4 )
+		// Packed tangent must be 4-component signed normalized 16 bit integer
+		if( ( element.type != cmf::ElementType::Int16Norm ) || element.elementCount != 4 )
 		{
 			return false;
 		}
@@ -204,6 +311,25 @@ bool IsVertexElementValid( const cmf::VertexElement& element, const cmf::Span<cm
 			return false;
 		}
 	}
+
+	if( element.offset % cmf::GetElementTypeSize( element.type ) != 0 )
+	{
+		return false;
+	}
+
+	if( element.usage == cmf::Usage::BoneIndices )
+	{
+		if( element.type != cmf::ElementType::UInt8 && element.type != cmf::ElementType::UInt16 )
+		{
+			return false;
+		}
+
+		if( element.usageIndex != 0 )
+		{
+			return false;
+		}
+	}
+
 	return true;
 }
 
@@ -218,6 +344,22 @@ bool IsVertexDeclarationValid( const cmf::Span<cmf::VertexElement>& decl )
 	{
 		return false;
 	}
+
+	for( size_t i = 0; i < decl.size(); i++ )
+	{
+		uint64_t a_lo = decl[i].offset;
+		uint64_t a_hi = a_lo + cmf::GetVertexElementSize( decl[i] );
+		for( size_t j = i + 1; j < decl.size(); j++ )
+		{
+			uint64_t b_lo = decl[j].offset;
+			uint64_t b_hi = b_lo + cmf::GetVertexElementSize( decl[j] );
+			if( a_lo < b_hi && b_lo < a_hi )
+			{
+				return false;
+			}
+		}
+	}
+
 	return std::all_of( decl.begin(), decl.end(), [&decl]( const auto& element ) {
 		return IsVertexElementValid( element, decl );
 	} );
@@ -229,6 +371,10 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 	if( lod.vb.size == 0 )
 	{
 		return "LOD " + std::to_string( lodIndex ) + " has no vertex buffer";
+	}
+	if( lod.vb.stride == 0 )
+	{
+		return "LOD " + std::to_string( lodIndex ) + " has stride 0";
 	}
 	// If not a point list, LOD must have an index buffer
 	if( mesh.topology != cmf::MeshTopology::PointList )
@@ -254,6 +400,14 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		}
 	}
 
+	if( mesh.topology == cmf::MeshTopology::TriangleList && lod.ib.size > 0 )
+	{
+		if( ( lod.ib.size / lod.ib.stride ) % 3 != 0 )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " index buffer must contain multiples of 3 for TriangleList topology";
+		}
+	}
+
 	// Mesh areas lists must match
 	if( lod.areas.size() != mesh.areas.size() )
 	{
@@ -265,7 +419,7 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		// Area must be within the mesh index or vertex range
 		const uint32_t verticesPerElement = mesh.topology == cmf::MeshTopology::PointList ? 1 : 3;
 		const uint32_t vertexCount = mesh.topology == cmf::MeshTopology::PointList ? lod.vb.size / lod.vb.stride : lod.ib.size / lod.ib.stride;
-		if( area.firstElement * verticesPerElement + area.elementCount * verticesPerElement > vertexCount )
+		if( uint64_t( area.firstElement ) * verticesPerElement + uint64_t( area.elementCount ) * verticesPerElement > vertexCount )
 		{
 			return "LOD " + std::to_string( lodIndex ) + " area " + std::to_string( i ) + " exceeds vertex/index range";
 		}
@@ -284,21 +438,65 @@ std::string IsMeshLodValid( const cmf::Mesh& mesh, const cmf::MeshLod& lod, size
 		{
 			continue;
 		}
+		if( morph.vb.stride == 0 )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " contains data but has stride 0";
+		}
 		// Morph target vertex buffer must have the same number of vertices as the LOD
 		if( morph.vb.size / morph.vb.stride != lod.vb.size / lod.vb.stride )
 		{
 			return "LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " vertex count does not match LOD vertex count";
 		}
 	}
+
+	for( const auto& element : mesh.decl )
+	{
+		uint32_t elementSize = cmf::GetVertexElementSize( element );
+		if( uint64_t( element.offset ) + elementSize > lod.vb.stride )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " has a vertex element that extends past vb stride";
+		}
+	}
+
+	uint32_t morphStride = std::numeric_limits<uint32_t>::max();
+	for( const auto& morphTarget : lod.morphTargets )
+	{
+		if( morphTarget.vb.size == 0 )
+		{
+			continue;
+		}
+
+		if( morphStride == std::numeric_limits<uint32_t>::max() )
+		{
+			morphStride = morphTarget.vb.stride;
+		}
+		else if( morphStride != morphTarget.vb.stride )
+		{
+			return "LOD " + std::to_string( lodIndex ) + " has morph targets with varying strides";
+		}
+	}
+
+	if( morphStride != std::numeric_limits<uint32_t>::max() )
+	{
+		for( const auto& element : mesh.morphTargets.decl )
+		{
+			uint32_t elementSize = cmf::GetVertexElementSize( element );
+			if( uint64_t( element.offset ) + elementSize > morphStride )
+			{
+				return "LOD " + std::to_string( lodIndex ) + " has a morph target with vertex element that extends past vb stride";
+			}
+		}
+	}
+
 	return {};
 }
 
 std::string MeshHasValidLodThresholds( const cmf::Mesh& mesh )
 {
-	// First LOD must have threshold of 0xffffffff
-	if( mesh.lods[0].threshold != 0xffffffff )
+	// First LOD must have threshold of MeshLod::MAX_THRESHOLD
+	if( mesh.lods[0].threshold != cmf::MeshLod::MAX_THRESHOLD )
 	{
-		return "First LOD threshold must be 0xffffffff";
+		return "First LOD threshold must be MeshLod::MAX_THRESHOLD";
 	}
 	// LOD thresholds must be in descending order
 	for( size_t i = 1; i < mesh.lods.size(); ++i )
@@ -340,7 +538,7 @@ std::string AreMorphTargetsValid( const cmf::Mesh& mesh )
 }
 
 
-std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
+std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& skeletons )
 {
 	// Mesh must have at least one LOD
 	if( mesh.lods.empty() )
@@ -354,12 +552,30 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
 		}
 	}
+
+	switch( mesh.topology )
+	{
+	case cmf::MeshTopology::PointList:
+	case cmf::MeshTopology::TriangleList:
+		break;
+	default:
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has invalid topology";
+	}
+
 	for( size_t i = 0; i < mesh.lods.size(); ++i )
 	{
 		auto error = IsMeshLodValid( mesh, mesh.lods[i], i );
 		if( !error.empty() )
 		{
 			return "Mesh \"" + ToStdString( mesh.name ) + "\": " + error;
+		}
+	}
+
+	for( const auto& lod : mesh.lods )
+	{
+		if( lod.vb.stride != mesh.lods[0].vb.stride )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has lods with varying strides";
 		}
 	}
 
@@ -370,6 +586,17 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 			if( bone >= mesh.boneBindings.size() )
 			{
 				return "Mesh \"" + ToStdString( mesh.name ) + "\" area " + std::to_string( areaIdx ) + " references out-of-range bone binding";
+			}
+		}
+
+		if( mesh.areas[areaIdx].bounds.IsInitialized() )
+		{
+			for( int i = 0; i < 3; i++ )
+			{
+				if( mesh.areas[areaIdx].bounds.m_max[i] < mesh.areas[areaIdx].bounds.m_min[i] )
+				{
+					return "Mesh \"" + ToStdString( mesh.name ) + "\" area " + std::to_string( areaIdx ) + " has invalid bounds";
+				}
 			}
 		}
 	}
@@ -387,15 +614,38 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 		}
 	}
 
-	if( const auto* boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices ) )
 	{
-		if( boneIndicesElement->type == cmf::ElementType::UInt8 )
+		const auto* boneIndicesElement = FindElement( mesh.decl, cmf::Usage::BoneIndices );
+
+		if( boneIndicesElement && mesh.boneBindings.empty() )
 		{
-			// Mesh can have up to 255 bone bindings
-			if( mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneIndices but no boneBindings";
+		}
+
+		if( !mesh.boneBindings.empty() && !boneIndicesElement )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBindings but no boneIndices";
+		}
+
+		if( boneIndicesElement )
+		{
+			if( boneIndicesElement->type == cmf::ElementType::UInt8 && mesh.boneBindings.size() > std::numeric_limits<uint8_t>::max() )
 			{
 				return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 255 bone bindings with UInt8 bone indices";
 			}
+		}
+	}
+
+	if( mesh.boneBindings.size() > std::numeric_limits<uint16_t>::max() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has more than 65535 bone bindings";
+	}
+
+	for( const auto& boneBinding : mesh.boneBindings )
+	{
+		if( boneBinding.name.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBinding with empty name";
 		}
 	}
 
@@ -413,11 +663,88 @@ std::string IsMeshValid( const cmf::Mesh& mesh, size_t skeletonCount )
 
 	if( mesh.skeleton != 0xff )
 	{
-		if( mesh.skeleton >= skeletonCount )
+		if( mesh.skeleton >= skeletons.size() )
 		{
 			return "Mesh \"" + ToStdString( mesh.name ) + "\" references out-of-range skeleton index";
 		}
+
+		if( mesh.boneBindings.size() > skeletons[mesh.skeleton].bones.size() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" binds more bones than present in the referenced skeleton";
+		}
+
+		for( const auto& boneBinding : mesh.boneBindings )
+		{
+			if( std::find( skeletons[mesh.skeleton].bones.begin(), skeletons[mesh.skeleton].bones.end(), boneBinding.name ) == skeletons[mesh.skeleton].bones.end() )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has boneBinding which cannot be found in referenced skeleton";
+			}
+		}
 	}
+
+	if( !mesh.audioOcclusionMesh.vertices.empty() && mesh.audioOcclusionMesh.indices.empty() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh without indices";
+	}
+
+	if( !mesh.audioOcclusionMesh.indices.empty() && mesh.audioOcclusionMesh.vertices.empty() )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh without vertices";
+	}
+
+	if( mesh.audioOcclusionMesh.indices.size() % 3 != 0 )
+	{
+		return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh that does not consist of triangles";
+	}
+
+	if( mesh.audioOcclusionMesh.bounds.IsInitialized() )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( mesh.audioOcclusionMesh.bounds.m_max[i] < mesh.audioOcclusionMesh.bounds.m_min[i] )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh with invalid bounds";
+			}
+		}
+	}
+
+	for( uint16_t idx : mesh.audioOcclusionMesh.indices )
+	{
+		if( idx >= mesh.audioOcclusionMesh.vertices.size() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has audioOcclusionMesh with out-of-range index";
+		}
+	}
+
+	if( mesh.bounds.IsInitialized() )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( mesh.bounds.m_max[i] < mesh.bounds.m_min[i] )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has invalid bounds";
+			}
+		}
+	}
+
+	for( const auto& morphTarget : mesh.morphTargets.targets )
+	{
+		if( morphTarget.name.empty() )
+		{
+			return "Mesh \"" + ToStdString( mesh.name ) + "\" has empty morphTarget name";
+		}
+	}
+	for( size_t i = 0; i < mesh.morphTargets.targets.size(); i++ )
+	{
+		for( size_t j = i + 1; j < mesh.morphTargets.targets.size(); j++ )
+		{
+			if( mesh.morphTargets.targets[i].name == mesh.morphTargets.targets[j].name )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has duplicate morphTarget name " + ToStdString( mesh.morphTargets.targets[i].name );
+			}
+		}
+	}
+
 	return {};
 }
 
@@ -447,6 +774,91 @@ std::string IsSkeletonValid( const cmf::Skeleton& skeleton )
 			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" bone " + std::to_string( idx ) + " has parent index >= own index (would form a cycle)";
 		}
 	}
+	for( const auto& boneName : skeleton.bones )
+	{
+		if( boneName.empty() )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has empty bone name";
+		}
+	}
+	for( size_t i = 0; i < skeleton.bones.size(); i++ )
+	{
+		for( size_t j = i + 1; j < skeleton.bones.size(); j++ )
+		{
+			if( skeleton.bones[i] == skeleton.bones[j] )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has duplicate bone name " + ToStdString( skeleton.bones[i] );
+			}
+		}
+	}
+	for( const auto& mask : skeleton.boneMasks )
+	{
+		if( mask.name.empty() )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has empty boneMask name";
+		}
+	}
+	for( size_t i = 0; i < skeleton.boneMasks.size(); i++ )
+	{
+		for( size_t j = i + 1; j < skeleton.boneMasks.size(); j++ )
+		{
+			if( skeleton.boneMasks[i].name == skeleton.boneMasks[j].name )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has duplicate boneMask name " + ToStdString( skeleton.boneMasks[i].name );
+			}
+		}
+	}
+	for( const auto& mask : skeleton.boneMasks )
+	{
+		for( const auto& weight : mask.weights )
+		{
+			if( weight.index >= skeleton.bones.size() )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has boneMask " + ToStdString( mask.name ) + " with invalid index";
+			}
+			if( std::clamp( weight.weight, 0.f, 1.f ) != weight.weight )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has boneMask " + ToStdString( mask.name ) + " with weight outside range [0, 1]";
+			}
+		}
+	}
+	for( const auto& transform : skeleton.restTransforms )
+	{
+		for( int i = 0; i < 3; i++ )
+		{
+			if( std::isinf( transform.position[i] ) || std::isnan( transform.position[i] ) )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform position with invalid float";
+			}
+		}
+		if( std::isinf( transform.rotation.x ) || std::isnan( transform.rotation.x ) ||
+			std::isinf( transform.rotation.y ) || std::isnan( transform.rotation.y ) ||
+			std::isinf( transform.rotation.z ) || std::isnan( transform.rotation.z ) ||
+			std::isinf( transform.rotation.w ) || std::isnan( transform.rotation.w ) )
+		{
+			return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform rotation with invalid float";
+		}
+		for( int i = 0; i < 3; i++ )
+		{
+			if( std::isinf( transform.scale[i] ) || std::isnan( transform.scale[i] ) )
+			{
+				return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has restTransform scale with invalid float";
+			}
+		}
+	}
+	for( const auto& transform : skeleton.invBindTransforms )
+	{
+		for( int i = 0; i < 4; i++ )
+		{
+			for( int j = 0; j < 4; j++ )
+			{
+				if( std::isinf( transform.m[i][j] ) || std::isnan( transform.m[i][j] ) )
+				{
+					return "Skeleton \"" + ToStdString( skeleton.name ) + "\" has invBindTransform with invalid float";
+				}
+			}
+		}
+	}
 	return {};
 }
 
@@ -456,12 +868,32 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	{
 		return "Curve has no keyframes";
 	}
+
+	if( !IsValidElementType( curve.knotType ) )
+	{
+		return "Curve has invalid knotType";
+	}
+
+	switch( curve.interpolation )
+	{
+	case cmf::Interpolation::Step:
+	case cmf::Interpolation::Linear:
+		break;
+	default:
+		return "Curve has invalid interpolation";
+	}
+
+	if( !IsValidElementType( curve.valueType ) )
+	{
+		return "Curve has invalid valueType";
+	}
+
 	// Knots must be in ascending order
 	cmf::VertexElement element = {};
 	element.type = curve.knotType;
 	element.elementCount = 1;
 	const auto stride = cmf::GetVertexElementSize( element );
-	if( curve.knots.size() != curve.knotCount * stride )
+	if( curve.knots.size() != uint64_t( curve.knotCount ) * stride )
 	{
 		return "Curve keyframe buffer size does not match keyframes count and time type";
 	}
@@ -474,7 +906,12 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 		}
 	}
 
-	if( curve.values.size() != curve.knotCount * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
+	if( curve.valueDimension == 0 )
+	{
+		return "Curve has zero valueDimension";
+	}
+
+	if( curve.values.size() != uint64_t( curve.knotCount ) * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
 	{
 		return "Curve value buffer size does not match keyframes count, value dimension and value type";
 	}
@@ -502,6 +939,18 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 		switch( animation.channels[i].targetType )
 		{
 		case cmf::AnimationChannelTargetType::BonePosition:
+		case cmf::AnimationChannelTargetType::BoneRotation:
+		case cmf::AnimationChannelTargetType::BoneScale:
+		case cmf::AnimationChannelTargetType::MorphTarget:
+		case cmf::AnimationChannelTargetType::Other:
+			break;
+		default:
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " has invalid targetType";
+		}
+
+		switch( animation.channels[i].targetType )
+		{
+		case cmf::AnimationChannelTargetType::BonePosition:
 		case cmf::AnimationChannelTargetType::BoneScale:
 			if( animation.curves[animation.channels[i].curveIndex].valueDimension != 3 )
 			{
@@ -523,6 +972,11 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 		default:
 			break;
 		}
+
+		if( animation.channels[i].target.empty() )
+		{
+			return "Animation \"" + ToStdString( animation.name ) + "\" channel " + std::to_string( i ) + " has empty target name";
+		}
 	}
 	for( size_t i = 0; i < animation.curves.size(); ++i )
 	{
@@ -537,18 +991,20 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 
 std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
 {
-	if( !AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize ) )
+	auto spanPointerErrorMessage = AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize );
+	if( !spanPointerErrorMessage.empty() )
 	{
-		return "Main data contains invalid span pointers";
+		return "Main data contains invalid span pointers: " + spanPointerErrorMessage;
 	}
-	if( !AreBufferViewsValid( mainData, header.sections ) )
+	auto bufferViewPointerErrorMessage = AreBufferViewsValid( mainData, header.sections );
+	if( !bufferViewPointerErrorMessage.empty() )
 	{
-		return "Main data contains invalid buffer views";
+		return "Main data contains invalid buffer views: " + bufferViewPointerErrorMessage;
 	}
 
 	for( size_t i = 0; i < mainData.meshes.size(); ++i )
 	{
-		auto error = IsMeshValid( mainData.meshes[i], mainData.skeletons.size() );
+		auto error = IsMeshValid( mainData.meshes[i], mainData.skeletons );
 		if( !error.empty() )
 		{
 			return error;
@@ -572,6 +1028,33 @@ std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& heade
 			return error;
 		}
 	}
+	return {};
+}
+
+std::string IsMetadataValid( const cmf::Metadata& metaData, size_t sectionSize )
+{
+	auto spanPointerErrorMessage = AreSpanPointersValid( metaData, &metaData, sectionSize );
+	if( !spanPointerErrorMessage.empty() )
+	{
+		return "Meta data contains invalid span pointers: " + spanPointerErrorMessage;
+	}
+
+	for( size_t i = 0; i < metaData.entries.size(); i++ )
+	{
+		if( metaData.entries[i].key.empty() )
+		{
+			return "Meta data contains empty key";
+		}
+
+		for( size_t j = i + 1; j < metaData.entries.size(); j++ )
+		{
+			if( metaData.entries[i].key == metaData.entries[j].key )
+			{
+				return "Meta data contains duplicate keys";
+			}
+		}
+	}
+
 	return {};
 }
 
@@ -615,9 +1098,10 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		return { true, {} };
 	}
 
-	if( !AreSpanPointersValid( header, &header, header.headerSize ) )
+	auto spanPointerErrorMessage = AreSpanPointersValid( header, &header, header.headerSize );
+	if( !spanPointerErrorMessage.empty() )
 	{
-		return { false, "Header contains invalid span pointers" };
+		return { false, "Header contains invalid span pointers: " + spanPointerErrorMessage };
 	}
 	{
 		auto error = AreHeaderSectionsValid( header, size );
@@ -632,12 +1116,36 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		return { true, {} };
 	}
 
-	const auto& mainData = *reinterpret_cast<const Data*>( static_cast<const uint8_t*>( data ) + header.sections[0].offset );
+	const auto mainDataAddress = static_cast<const uint8_t*>( data ) + header.sections[0].offset;
+	if( reinterpret_cast<uintptr_t>( mainDataAddress ) % alignof( cmf::Data ) != 0 )
+	{
+		return { false, "Data section not aligned" };
+	}
+
+	const auto& mainData = *reinterpret_cast<const Data*>( mainDataAddress );
 	auto error = IsMainDataValid( mainData, header );
 	if( !error.empty() )
 	{
 		return { false, error };
 	}
+
+	const auto& lastSection = header.sections[header.sections.size() - 1];
+	if( lastSection.type == cmf::SectionType::Metadata )
+	{
+		const auto metadataAddress = static_cast<const uint8_t*>( data ) + lastSection.offset;
+		if( reinterpret_cast<uintptr_t>( metadataAddress ) % alignof( cmf::Metadata ) != 0 )
+		{
+			return { false, "Metadata section not aligned" };
+		}
+
+		const auto& metadata = *reinterpret_cast<const Metadata*>( metadataAddress );
+		auto error = IsMetadataValid( metadata, lastSection.uncompressedSize );
+		if( !error.empty() )
+		{
+			return { false, error };
+		}
+	}
+
 	return { true, {} };
 }
 

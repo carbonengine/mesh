@@ -116,12 +116,12 @@ struct FlattenVisitor
 	};
 
 	FlattenedBuffer& m_buffer;
-	size_t m_chunkAlignment = 4;
+	size_t m_chunkAlignment = 8;
 	std::vector<SpanRepr> m_chunks;
 };
 
 template <typename T>
-FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 4 )
+FlattenedBuffer Flatten( const T& root, size_t chunkAlignment = 8 )
 {
 	size_t size = GetFlattenedDataSizeEstimate( root, chunkAlignment );
 	FlattenedBuffer result{ std::make_unique<uint8_t[]>( size ), 0 };

@@ -172,7 +172,7 @@ std::vector<uint8_t> BuildFile( const Data& data, const BufferManager& buffers, 
 		metadataSection.uncompressedSize = uint32_t( flattenedMetadata.size );
 	}
 
-	const uint32_t sectionAlignment = 4;
+	const uint32_t sectionAlignment = 8;
 
 	auto flattenedHeader = Flatten( header );
 	uint32_t offset = uint32_t( flattenedHeader.size );
