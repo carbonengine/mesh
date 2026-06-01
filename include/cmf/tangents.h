@@ -11,19 +11,7 @@ namespace cmf
 // Generates tangents and bitangents for the specified mesh. If the mesh already has tangents and bitangents, they will be reused unless forceRebuild is true.
 // The vertex declaration must contain position, normal and texcoord (with the corresponding usageIndex) attributes. The function will regenerate
 // index buffers for the mesh as some vertices may need to be duplicated to accommodate the new tangents.
-CARBON_MESH_EXPORT void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
-
-/** @brief Generates tangents for all morph targets of a mesh LOD.
- *
- * This function generates tangents for all morph targets of a mesh LOD. It expects to have tangent/bitangent vertex declaration elements
- * already existing in the morph target vertex declaration. The mesh must contain vertex positions and UV sets corresponding to morph target tangent sets.
- * The function will generate tangent/bitangent sets for all usage indices found in the mesh morph target declaration.
- *
- * @param mesh The mesh containing the morph target.
- * @param meshLod The level of detail of the mesh.
- * @param bufferManager The buffer manager used to manage vertex buffers.
- */
-CARBON_MESH_EXPORT void GenerateMorphTargetTangents( const Mesh& mesh, const MeshLod& meshLod, BufferManager& bufferManager );
+CARBON_MESH_EXPORT bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
 
 enum class TangentCompression
 {
