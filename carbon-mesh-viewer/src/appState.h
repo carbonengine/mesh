@@ -54,9 +54,14 @@ public:
 
 	StateCollection( T initialValue );
 	size_t AddState();
+	size_t AddState( T initialValue );
 
 	void Clear();
 	void CallCallbacks( AppState& appState );
+
+	void RegisterCallback( std::function<void( std::vector<T>, AppState& )> callback );
+
+	void RemoveAt( size_t index );
 
 	size_t size() const;
 
@@ -77,6 +82,8 @@ public:
 private:
 	std::vector<State<T>> m_states;
 	T m_initialValue;
+	std::vector<std::function<void( std::vector<T>, AppState& )>> m_callbacks;
+	bool m_fireCallbacks = false;
 };
 
 enum class CameraTrigger
@@ -107,10 +114,13 @@ struct ModelState
 	StateCollection<bool> meshWireframeOverlay{ false };
 	StateCollection<bool> audioOcclusionMesh{ false };
 	StateCollection<bool> meshBoundingBox{ false };
+	State<bool> boneDebug{ false };
+	State<bool> jointDebug{ false };
+	State<bool> jointAxisDebug{ false };
 	State<bool> modelBoundingBox{ false };
-
-	State<std::string> animationOverridePath{ "" };
-	State<std::shared_ptr<CmfContent>> animationOverride{ nullptr };
+	State<std::shared_ptr<CmfContent>> activeAnimationOwner{ nullptr };
+	StateCollection<std::shared_ptr<CmfContent>> animationOverrides{ nullptr };
+	StateCollection<uint32_t> selectedBones{ 0xFF };
 };
 
 struct AppState

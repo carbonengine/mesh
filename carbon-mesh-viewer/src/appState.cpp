@@ -33,8 +33,12 @@ void AppState::CallStateCallbacks()
 	modelState.modelBoundingBox.CallCallbacks( *this );
 	modelState.currentAnimation.CallCallbacks( *this );
 	modelState.currentAnimationTime.CallCallbacks( *this );
-	modelState.animationOverridePath.CallCallbacks( *this );
-	modelState.animationOverride.CallCallbacks( *this );
+	modelState.availableShaders.CallCallbacks( *this );
+	modelState.boneDebug.CallCallbacks( *this );
+	modelState.jointDebug.CallCallbacks( *this );
+	modelState.jointAxisDebug.CallCallbacks( *this );
+	modelState.activeAnimationOwner.CallCallbacks( *this );
+	modelState.selectedBones.CallCallbacks( *this );
 }
 
 void AppState::ResetModelState()

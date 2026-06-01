@@ -27,15 +27,13 @@ public:
 	const Buffer& GetVertexBuffer() const;
 
 	void SetMorphWeight( size_t morphIndex, float weight );
-	void InitializeAnimationData( cmf::Skeleton* animationSkeleton, cmf::Skeleton* baseSkeleton );
-	void SetSkeletonPose( const cmf::SkeletonPose& pose, const cmf::Skeleton* meshSkeleton );
+	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
 
 private:
 	void SetupForDynamicMesh();
 	void SetupForStaticMesh();
 
 	void UpdateLod( uint32_t lod );
-	void UpdateBoneTransforms( uint32_t boneCount );
 
 	void IssueBarrier( VkCommandBuffer& commandBuffer, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask );
 
@@ -97,8 +95,6 @@ private:
 	uint32_t m_currentLod{ std::numeric_limits<uint32_t>::max() };
 
 	std::array<Matrix, 0xFF> m_boneTransforms{};
-	std::vector<int32_t> m_meshBoneIndex{};
-	std::vector<int32_t> m_skeletonBoneIndex{};
 
 	bool m_isDynamic{ false };
 	bool m_hasBoneIndices{ false };

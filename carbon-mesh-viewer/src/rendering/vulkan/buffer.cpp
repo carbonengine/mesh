@@ -8,7 +8,7 @@
 namespace BufferBuilder
 {
 
-Buffer* Build( const Renderer* renderer, const uint8_t* data, uint32_t size, BufferType type, uint32_t stride )
+Buffer* Build( const Renderer* renderer, const uint8_t* data, size_t size, BufferType type, size_t stride )
 {
 	Buffer* buffer = new Buffer();
 
@@ -38,7 +38,7 @@ Buffer::~Buffer()
 {
 }
 
-VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride )
+VkResult Buffer::Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, size_t size, size_t stride )
 {
 	m_size = size;
 	m_stride = stride;
@@ -82,6 +82,7 @@ bool Buffer::IsValid() const
 
 VkResult Buffer::CreateBuffer( const Renderer* renderer, BufferType type, const uint8_t* data )
 {
+	assert( data != nullptr );
 	auto device = renderer->GetDevice();
 	auto logicalDevice = device->GetLogicalDevice();
 	auto allocator = renderer->GetAllocator();
@@ -94,7 +95,7 @@ VkResult Buffer::CreateBuffer( const Renderer* renderer, BufferType type, const 
 	VkBufferCreateInfo bufferCreateInfo{};
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferCreateInfo.size = std::max( m_size, 1u );
+	bufferCreateInfo.size = std::max( m_size, size_t{ 1 } );
 	// Buffer is used as the copy source
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	// Create a host-visible buffer to copy the vertex data to (staging buffer)
@@ -151,7 +152,7 @@ VkResult Buffer::CreateStorageBuffer( const Renderer* renderer, const uint8_t* d
 	VkBufferCreateInfo bufferCreateInfo{};
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferCreateInfo.size = std::max( m_size, 1u );
+	bufferCreateInfo.size = std::max( m_size, size_t{ 1 } );
 
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
@@ -176,7 +177,7 @@ VkResult Buffer::CreateStorageBuffer( const Renderer* renderer, const uint8_t* d
 	return VK_SUCCESS;
 }
 
-VkResult Buffer::SetData( const Renderer* renderer, const uint8_t* data, uint32_t size )
+VkResult Buffer::SetData( const Renderer* renderer, const uint8_t* data, size_t size )
 {
 	if( size > m_size )
 	{
@@ -226,12 +227,12 @@ void Buffer::ReleaseStaging( const Renderer* renderer )
 	}
 }
 
-uint32_t Buffer::stride() const
+size_t Buffer::stride() const
 {
 	return m_stride;
 }
 
-uint32_t Buffer::size() const
+size_t Buffer::size() const
 {
 	return m_size;
 }

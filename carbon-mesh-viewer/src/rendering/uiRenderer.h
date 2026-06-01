@@ -1,7 +1,7 @@
-
-#include <imgui.h>
 #include <unordered_map>
 
+// used by the template file
+#include <imgui.h>
 #include <cmf/converters.h>
 
 #include "appState.h"
@@ -59,12 +59,12 @@ private:
 		uint32_t lodCount{ 0 };
 		uint32_t vertexCount{ 0 };
 		uint32_t indexCount{ 0 };
+		std::vector<MorphTargetUiState> morphTargets;
 		bool display{ true };
 		bool boundingBox{ false };
 		bool wireframeOverlay{ false };
 		bool audioOcclusionMesh{ false };
 		bool hasAudioOcclusionMesh{ false };
-		std::vector<MorphTargetUiState> morphTargets;
 	};
 
 	struct ModelUiState
@@ -76,14 +76,30 @@ private:
 		bool boundingBox{ false };
 	};
 
+	struct SkeletonUiState
+	{
+		uint32_t bonesCount{ 0 };
+		std::string name;
+	};
+
+	struct SkeletonOwnerUiState
+	{
+		std::string source;
+		std::string shortSource;
+		std::shared_ptr<CmfContent> cmfContent;
+		std::vector<SkeletonUiState> skeletons;
+	};
+
 	struct UiState
 	{
 		std::string filePath;
-		std::string animationPath;
 		ModelUiState modelStates{};
-
+		std::vector<SkeletonOwnerUiState> skeletonOwners{};
 		CmfUiComboBox<VkPolygonMode> polygonModeComboBox;
 		CmfUiComboBox<std::string> visualizationShaderComboBox;
+		bool boneDebug{ false };
+		bool jointDebug{ false };
+		bool jointAxisDebug{ false };
 	};
 
 	struct Playback
@@ -124,6 +140,8 @@ private:
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
 	void SetupMorphTarget( const MorphTargetUiState& morphTarget, AppState& appState );
+	void SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& skeletonOwners, AppState& appState );
+	void SetupSkeletons( const std::vector<SkeletonUiState>& skeletonStates, AppState& appState );
 	void SetupPlaybackControls( AppState& appState );
 	void SetupPopupWindows( AppState& appState );
 
@@ -137,7 +155,7 @@ private:
 	void SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState );
 
 	void UpdateUiState( AppState& appState );
-	const char* FileOpenDialog( AppState& appState );
+	const char* FileOpenDialog();
 
 	struct AttributeInfo
 	{
@@ -157,7 +175,7 @@ private:
 	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh );
+	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
 	void RenderHierarchyTab( CmfContent* cmfContent );
 	void RenderAnimationsTab( CmfContent* cmfContent );
 	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );

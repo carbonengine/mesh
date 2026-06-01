@@ -6,7 +6,8 @@
 
 SceneRenderer::SceneRenderer( std::shared_ptr<Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_graphicsCommandBuffer( renderer.get() )
+	m_graphicsCommandBuffer( renderer.get() ),
+	m_depthLessDebugCommandBuffer( renderer.get() )
 {
 }
 
@@ -21,17 +22,10 @@ VkResult SceneRenderer::Initialize( AppState& state )
 		this->SetData( content, appState );
 	} );
 
-	state.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
-		m_model->SetRenderingMode( appState.modelState.visualizationShader.GetValue(), mode );
-	} );
-
-	state.modelState.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
-		m_model->SetRenderingMode( shaderName, appState.modelState.polygonMode.GetValue() );
-	} );
-
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		this->m_graphicsCommandBuffer.SetRenderSize( width, height );
+		this->m_depthLessDebugCommandBuffer.SetRenderSize( width, height );
 	} );
 
 	auto [width, height] = state.windowSize.GetValue();
@@ -39,6 +33,11 @@ VkResult SceneRenderer::Initialize( AppState& state )
 	m_graphicsCommandBuffer.SetRenderOffset( 0, 0 );
 	m_graphicsCommandBuffer.SetClearDepth( 1.0f );
 	m_graphicsCommandBuffer.SetClearColor( 0.1f, 0.1f, 0.1f );
+
+	// only clear depth so we can render bones inside of meshes etc.
+	m_depthLessDebugCommandBuffer.SetRenderSize( width, height );
+	m_depthLessDebugCommandBuffer.SetRenderOffset( 0, 0 );
+	m_depthLessDebugCommandBuffer.SetClearDepth( 1.0f );
 
 	return VK_SUCCESS;
 }
@@ -71,9 +70,18 @@ void SceneRenderer::Render( const AppState& state, const Camera& camera )
 	if( m_model != nullptr )
 	{
 		m_model->RenderMesh( m_graphicsCommandBuffer, state, camera );
+
+		m_model->RenderDebug( m_graphicsCommandBuffer, state, camera );
 	}
 
 	m_graphicsCommandBuffer.End();
+
+	m_depthLessDebugCommandBuffer.Begin( m_renderer.get() );
+	if( m_model != nullptr )
+	{
+		m_model->RenderNoDepthDebug( m_depthLessDebugCommandBuffer, state, camera );
+	}
+	m_depthLessDebugCommandBuffer.End();
 }
 
 void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appState )
@@ -109,5 +117,4 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
 	m_model->Initialize( appState );
-	m_model->SetRenderingMode( appState.modelState.visualizationShader.GetValue(), appState.modelState.polygonMode.GetValue() );
 }
