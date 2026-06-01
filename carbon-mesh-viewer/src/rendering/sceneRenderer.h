@@ -22,6 +22,7 @@ public:
 private:
 	void ReleaseModel();
 
+	GraphicsCommandBuffer m_depthLessDebugCommandBuffer;
 	GraphicsCommandBuffer m_graphicsCommandBuffer;
 	ComputeCommandBuffer m_computeCommandBuffer{};
 	std::unique_ptr<ModelRenderable> m_model{ nullptr };

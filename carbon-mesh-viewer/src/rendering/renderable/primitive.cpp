@@ -20,10 +20,20 @@ PrimitiveRenderable::~PrimitiveRenderable()
 		m_indexBuffer->Release( m_renderer.get() );
 		m_indexBuffer = nullptr;
 	}
+	for( auto& storageBufferPair : m_storageBuffers )
+	{
+		storageBufferPair.second->Release( m_renderer.get() );
+	}
+}
+
+GraphicsEffect& PrimitiveRenderable::GetEffect()
+{
+	return m_effect;
 }
 
 void PrimitiveRenderable::SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride )
 {
+	assert( stride == m_effect.GetStride() );
 	m_vertexStride = stride;
 	m_vertexBufferSize = size;
 	m_data = data;
@@ -56,23 +66,24 @@ VkResult PrimitiveRenderable::Initialize()
 	m_vertexBuffer->ReleaseStaging( m_renderer.get() );
 	if( m_indexData )
 	{
-		m_vertexBuffer->ReleaseStaging( m_renderer.get() );
+		m_indexBuffer->ReleaseStaging( m_renderer.get() );
 	}
+
 	RETURN_ERROR( m_effect.Initialize() );
 	return VK_SUCCESS;
 }
 
-void PrimitiveRenderable::Render( GraphicsCommandBuffer& commandBuffer )
+void PrimitiveRenderable::Render( GraphicsCommandBuffer& commandBuffer, uint32_t instanceCount )
 {
 	commandBuffer.BindEffect( m_effect );
 	commandBuffer.BindVertexBuffer( m_vertexBuffer->GetGpuBuffer() );
 	if( m_indexBuffer )
 	{
 		commandBuffer.BindIndexBuffer( *m_indexBuffer );
-		commandBuffer.DrawIndexed( 0, m_elements );
+		commandBuffer.DrawIndexed( 0, m_elements, instanceCount );
 	}
 	else
 	{
-		commandBuffer.Draw( 0, m_elements );
+		commandBuffer.Draw( 0, m_elements, instanceCount );
 	}
 }

@@ -13,6 +13,7 @@ public:
 
 	void SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride );
 	void SetIndexData( const uint8_t* data, uint32_t size, uint32_t stride );
+	GraphicsEffect& GetEffect();
 
 	template <typename T>
 	void SetUniformData( uint32_t layoutBindingIndex, const T& data )
@@ -21,15 +22,15 @@ public:
 	}
 
 	VkResult Initialize();
-	void Render( GraphicsCommandBuffer& commandBuffer );
+	void Render( GraphicsCommandBuffer& commandBuffer, uint32_t instanceCount = 1 );
 
 private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
 
 	Buffer* m_vertexBuffer{ nullptr };
 	Buffer* m_indexBuffer{ nullptr };
+	std::vector<std::pair<uint32_t, Buffer*>> m_storageBuffers{};
 
-	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions{};
 	uint32_t m_vertexStride{ 0 };
 	uint32_t m_vertexBufferSize{ 0 };
 	const uint8_t* m_data{ nullptr };

@@ -144,14 +144,14 @@ void GraphicsCommandBuffer::End()
 	m_activeCommandBuffer = VK_NULL_HANDLE;
 }
 
-void GraphicsCommandBuffer::DrawIndexed( uint32_t firstElement, uint32_t elementCount )
+void GraphicsCommandBuffer::DrawIndexed( uint32_t firstElement, uint32_t elementCount, uint32_t instanceCount )
 {
-	vkCmdDrawIndexed( m_activeCommandBuffer, elementCount, 1, firstElement, 0, 0 );
+	vkCmdDrawIndexed( m_activeCommandBuffer, elementCount, instanceCount, firstElement, 0, 0 );
 }
 
-void GraphicsCommandBuffer::Draw( uint32_t firstElement, uint32_t elementCount )
+void GraphicsCommandBuffer::Draw( uint32_t firstElement, uint32_t elementCount, uint32_t instanceCount )
 {
-	vkCmdDraw( m_activeCommandBuffer, elementCount, 1, firstElement, 0 );
+	vkCmdDraw( m_activeCommandBuffer, elementCount, instanceCount, firstElement, 0 );
 }
 
 // Compute command buffer implementation

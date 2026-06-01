@@ -106,7 +106,10 @@ void Application::Initialize()
 		Application* app = reinterpret_cast<Application*>( glfwGetWindowUserPointer( window ) );
 		if( app )
 		{
-			app->LoadCmfFile( std::string( paths[0] ) );
+			for( int i = 0; i < count; ++i )
+			{
+				app->LoadCmfFile( std::string( paths[i] ) );
+			}
 		}
 	} );
 
@@ -230,8 +233,7 @@ void Application::LoadCmfFile( const std::string& path )
 	if( currentData != nullptr && data && data->m_cmfData->meshes.empty() )
 	{
 		Log::Info( "Applying animation/pose file %s", path.c_str() );
-		m_appState.modelState.animationOverridePath.SetValue( path );
-		m_appState.modelState.animationOverride.ForceSetValue( data );
+		m_appState.modelState.animationOverrides.AddState( data );
 	}
 	else
 	{
@@ -240,6 +242,7 @@ void Application::LoadCmfFile( const std::string& path )
 
 		// load the cmf content from the path and set it in the app state
 		m_appState.cmfPath.SetValue( path );
+		m_appState.modelState.activeAnimationOwner.SetValue( data );
 		m_appState.cmfContent.ForceSetValue( data );
 	}
 }

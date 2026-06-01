@@ -34,3 +34,8 @@ void GraphicsEffect::Bind( VkCommandBuffer commandBuffer, uint32_t currentFrameI
 
 	vkCmdBindPipeline( commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline );
 }
+
+size_t GraphicsEffect::GetStride() const
+{
+	return m_config.stride;
+}

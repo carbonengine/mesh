@@ -7,12 +7,5 @@
 
 namespace BoundingBox
 {
-struct VertexUBO
-{
-	Matrix proj;
-	Matrix view;
-	Matrix model;
-};
-
 PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer, Vector3 color );
 };
