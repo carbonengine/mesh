@@ -176,12 +176,6 @@ void ExportMorphTargets( Simplygon::spGeometryData& geomData, const cmf::Mesh& m
 						continue;
 					}
 					break;
-				case cmf::Usage::Tangent:
-				case cmf::Usage::Binormal:
-					if( element.usageIndex == 0 )
-					{
-						continue; // Simplygon doesn't support morph tangents, skip them: we will recalculate them after LOD generation
-					}
 				default:
 					break;
 				}
@@ -456,9 +450,6 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 					PopulateVertexBuffer<Vector3>( Simplygon::spRealArray::SafeCast( sgNormals ), element, newMorphTarget.vb, bufferAllocator );
 					continue;
 				}
-			case cmf::Usage::Tangent:
-			case cmf::Usage::Binormal:
-				continue; // Simplygon doesn't support morph tangents, skip them: we will recalculate them after LOD generation
 			default:
 				break;
 			}
@@ -478,7 +469,6 @@ cmf::MeshLod ImportMeshLodFromSimplygon( const Simplygon::spPackedGeometryData& 
 
 	ImportIndexBuffer( newLod, packed, (uint32_t)mesh.areas.size(), allocator, bufferAllocator );
 
-	GenerateMorphTargetTangents( mesh, newLod, bufferAllocator );
 	return newLod;
 }
 

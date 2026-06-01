@@ -19,9 +19,9 @@ struct TangentElements
 
 std::optional<TangentElements> FindTangentElements( const cmf::Span<cmf::VertexElement>& decl, uint32_t usageIndex )
 {
-	auto normal = FindElement( decl, cmf::Usage::Normal );
-	auto tangent = FindElement( decl, cmf::Usage::Tangent, usageIndex );
-	auto bitangent = FindElement( decl, cmf::Usage::Binormal, usageIndex );
+	const auto* normal = FindElement( decl, cmf::Usage::Normal );
+	const auto* tangent = FindElement( decl, cmf::Usage::Tangent, usageIndex );
+	const auto* bitangent = FindElement( decl, cmf::Usage::Binormal, usageIndex );
 	if( normal && tangent && bitangent )
 	{
 		return TangentElements{ *normal, *tangent, *bitangent };
@@ -38,161 +38,142 @@ const cmf::VertexElement* FindPackedTangentElement( const cmf::Span<cmf::VertexE
 	return FindElement( decl, cmf::Usage::PackedTangentLegacy, usageIndex );
 }
 
+
+void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> positions, cmf::ConstBufferElementStream<Vector3> normals, cmf::ConstBufferElementStream<Vector2> texCoords, cmf::BufferElementStream<Vector3> tangents, cmf::BufferElementStream<Vector3> bitangents )
+{
+	const int vertexCount = (int)positions.size();
+	const int faceCount = vertexCount / 3;
+
+
+	struct MikkTSpaceData
+	{
+		int faceCount;
+
+		cmf::ConstBufferElementStream<Vector3> positions;
+		cmf::ConstBufferElementStream<Vector3> normals;
+		cmf::ConstBufferElementStream<Vector2> texCoords;
+
+		cmf::BufferElementStream<Vector3> tangents;
+		cmf::BufferElementStream<Vector3> bitangents;
+	};
+
+	MikkTSpaceData data = { faceCount, positions, normals, texCoords, tangents, bitangents };
+
+	SMikkTSpaceInterface interface = {};
+
+	interface.m_getNumFaces = []( const SMikkTSpaceContext* ctx ) -> int {
+		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
+		return data->faceCount;
+	};
+
+	interface.m_getNumVerticesOfFace = []( const SMikkTSpaceContext*, int ) -> int {
+		return 3;
+	};
+
+	interface.m_getPosition = []( const SMikkTSpaceContext* ctx, float pos[3], int face, int vert ) {
+		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
+		auto position = data->positions[face * 3 + vert];
+		pos[0] = position[0];
+		pos[1] = position[1];
+		pos[2] = position[2];
+	};
+
+	interface.m_getNormal = []( const SMikkTSpaceContext* ctx, float norm[3], int face, int vert ) {
+		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
+		auto normal = data->normals[face * 3 + vert];
+		norm[0] = normal[0];
+		norm[1] = normal[1];
+		norm[2] = normal[2];
+	};
+
+	interface.m_getTexCoord = []( const SMikkTSpaceContext* ctx, float uv[2], int face, int vert ) {
+		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
+		auto texCoord = data->texCoords[face * 3 + vert];
+		uv[0] = texCoord[0];
+		uv[1] = texCoord[1];
+	};
+
+	interface.m_setTSpaceBasic = []( const SMikkTSpaceContext* ctx, const float tangentFloats[3], float sign, int face, int vert ) {
+		auto* data = static_cast<MikkTSpaceData*>( ctx->m_pUserData );
+		const int index = face * 3 + vert;
+		auto normal = data->normals[index];
+		Vector3 tangent = Vector3( tangentFloats[0], tangentFloats[1], tangentFloats[2] );
+		auto bitangent = Cross( tangent, normal ) * sign;
+		data->tangents[index] = tangent;
+		data->bitangents[index] = bitangent;
+	};
+
+
+	const SMikkTSpaceContext context = { &interface, &data };
+
+	// TODO: expose tolerance as function argument
+	genTangSpaceDefault( &context );
 }
+}
+
 
 namespace cmf
 {
 
-void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
+
+bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
-	const auto& vertexDeclaration = mesh.decl;
-
-	// Check if the mesh already has tangents and bitangents.
-	auto tangentElement = FindElement( mesh.decl, Usage::Tangent, usageIndex );
-	auto bitangentElement = FindElement( vertexDeclaration, Usage::Binormal, usageIndex );
-
-	bool shouldGenerate = forceRebuild || !tangentElement || !bitangentElement;
-	if( !shouldGenerate )
-	{
-		printf( "Mesh %s already has tangents, using existing ones.\n", ToStdString( mesh.name ).c_str() );
-		return;
-	}
+	bool success = true;
 
 	// TODO: check for already existing packed tangents
 
-	// Make sure that we have the required vertex attributes to generate tangents.
-	auto positionElement = FindElement( vertexDeclaration, Usage::Position );
-	auto normalElement = FindElement( vertexDeclaration, Usage::Normal );
-	auto texCoordElement = FindElement( vertexDeclaration, Usage::TexCoord, usageIndex );
+	// Check if the mesh already has tangents and bitangents.
+	auto meshTangentElement = FindElement( mesh.decl, Usage::Tangent, usageIndex );
+	auto meshBitangentElement = FindElement( mesh.decl, Usage::Binormal, usageIndex );
+	bool rebuildMeshTangents = forceRebuild || !meshTangentElement || !meshBitangentElement;
 
-	if( !positionElement || !normalElement || !texCoordElement )
+	auto morphTargetTangentElement = FindElement( mesh.morphTargets.decl, Usage::Tangent, usageIndex );
+	auto morphTargetBitangentElement = FindElement( mesh.morphTargets.decl, Usage::Binormal, usageIndex );
+	bool rebuildMorphTargetTangents = !mesh.morphTargets.targets.empty() && ( forceRebuild || !morphTargetTangentElement || !morphTargetBitangentElement );
+
+	if( !rebuildMeshTangents && !rebuildMorphTargetTangents )
 	{
-		printf( "Failed to generate tangents for mesh %s\n", ToStdString( mesh.name ).c_str() );
-
-		if( !positionElement )
-		{
-			printf( "    No Position%d attribute found.\n", 0 );
-		}
-		if( !normalElement )
-		{
-			printf( "    No Normal%d attribute found.\n", 0 );
-		}
-		if( !texCoordElement )
-		{
-			printf( "    No TexCoord%d attribute found.\n", usageIndex );
-		}
-		return;
+		return success;
 	}
 
-	// Create a new vertex declaration with the new tangents, and a mapping for copying to it.
-	Span<VertexElement> newVertexDeclaration;
-
-	VertexElement newTangentElement;
-	VertexElement newBitangentElement;
-
-	{
-		uint32_t offset = 0;
-		for( VertexElement element : mesh.decl )
+	auto createVertexDeclarationWithTangents = []( const Span<VertexElement>& decl, uint32_t usageIndex, MemoryAllocator& allocator ) {
+		Span<VertexElement> newVertexDeclaration;
 		{
-			if( ( element.usage == Usage::Tangent || element.usage == Usage::Binormal ) && element.usageIndex == usageIndex )
+			uint32_t offset = 0;
+			for( VertexElement element : decl )
 			{
-				// Omit the old tangents.
-				continue;
-			}
+				if( ( element.usage == Usage::Tangent || element.usage == Usage::Binormal ) && element.usageIndex == usageIndex )
+				{
+					// Omit any existing tangents.
+					continue;
+				}
 
-			VertexElement newElement = element;
-			newElement.offset = offset;
-			Modify( newVertexDeclaration, allocator ).push_back( newElement );
-			offset += GetVertexElementSize( element );
+				VertexElement newElement = element;
+				newElement.offset = offset;
+				Modify( newVertexDeclaration, allocator ).push_back( newElement );
+				offset += GetVertexElementSize( element );
 
-			if( element.usage == Usage::Normal && element.usageIndex == 0 )
-			{
-				// Insert the tangent and bitangent after the normal.
+				if( element.usage == Usage::Normal && element.usageIndex == 0 )
+				{
+					// Insert the tangent and bitangent after the normal.
 
-				newTangentElement = { Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
-				Modify( newVertexDeclaration, allocator ).push_back( newTangentElement );
-				offset += GetVertexElementSize( newTangentElement );
+					VertexElement newTangentElement = { Usage::Tangent, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
+					Modify( newVertexDeclaration, allocator ).push_back( newTangentElement );
+					offset += GetVertexElementSize( newTangentElement );
 
-				newBitangentElement = { Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
-				Modify( newVertexDeclaration, allocator ).push_back( newBitangentElement );
-				offset += GetVertexElementSize( newBitangentElement );
+					VertexElement newBitangentElement = { Usage::Binormal, (uint8_t)usageIndex, ElementType::Float32, 3, offset };
+					Modify( newVertexDeclaration, allocator ).push_back( newBitangentElement );
+					offset += GetVertexElementSize( newBitangentElement );
+				}
 			}
 		}
-	}
 
+		return newVertexDeclaration;
+	};
+
+	//Completely un-index the mesh.
 	for( auto& lod : mesh.lods )
 	{
-
-		struct MikkTSpaceData
-		{
-			ConstIndexBufferStream indexBuffer;
-			ConstBufferElementStream<Vector3> positions;
-			ConstBufferElementStream<Vector3> normals;
-			ConstBufferElementStream<Vector2> texCoords;
-
-			std::vector<Vector4>& tangentData;
-		};
-
-		std::vector<Vector4> tangentData( lod.ib.size / lod.ib.stride );
-
-		MikkTSpaceData data = {
-			ConstIndexBufferStream( lod.ib, bufferManager ),
-			ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
-			ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
-			ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
-
-			tangentData
-		};
-
-		SMikkTSpaceInterface interface = {};
-
-		interface.m_getNumFaces = []( const SMikkTSpaceContext* ctx ) -> int {
-			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-			return static_cast<int>( data->indexBuffer.size() / 3 );
-		};
-
-		interface.m_getNumVerticesOfFace = []( const SMikkTSpaceContext* ctx, int ) -> int {
-			return 3;
-		};
-
-		interface.m_getPosition = []( const SMikkTSpaceContext* ctx, float pos[3], int face, int vert ) {
-			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-			uint32_t index = data->indexBuffer[face * 3 + vert];
-			auto position = data->positions[index];
-			pos[0] = position[0];
-			pos[1] = position[1];
-			pos[2] = position[2];
-		};
-
-		interface.m_getNormal = []( const SMikkTSpaceContext* ctx, float norm[3], int face, int vert ) {
-			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-			uint32_t index = data->indexBuffer[face * 3 + vert];
-			auto normal = data->normals[index];
-			norm[0] = normal[0];
-			norm[1] = normal[1];
-			norm[2] = normal[2];
-		};
-
-		interface.m_getTexCoord = []( const SMikkTSpaceContext* ctx, float uv[2], int face, int vert ) {
-			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-			uint32_t index = data->indexBuffer[face * 3 + vert];
-			auto texCoord = data->texCoords[index];
-			uv[0] = texCoord[0];
-			uv[1] = texCoord[1];
-		};
-
-		interface.m_setTSpaceBasic = []( const SMikkTSpaceContext* ctx, const float tangent[3], float sign, int face, int vert ) {
-			MikkTSpaceData* data = reinterpret_cast<MikkTSpaceData*>( ctx->m_pUserData );
-
-			data->tangentData[face * 3 + vert] = Vector4( tangent[0], tangent[1], tangent[2], sign );
-		};
-
-
-		SMikkTSpaceContext context = { &interface, &data };
-
-		// TODO: expose tollerance as function argument
-		genTangSpaceDefault( &context );
-
 		lod.vb = UnapplyIndexBuffer( lod.vb, lod.ib, allocator, bufferManager );
 		for( auto& morphTarget : lod.morphTargets )
 		{
@@ -200,43 +181,116 @@ void GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 		}
 		// Replace the index buffer with a simple identity index buffer.
 		lod.ib = MakeIdentityIndexBuffer( lod.ib.size / lod.ib.stride, allocator, bufferManager );
+	}
 
-		// Inject generated tangents and bitangents into the new vertex buffer.
-		auto newVb = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
-		auto newNormals = ConstBufferElementStream<Vector3>( *FindElement( newVertexDeclaration, Usage::Normal ), newVb, bufferManager );
-		auto newTangents = BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager );
-		auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
-		for( uint32_t i = 0; i < uint32_t( tangentData.size() ); ++i )
+
+	if( rebuildMeshTangents )
+	{
+
+		// Make sure that we have the required vertex attributes to generate tangents.
+		auto positionElement = FindElement( mesh.decl, Usage::Position );
+		auto normalElement = FindElement( mesh.decl, Usage::Normal );
+		auto texCoordElement = FindElement( mesh.decl, Usage::TexCoord, usageIndex );
+
+		if( !positionElement || !normalElement || !texCoordElement )
 		{
-			auto normal = newNormals[i];
-			auto tangent = tangentData[i];
-			auto bitangent = -Cross( normal, tangent.GetXYZ() ) * tangentData[i].w;
-			newTangents.set( i, tangent.GetXYZ() );
-			newBitangents.set( i, bitangent );
+			success = false;
 		}
+		else
+		{
+			// Create a new vertex declaration with the new tangents
+			Span<VertexElement> newVertexDeclaration = createVertexDeclarationWithTangents( mesh.decl, usageIndex, allocator );
 
-		// TODO: morph targets
+			VertexElement newTangentElement = *FindElement( newVertexDeclaration, Usage::Tangent, usageIndex );
+			VertexElement newBitangentElement = *FindElement( newVertexDeclaration, Usage::Binormal, usageIndex );
+
+			for( auto& lod : mesh.lods )
+			{
+				auto newVb = ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newVertexDeclaration, allocator, bufferManager );
+
+				GenerateMikkTSpaceTangents(
+					ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
+					ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
+					ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
+					BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
+					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
+
+				lod.vb = newVb;
+			}
+
+			mesh.decl = newVertexDeclaration;
+		}
+	}
+
+	if( rebuildMorphTargetTangents )
+	{
+
+		// Make sure that we have the required vertex attributes to generate morph target tangents.
+		auto positionElement = FindElement( mesh.morphTargets.decl, Usage::Position );
+		auto normalElement = FindElement( mesh.morphTargets.decl, Usage::Normal );
+		auto morphTexCoordElement = FindElement( mesh.morphTargets.decl, Usage::TexCoord, usageIndex );
+		auto meshTexCoordElement = FindElement( mesh.decl, Usage::TexCoord, usageIndex );
+
+		if( !positionElement || !normalElement || ( !morphTexCoordElement && !meshTexCoordElement ) )
+		{
+			success = false;
+		}
+		else
+		{
+			// Create a new vertex declaration with the new tangents
+			Span<VertexElement> newVertexDeclaration = createVertexDeclarationWithTangents( mesh.morphTargets.decl, usageIndex, allocator );
+
+			VertexElement newTangentElement = *FindElement( newVertexDeclaration, Usage::Tangent, usageIndex );
+			VertexElement newBitangentElement = *FindElement( newVertexDeclaration, Usage::Binormal, usageIndex );
+
+			for( auto& lod : mesh.lods )
+			{
+				for( auto& morphTarget : lod.morphTargets )
+				{
+					auto newVb = ChangeBufferVertexDeclaration( morphTarget.vb, mesh.morphTargets.decl, newVertexDeclaration, allocator, bufferManager );
+					auto newTangents = BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager );
+					auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
+
+					GenerateMikkTSpaceTangents(
+						ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
+						ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
+						morphTexCoordElement ?
+							ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
+							ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
+						BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
+						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
+
+					morphTarget.vb = newVb;
+				}
+			}
+
+			mesh.morphTargets.decl = newVertexDeclaration;
+		}
+	}
 
 
-		//Re-index the data to avoid unnecessary work in the coming steps.
+	for( auto& lod : mesh.lods )
+	{
+		//Re-index the data again.
 		RemoveDuplicateVertices( lod, bufferManager );
 	}
 
-	mesh.decl = newVertexDeclaration;
+	return success;
 }
 
-
+namespace
+{
 Vector4 PackTangentsQuaternion( Vector3 normal, Vector3 tangent, Vector3 bitangent )
 {
 	// Figure out if we need to flip the normal before compressing.
-	bool flipNormal = Dot( normal, Cross( tangent, bitangent ) ) < 0.0f;
+	const bool flipNormal = Dot( normal, Cross( tangent, bitangent ) ) < 0.0f;
 	if( flipNormal )
 	{
 		normal = -normal;
 	}
 
 	// Construct a TBN matrix.
-	Matrix matrix(
+	const Matrix matrix(
 		tangent.x, tangent.y, tangent.z, 0.0f, bitangent.x, bitangent.y, bitangent.z, 0.0f, normal.x, normal.y, normal.z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f );
 
 	// Convert matrix to quaternion.
@@ -248,7 +302,7 @@ Vector4 PackTangentsQuaternion( Vector3 normal, Vector3 tangent, Vector3 bitange
 		q = -q; // Represents the same rotation.
 	}
 
-	return Vector4( q.x, q.y, q.z, flipNormal ? -1.0f : 1.0f ); // W stores the normal sign
+	return { q.x, q.y, q.z, flipNormal ? -1.0f : 1.0f }; // W stores the normal sign
 }
 
 
@@ -318,69 +372,6 @@ inline float Remap( float x, float oldMin, float oldMax )
 	return std::clamp( ( x - oldMin ) / ( oldMax - oldMin ), 0.0f, 1.0f );
 }
 
-void GenerateMorphTargetTangents( const Mesh& mesh, const MeshLod& srcLod, BufferManager& bufferManager )
-{
-	auto indices = ConstIndexBufferStream( srcLod.ib, bufferManager );
-
-	for( auto& morphTarget : srcLod.morphTargets )
-	{
-		auto positions = ConstBufferElementStream<Vector3>( *FindElement( mesh.morphTargets.decl, Usage::Position ), morphTarget.vb, bufferManager );
-
-		for( uint32_t usageIndex = 0; usageIndex < 255; ++usageIndex )
-		{
-			auto uvElement = FindElement( mesh.decl, Usage::TexCoord, usageIndex );
-			auto tangentElement = FindElement( mesh.morphTargets.decl, Usage::Tangent, usageIndex );
-			auto bitangentElement = FindElement( mesh.morphTargets.decl, Usage::Binormal, usageIndex );
-			if( !uvElement || !tangentElement || !bitangentElement )
-			{
-				continue;
-			}
-			auto uvs = ConstBufferElementStream<Vector2>( *uvElement, srcLod.vb, bufferManager );
-			auto tangents = BufferElementStream<Vector3>( *tangentElement, morphTarget.vb, bufferManager );
-			auto bitangents = BufferElementStream<Vector3>( *bitangentElement, morphTarget.vb, bufferManager );
-
-			for( uint32_t i = 0; i < tangents.size(); ++i )
-			{
-				tangents.set( i, Vector3( 0.0f, 0.0f, 0.0f ) );
-				bitangents.set( i, Vector3( 0.0f, 0.0f, 0.0f ) );
-			}
-
-			for( uint32_t i = 0; i < indices.size(); i += 3 )
-			{
-				std::array<uint32_t, 3> triangleIndices = { indices[i], indices[i + 1], indices[i + 2] };
-				std::array<Vector3, 3> trianglePositions = { positions[triangleIndices[0]], positions[triangleIndices[1]], positions[triangleIndices[2]] };
-				std::array<Vector2, 3> triangleUVs = { uvs[triangleIndices[0]], uvs[triangleIndices[1]], uvs[triangleIndices[2]] };
-
-				auto deltaPos1 = trianglePositions[1] - trianglePositions[0];
-				auto deltaPos2 = trianglePositions[2] - trianglePositions[0];
-				auto deltaUV1 = triangleUVs[1] - triangleUVs[0];
-				auto deltaUV2 = triangleUVs[2] - triangleUVs[0];
-				auto t = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
-				if( t != 0.0f )
-				{
-					float r = 1.0f / t;
-					auto faceTangent = -( deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y ) * r;
-					auto faceBitangent = -( deltaPos2 * deltaUV1.x - deltaPos1 * deltaUV2.x ) * r;
-
-					tangents.set( indices[i], tangents[triangleIndices[0]] + faceTangent );
-					tangents.set( indices[i + 1], tangents[triangleIndices[1]] + faceTangent );
-					tangents.set( indices[i + 2], tangents[triangleIndices[2]] + faceTangent );
-
-					bitangents.set( indices[i], bitangents[triangleIndices[0]] + faceBitangent );
-					bitangents.set( indices[i + 1], bitangents[triangleIndices[1]] + faceBitangent );
-					bitangents.set( indices[i + 2], bitangents[triangleIndices[2]] + faceBitangent );
-				}
-			}
-
-			for( uint32_t i = 0; i < tangents.size(); ++i )
-			{
-				tangents.set( i, Normalize( tangents[i] ) );
-				bitangents.set( i, Normalize( bitangents[i] ) );
-			}
-		}
-	}
-}
-
 Vector4 PackTangentsLegacy( Vector3 normal, Vector3 tangent, Vector3 bitangent )
 {
 	float angles[4];
@@ -423,6 +414,7 @@ std::tuple<Vector3, Vector3, Vector3> UnpackTangentsLegacy( Vector4 t )
 		normal = -normal;
 	}
 	return { normal, tangent, bitangent };
+}
 }
 
 
@@ -487,7 +479,7 @@ bool CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 
 			if( !retainNormal && element.usage == Usage::Normal && element.usageIndex == 0 )
 			{
-				// Omit the normal. //TODO: This should be a separate cleanup pass.
+				// Omit the normal.
 				continue;
 			}
 
@@ -574,9 +566,10 @@ bool CompressTangents( Mesh& mesh, uint32_t usageIndex, bool retainNormal, Tange
 	{
 		if( totals.vertexCount > 0 )
 		{
-			metrics->averageNormalErrorDegrees = float( totals.normalError / totals.vertexCount * 180 / 3.14159265359 );
-			metrics->averageTangentErrorDegrees = float( totals.tangentError / totals.vertexCount * 180 / 3.14159265359 );
-			metrics->averageBitangentErrorDegrees = float( totals.bitangentError / totals.vertexCount * 180 / 3.14159265359 );
+			const float radiansToDegrees = 180.0f / 3.14159265359f;
+			metrics->averageNormalErrorDegrees = float( totals.normalError / totals.vertexCount * radiansToDegrees );
+			metrics->averageTangentErrorDegrees = float( totals.tangentError / totals.vertexCount * radiansToDegrees );
+			metrics->averageBitangentErrorDegrees = float( totals.bitangentError / totals.vertexCount * radiansToDegrees );
 		}
 		else
 		{
