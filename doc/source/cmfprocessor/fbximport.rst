@@ -116,13 +116,13 @@ Mesh settings
 ``mesh.morphTargets``
   Type ``object``, default ``{}``. Settings related to morph targets. See below.
 
-``mesh.morphTargets.importMorphTargets``
+``mesh.morphTargets.import``
   Type ``boolean``, default ``true``. Whether to import morph targets (blend shapes) for meshes. Having this setting set to ``true`` does not require all source meshes to have blend shape deformers. If the source mesh does not 
   have a blend shape deformer, it is exported without morph targets without any error.
 
 ``mesh.morphTargets.useCustomNormals``
   Type ``boolean``, default ``false``. Use per-blend shape normal data stored in custom FBX properties instead of regenerating blend shape normals on import. See `Morph targets`_. This setting only has an effect if 
-  ``mesh.morphTargets.importMorphTargets`` and ``mesh.normals`` are set to ``true``.
+  ``mesh.morphTargets.import`` and ``mesh.normals`` are set to ``true``.
 
 ``mesh.lods``
   Type ``object``, default ``{}``. Settings related to LOD generation. See below.
