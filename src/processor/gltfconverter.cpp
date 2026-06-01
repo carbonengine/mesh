@@ -195,7 +195,7 @@ int AddTangentAttribute( const uint8_t* vbBytes, const uint32_t vertexCount, uin
 
 	if( normalElem == nullptr || normalElem == nullptr )
 	{
-		throw std::runtime_error( "Unable to find matching T,B,N data set with same usage index of " + tangentElem.usageIndex );
+		throw std::runtime_error( "Unable to find matching T,B,N data set with same usage index of " + std::to_string( tangentElem.usageIndex ) );
 		return -1;
 	}
 
