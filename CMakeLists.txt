@@ -190,7 +190,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
 endif()
 
 if(BUILD_TOOLS)
-	add_subdirectory( carbon-mesh-viewer )
+	add_subdirectory( src/viewer )
 	add_subdirectory( src/processor )
 endif()
 
