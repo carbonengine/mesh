@@ -253,6 +253,19 @@ void Effect::RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layout
 	m_storageBuffers.push_back( { buffer, layoutBindingIndex, stage } );
 }
 
+void Effect::RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, const uint8_t* initialData, size_t dataSize, size_t elementSize )
+{
+	assert( !m_initialized );
+	auto foundElement = std::find_if( m_storageBuffers.begin(), m_storageBuffers.end(), [&]( const auto& buff ) {
+		return buff.layoutBindingIndex == layoutBindingIndex;
+	} );
+
+	assert( foundElement == m_storageBuffers.end() );
+
+	Buffer* buffer = BufferBuilder::Build( m_renderer.get(), initialData, dataSize, BufferType::Storage, elementSize );
+	RegisterStorageBuffer( stage, layoutBindingIndex, buffer );
+}
+
 void Effect::RegisterUniformData( VkShaderStageFlagBits stages, uint32_t layoutBindingIndex, const uint8_t* initialData, size_t dataSize )
 {
 	assert( !m_initialized );
@@ -273,8 +286,19 @@ void Effect::RegisterUniformData( VkShaderStageFlagBits stages, uint32_t layoutB
 	m_uniformBuffers.push_back( buffer );
 }
 
+void Effect::SetStorageBuffer( uint32_t layoutBindingIndex, const uint8_t* data, size_t totalSize )
+{
+	assert( data != nullptr );
+	auto foundElement = std::find_if( m_storageBuffers.begin(), m_storageBuffers.end(), [&]( const auto& buff ) {
+		return buff.layoutBindingIndex == layoutBindingIndex;
+	} );
+	assert( foundElement != m_storageBuffers.end() );
+	ON_ERROR_LOG_AND_RETURN( foundElement->buffer->SetData( m_renderer.get(), data, totalSize ), "Failed to set storage buffer data" );
+}
+
 void Effect::SetUniformData( uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize )
 {
+	assert( data != nullptr );
 	auto foundElement = std::find_if( m_uniformBuffers.begin(), m_uniformBuffers.end(), [&]( auto buff ) {
 		return buff.layoutBindingIndex == layoutBindingIndex;
 	} );

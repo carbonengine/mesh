@@ -8,7 +8,8 @@ GeometryPrePass::GeometryPrePass( std::shared_ptr<const Renderer> renderer, std:
 	m_cmfMesh( cmfMesh ),
 	m_cmfContent( cmfContent ),
 	m_renderer( renderer ),
-	m_effect( renderer )
+	m_effect( renderer ),
+	m_boneCount( (uint32_t)m_cmfMesh.boneBindings.size() )
 {
 }
 
@@ -130,84 +131,17 @@ void GeometryPrePass::SetMorphWeight( size_t morphIndex, float weight )
 	m_weightBuffer.SetData( m_renderer.get(), (const uint8_t*)m_weights.data(), (uint32_t)( m_weights.size() * sizeof( float ) ) );
 }
 
-void GeometryPrePass::SetSkeletonPose( const cmf::SkeletonPose& pose, const cmf::Skeleton* meshSkeleton )
+void GeometryPrePass::SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms )
 {
 	if( !m_hasBoneIndices )
 	{
 		return;
 	}
 
-	std::vector<Matrix> worldTransforms;
-	cmf::ComputeWorldTransforms( worldTransforms, pose );
-
-	for( uint32_t boneIdx = 0; boneIdx < m_cmfMesh.boneBindings.size(); boneIdx++ )
+	m_boneTransforms = boneTransforms;
+	if( m_effect.IsInitialized() )
 	{
-		if( boneIdx >= m_skeletonBoneIndex.size() )
-		{
-			m_boneTransforms[boneIdx] = IdentityMatrix();
-			continue;
-		}
-
-		auto skeletonIndex = m_skeletonBoneIndex[boneIdx];
-		auto meshIndex = m_meshBoneIndex[boneIdx];
-
-		if( skeletonIndex < 0 || meshIndex < 0 )
-		{
-			m_boneTransforms[boneIdx] = IdentityMatrix();
-			continue;
-		}
-
-		m_boneTransforms[boneIdx] = meshSkeleton->invBindTransforms[meshIndex] * worldTransforms[skeletonIndex];
-	}
-
-	UpdateBoneTransforms( (uint32_t)m_cmfMesh.boneBindings.size() );
-}
-
-void GeometryPrePass::InitializeAnimationData( cmf::Skeleton* animationSkeleton, cmf::Skeleton* baseSkeleton )
-{
-	if( !m_hasBoneIndices )
-	{
-		return;
-	}
-
-	const auto boneBindings = m_cmfMesh.boneBindings;
-	auto createMapping = [boneBindings]( const cmf::Skeleton& skeleton ) -> std::vector<int32_t> {
-		std::vector<int32_t> mapping( boneBindings.size(), -1 );
-		for( uint32_t meshBoneIndex = 0; meshBoneIndex < boneBindings.size(); ++meshBoneIndex )
-		{
-			const auto boundBoneName = boneBindings[meshBoneIndex].name;
-
-			auto foundBone = std::find_if( skeleton.bones.begin(), skeleton.bones.end(), [boundBoneName]( cmf::String boneName ) {
-				return boundBoneName == boneName;
-			} );
-			if( foundBone != skeleton.bones.end() )
-			{
-				mapping[meshBoneIndex] = (int32_t)std::distance( skeleton.bones.begin(), foundBone );
-			}
-		}
-		return mapping;
-	};
-
-	if( baseSkeleton )
-	{
-		size_t meshBoneCount = m_cmfMesh.boneBindings.size();
-
-		m_boneTransforms.fill( Matrix() );
-		m_meshBoneIndex = createMapping( *baseSkeleton );
-
-		if( animationSkeleton )
-		{
-			m_skeletonBoneIndex = createMapping( *animationSkeleton );
-		}
-		else
-		{
-			m_skeletonBoneIndex = m_meshBoneIndex;
-		}
-	}
-	else
-	{
-		m_meshBoneIndex.resize( boneBindings.size(), -1 );
-		m_skeletonBoneIndex = m_meshBoneIndex;
+		m_boneTransformBuffer.SetData( m_renderer.get(), (const uint8_t*)m_boneTransforms.data(), (uint32_t)( m_boneTransforms.size() * sizeof( Matrix ) ) );
 	}
 }
 
@@ -227,16 +161,6 @@ void GeometryPrePass::UpdateLod( uint32_t lodIndex )
 	else
 	{
 		SetupForStaticMesh();
-	}
-}
-
-void GeometryPrePass::UpdateBoneTransforms( uint32_t boneCount )
-{
-	m_boneCount = boneCount;
-	m_ubo.boneCount = boneCount;
-	if( m_effect.IsInitialized() )
-	{
-		m_boneTransformBuffer.SetData( m_renderer.get(), (const uint8_t*)m_boneTransforms.data(), (uint32_t)( m_boneTransforms.size() * sizeof( Matrix ) ) );
 	}
 }
 

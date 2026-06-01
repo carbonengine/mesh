@@ -21,7 +21,7 @@ public:
 	~Buffer();
 
 	void Release( const Renderer* renderer );
-	VkResult Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, uint32_t size, uint32_t stride );
+	VkResult Initialize( const Renderer* renderer, BufferType type, const uint8_t* data, size_t size, size_t stride );
 
 	VkBuffer GetGpuBuffer() const;
 	VkDescriptorBufferInfo& GetDescriptorBufferInfo();
@@ -30,9 +30,9 @@ public:
 
 	void CopyFromStaging( VkCommandBuffer commandBuffer );
 	void ReleaseStaging( const Renderer* renderer );
-	VkResult SetData( const Renderer* renderer, const uint8_t* data, uint32_t size );
-	uint32_t size() const;
-	uint32_t stride() const;
+	VkResult SetData( const Renderer* renderer, const uint8_t* data, size_t size );
+	size_t size() const;
+	size_t stride() const;
 
 
 private:
@@ -40,8 +40,8 @@ private:
 	VkResult CreateStorageBuffer( const Renderer* renderer, const uint8_t* data );
 	VkDeviceMemory m_memory;
 	VkBuffer m_buffer;
-	uint32_t m_size;
-	uint32_t m_stride;
+	size_t m_size;
+	size_t m_stride;
 
 	VkDeviceMemory m_stagingMemory;
 	VkBuffer m_stagingBuffer;
@@ -54,5 +54,5 @@ private:
 
 namespace BufferBuilder
 {
-Buffer* Build( const Renderer* renderer, const uint8_t* data, uint32_t size, BufferType type, uint32_t stride );
+Buffer* Build( const Renderer* renderer, const uint8_t* data, size_t size, BufferType type, size_t stride );
 }

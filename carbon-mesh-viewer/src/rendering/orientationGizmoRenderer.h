@@ -15,12 +15,6 @@ public:
 	void Render( const AppState& state, const Camera& camera );
 
 private:
-	struct PerFrameData
-	{
-		Matrix proj;
-		Matrix view;
-	};
-
 	void SetSize( uint32_t width, uint32_t height );
 
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };

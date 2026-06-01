@@ -16,15 +16,18 @@ public:
 
 	void Initialize( AppState& appState );
 	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
+	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
 	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
 
+	void UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState );
+	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
+	uint8_t GetSkeletonIndex() const;
+
 private:
-	void InitializeAnimationData( std::shared_ptr<CmfContent> data );
 	void Draw( GraphicsCommandBuffer& commandBuffer );
 	void DrawIndexed( GraphicsCommandBuffer& commandBuffer );
 	void SetLod( uint32_t lodLevel );
-	void SetAnimation( std::string animationName );
 
 	struct Area
 	{
@@ -32,8 +35,6 @@ private:
 		uint32_t elementCount = 0;
 	};
 	GraphicsEffect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh );
-
-	std::vector<VkVertexInputAttributeDescription> m_vertexDescriptions;
 
 	struct VertexUboData
 	{
@@ -59,22 +60,19 @@ private:
 	// geometry prepass
 	GeometryPrePass m_prepass;
 
+	cmf::Mesh m_cmfMesh{};
+	std::vector<Area> m_areas{};
+
+	std::vector<std::pair<uint32_t, uint32_t>> m_morphCurveToTargetMapping{};
+	std::vector<size_t> m_boneBindingToBoneIndexMapping{};
+
+	// debug renderables
 	// bounding box
 	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
 
+	// audio occlusion
 	bool m_audioOcclusion{ false };
 	PrimitiveRenderable m_audioOcclusionRenderable;
-
-	cmf::Mesh m_cmfMesh{};
-	std::vector<Area> m_areas{};
-
-	std::unique_ptr<cmf::AnimationPlayer> m_animationPlayer = nullptr;
-	std::unique_ptr<cmf::Animation> m_currentAnimation = nullptr;
-	cmf::Span<cmf::Animation> m_animations;
-	std::unique_ptr<cmf::Skeleton> m_baseSkeleton = nullptr;
-	std::unique_ptr<cmf::Skeleton> m_animationSkeleton = nullptr;
-	cmf::SkeletonPose m_currentPose{};
-	std::vector<std::pair<uint32_t, uint32_t>> m_morphCurveToTargetMapping{};
 };

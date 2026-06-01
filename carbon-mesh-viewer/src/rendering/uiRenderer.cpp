@@ -6,11 +6,11 @@
 #include <tinyfiledialogs/tinyfiledialogs.h>
 
 #include "appState.h"
-#include "vulkan/shadercache.h"
 #include "vulkan/vulkanerrors.h"
 
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
+const float BUTTON_SIZE = 18.0f;
 
 enum class BoneColumn
 {
@@ -159,15 +159,10 @@ void UIRenderer::RegisterModelCallbacks( AppState& appState )
 		m_playback.currentTime = 0.0f;
 		m_playback.playing = false;
 
-		auto cmfContent = appState.modelState.animationOverride.GetValue();
-		if( cmfContent == nullptr )
+		auto animationOwner = appState.modelState.activeAnimationOwner.GetValue();
+		if( !animationName.empty() && animationOwner != nullptr )
 		{
-			cmfContent = appState.cmfContent.GetValue();
-		}
-
-		if( !animationName.empty() && cmfContent != nullptr )
-		{
-			for( const auto& animation : cmfContent->m_cmfData->animations )
+			for( const auto& animation : animationOwner->m_cmfData->animations )
 			{
 				if( cmf::ToStdString( animation.name ) == animationName )
 				{
@@ -182,14 +177,14 @@ void UIRenderer::RegisterModelCallbacks( AppState& appState )
 		}
 	} );
 
-	appState.modelState.animationOverridePath.RegisterCallback( [this]( std::string animationPath, AppState& appState ) {
+	appState.modelState.activeAnimationOwner.RegisterCallback( [this]( std::shared_ptr<CmfContent> activeAnimationOwner, AppState& appState ) {
 		appState.modelState.currentAnimation.SetValue( "" );
 		appState.modelState.currentAnimationTime.SetValue( 0.0f );
 		m_playback = Playback{};
 	} );
 }
 
-const char* UIRenderer::FileOpenDialog( AppState& appState )
+const char* UIRenderer::FileOpenDialog()
 {
 	char const* filter[1] = { "*.cmf" };
 	return tinyfd_openFileDialog(
@@ -235,7 +230,6 @@ void UIRenderer::SetupUi( AppState& appState )
 void UIRenderer::CMFInfoWindow( AppState& appState )
 {
 	bool open = true;
-
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
@@ -249,6 +243,8 @@ void UIRenderer::CMFInfoWindow( AppState& appState )
 		SetupGeneralView( appState );
 
 		SetupMeshListView( m_uiState.modelStates, appState );
+
+		SetupSkeletonOwners( m_uiState.skeletonOwners, appState );
 	}
 	ImGui::End();
 }
@@ -373,7 +369,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		ImGuiTabItemFlags bonesFlags = m_meshDetailsState.scrollToLinkedBone ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
 		if( ImGui::BeginTabItem( "Bones", nullptr, bonesFlags ) )
 		{
-			RenderBonesTab( cmfContent, mesh );
+			RenderBonesTab( cmfContent, mesh, appState );
 			ImGui::EndTabItem();
 		}
 		if( ImGui::BeginTabItem( "Animations" ) )
@@ -410,19 +406,10 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
-		ImGui::Text( "Animation Path" );
-		ImGui::TableNextColumn();
-		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-		ImGui::InputText( "##animationPath", m_uiState.animationPath.data(), m_uiState.animationPath.size(), ImGuiInputTextFlags_ReadOnly );
-		ImGui::SetItemTooltip( "%s", m_uiState.animationPath.data() );
-
-		ImGui::TableNextRow();
-		ImGui::TableNextColumn();
 		ImGui::Text( "Vertices" );
 		ImGui::TableNextColumn();
 		ImGui::Text( "%d", m_uiState.modelStates.totalVertexCount );
 		ImGui::TableNextRow();
-
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Indices" );
@@ -474,6 +461,10 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		} );
 		ImGui::TableNextRow();
 
+		bool hasAudioOcclusionMeshes = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
+			return state.hasAudioOcclusionMesh;
+		} );
+		ImGui::BeginDisabled( !hasAudioOcclusionMeshes );
 		ImGui::TableNextColumn();
 		ImGui::Text( "Audio Occlusion Mesh" );
 		ImGui::TableNextColumn();
@@ -487,6 +478,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 			} );
 		} );
 		ImGui::TableNextRow();
+		ImGui::EndDisabled();
 
 		ImGui::EndTable();
 	}
@@ -607,9 +599,9 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 
 	if( ImGui::BeginTable( "##table", 3 ) )
 	{
-		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, 50 );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
 		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
-		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, 30.0 );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, BUTTON_SIZE );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
@@ -631,6 +623,139 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 	}
 }
 
+void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& skeletonOwners, AppState& appState )
+{
+	// static meshes
+	if( skeletonOwners.empty() )
+	{
+		std::string header = "Skeletons ( 0 )";
+		if( ImGui::CollapsingHeader( header.c_str(), ImGuiTreeNodeFlags_None ) )
+		{
+			ImGui::BeginDisabled();
+			ImGui::Button( "+", ImVec2( BUTTON_SIZE, BUTTON_SIZE ) );
+			ImGui::SetItemTooltip( "Adds an animation override - Disabled since model doesn't have a skeleton" );
+			ImGui::EndDisabled();
+		}
+		return;
+	}
+
+	// The first skeleton owner is the model, the rest are overrides
+	std::string header = "Skeletons ( " + std::to_string( skeletonOwners.size() ) + " )";
+	if( ImGui::CollapsingHeader( header.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
+	{
+		// debug options show bones, joints and joint axis
+		ImGui::BeginTable( "##SkeletonDebug", 2 );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+
+		ImGui::Text( "Skeleton Joint" );
+		ImGui::TableNextColumn();
+		OnChange( ImGui::Checkbox( "##skeletonjoint", &m_uiState.jointDebug ), [&appState, this]() {
+			appState.modelState.jointDebug.SetValue( m_uiState.jointDebug );
+		} );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Skeleton Joint Axis" );
+		ImGui::TableNextColumn();
+		OnChange( ImGui::Checkbox( "##skeletonjointaxis", &m_uiState.jointAxisDebug ), [&appState, this]() {
+			appState.modelState.jointAxisDebug.SetValue( m_uiState.jointAxisDebug );
+		} );
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+
+		ImGui::Text( "Skeleton Bones" );
+		ImGui::TableNextColumn();
+		OnChange( ImGui::Checkbox( "##skeletonbones", &m_uiState.boneDebug ), [&appState, this]() {
+			appState.modelState.boneDebug.SetValue( m_uiState.boneDebug );
+		} );
+		ImGui::TableNextRow();
+		ImGui::EndTable();
+
+		ImGui::SeparatorText( "Animation Owners" );
+		OnChange( ImGui::Button( "+", ImVec2( ImGui::GetContentRegionAvail().x, BUTTON_SIZE ) ), [this, &appState]() {
+			auto* path = this->FileOpenDialog();
+			if( path != nullptr )
+			{
+				auto data = CmfContentLoader::LoadContentFromFile( path );
+				if( data )
+				{
+					appState.modelState.animationOverrides.AddState( data );
+				}
+			}
+		} );
+
+		ImGui::SetItemTooltip( "Adds an animation owner from a cmf file" );
+
+		for( int32_t index = 0; index < skeletonOwners.size(); ++index )
+		{
+			ImGui::PushID( index );
+
+			auto skeletonOwner = skeletonOwners[index];
+
+			if( ImGui::RadioButton( skeletonOwner.shortSource.c_str(), appState.modelState.activeAnimationOwner.GetValue() == skeletonOwner.cmfContent ) )
+			{
+				appState.modelState.activeAnimationOwner.SetValue( skeletonOwner.cmfContent );
+			}
+
+			if( ImGui::BeginItemTooltip() )
+			{
+				if( index == 0 )
+				{
+					ImGui::Text( "Model skeleton and animations" );
+				}
+				else
+				{
+					ImGui::Text( "Animation owner from %s", skeletonOwner.source.c_str() );
+				}
+				ImGui::Text( "Skeletons" );
+				for( const auto& skeleton : skeletonOwner.skeletons )
+				{
+					ImGui::BulletText( "%s has %d bones", skeleton.name.c_str(), skeleton.bonesCount );
+				}
+				ImGui::EndTooltip();
+			}
+
+			if( index != 0 )
+			{
+				ImGui::SameLine( ImGui::GetContentRegionAvail().x - BUTTON_SIZE );
+				OnChange( ImGui::Button( "-", ImVec2( BUTTON_SIZE, BUTTON_SIZE ) ), [&appState, skeletonOwner, index]() {
+					appState.modelState.animationOverrides.RemoveAt( index - 1 );
+
+					if( appState.modelState.activeAnimationOwner.GetValue() == skeletonOwner.cmfContent )
+					{
+						appState.modelState.activeAnimationOwner.SetValue( appState.cmfContent.GetValue() );
+					}
+				} );
+				ImGui::SetItemTooltip( "Removes %s ", skeletonOwner.source.c_str() );
+			}
+
+			ImGui::PopID();
+		}
+	}
+}
+
+void UIRenderer::SetupSkeletons( const std::vector<SkeletonUiState>& skeletonStates, AppState& appState )
+{
+	for( const auto& skeleton : skeletonStates )
+	{
+		if( ImGui::TreeNode( skeleton.name.c_str() ) )
+		{
+			if( ImGui::BeginTable( "##table", 3 ) )
+			{
+				ImGui::TableNextRow();
+
+				ImGui::TableNextColumn();
+
+				ImGui::Text( "Bone Count" );
+				ImGui::TableNextColumn();
+				ImGui::Text( "%u", skeleton.bonesCount );
+			}
+			ImGui::TreePop();
+		}
+	}
+}
 
 void UIRenderer::SetupMenubar( AppState& appState )
 {
@@ -640,7 +765,7 @@ void UIRenderer::SetupMenubar( AppState& appState )
 		{
 			if( ImGui::MenuItem( "Open", "Ctrl+O" ) )
 			{
-				auto filePath = FileOpenDialog( appState );
+				auto filePath = FileOpenDialog();
 				if( filePath != nullptr )
 				{
 					appState.ResetModelState();
@@ -654,13 +779,14 @@ void UIRenderer::SetupMenubar( AppState& appState )
 			}
 			if( ImGui::MenuItem( "Load Animation Override" ) )
 			{
-				auto filePath = FileOpenDialog( appState );
+				const auto* filePath = FileOpenDialog();
 				if( filePath != nullptr )
 				{
-					appState.modelState.animationOverridePath.SetValue( std::string( filePath ) );
-					appState.modelState.animationOverride.ForceSetValue( CmfContentLoader::LoadContentFromFile( filePath ) );
-					appState.modelState.currentAnimation.SetValue( "" );
-					appState.modelState.currentAnimationTime.SetValue( 0.0f );
+					auto data = CmfContentLoader::LoadContentFromFile( filePath );
+					if( data )
+					{
+						appState.modelState.animationOverrides.AddState( data );
+					}
 				}
 			}
 			if( appState.cmfContent.GetValue() == nullptr )
@@ -668,21 +794,6 @@ void UIRenderer::SetupMenubar( AppState& appState )
 				ImGui::EndDisabled();
 			}
 
-			if( appState.modelState.animationOverride.GetValue() == nullptr )
-			{
-				ImGui::BeginDisabled();
-			}
-
-			if( ImGui::MenuItem( "Unload Animation Override" ) )
-			{
-				appState.modelState.animationOverridePath.SetValue( "" );
-				appState.modelState.animationOverride.ForceSetValue( nullptr );
-			}
-
-			if( appState.modelState.animationOverride.GetValue() == nullptr )
-			{
-				ImGui::EndDisabled();
-			}
 			ImGui::Separator();
 			if( ImGui::MenuItem( "Exit" ) )
 			{
@@ -887,7 +998,7 @@ void UIRenderer::UpdateInputs( AppState& appState )
 	// Handle ui keyboard shortcuts
 	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_O ) )
 	{
-		auto filePath = FileOpenDialog( appState );
+		auto filePath = FileOpenDialog();
 		if( filePath != nullptr )
 		{
 			appState.ResetModelState();
@@ -917,7 +1028,6 @@ void UIRenderer::UpdateUiState( AppState& appState )
 	if( cmfContent != nullptr )
 	{
 		m_uiState.filePath = appState.cmfPath.GetValue();
-		m_uiState.animationPath = appState.modelState.animationOverridePath.GetValue();
 		// polygon mode selection
 		m_uiState.polygonModeComboBox.items = {
 			{ "Fill", VK_POLYGON_MODE_FILL },
@@ -929,6 +1039,44 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		size_t meshIndex = 0;
 		size_t morphIndex = 0;
 		size_t maxLod = 0;
+		uint32_t skeletonIndex = 0;
+
+
+		m_uiState.jointDebug = appState.modelState.jointDebug.GetValue();
+		m_uiState.jointAxisDebug = appState.modelState.jointAxisDebug.GetValue();
+		m_uiState.boneDebug = appState.modelState.boneDebug.GetValue();
+
+		auto addSkeletonOwner = [this]( const std::string& source, const std::string& shortNameOverride, std::shared_ptr<CmfContent> data ) {
+			SkeletonOwnerUiState skeletonOwnerState{};
+			skeletonOwnerState.source = source;
+			skeletonOwnerState.cmfContent = data;
+			if( shortNameOverride.empty() )
+			{
+				skeletonOwnerState.shortSource = source;
+				skeletonOwnerState.shortSource = skeletonOwnerState.shortSource.substr( skeletonOwnerState.shortSource.find_last_of( "/\\" ) + 1 );
+				skeletonOwnerState.shortSource = skeletonOwnerState.shortSource.substr( skeletonOwnerState.shortSource.find_last_of( "//" ) + 1 );
+			}
+			else
+			{
+				skeletonOwnerState.shortSource = shortNameOverride;
+			}
+			for( const auto& skeleton : data->m_cmfData->skeletons )
+			{
+				SkeletonUiState skeletonState{};
+				skeletonState.name = cmf::ToStdString( skeleton.name );
+				skeletonState.bonesCount = static_cast<uint32_t>( skeleton.bones.size() );
+				skeletonOwnerState.skeletons.push_back( skeletonState );
+			}
+			m_uiState.skeletonOwners.push_back( skeletonOwnerState );
+		};
+
+		// Add skeleton owners
+		addSkeletonOwner( cmfContent->m_filePath, "Model Skeleton", cmfContent );
+		for( const auto& animationOverride : appState.modelState.animationOverrides )
+		{
+			addSkeletonOwner( animationOverride.GetValue()->m_filePath, "", animationOverride.GetValue() );
+		}
+
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
 			if( meshIndex >= appState.modelState.meshVisibilityStates.size() )
@@ -993,16 +1141,23 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 		if( m_playback.animationComboBox.items.empty() )
 		{
-			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
-			auto animationOverride = appState.modelState.animationOverride.GetValue();
-			const auto& animations = animationOverride != nullptr ? animationOverride->m_cmfData->animations : cmfContent->m_cmfData->animations;
-
-			for( const auto& animation : animations )
+			m_playback.animationComboBox.items.push_back( std::make_pair( "Rest Pose", "" ) );
+			auto animationOwner = appState.modelState.activeAnimationOwner.GetValue();
+			if( animationOwner )
 			{
-				auto animationName = cmf::ToStdString( animation.name );
-				m_playback.animationComboBox.items.push_back( std::make_pair( animationName, animationName ) );
+				cmf::Data* activeData = animationOwner->m_cmfData;
+
+				for( const auto& animation : activeData->animations )
+				{
+					auto animationName = cmf::ToStdString( animation.name );
+					m_playback.animationComboBox.items.push_back( std::make_pair( animationName, animationName ) );
+					if( appState.modelState.currentAnimation.GetValue() == animationName )
+					{
+						m_playback.duration = animation.duration;
+					}
+				}
+				m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 			}
-			m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 		}
 	}
 	else
@@ -1010,7 +1165,7 @@ void UIRenderer::UpdateUiState( AppState& appState )
 		// default uninitialized values
 		if( m_playback.animationComboBox.items.empty() )
 		{
-			m_playback.animationComboBox.items.push_back( std::make_pair( "No Animation", "" ) );
+			m_playback.animationComboBox.items.push_back( std::make_pair( "Rest Pose", "" ) );
 			m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 		}
 
@@ -1464,7 +1619,7 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 	RenderAttributeTable( "##morphdata", vbData, vertexCount, morphLod.vb.stride, filteredAttributes, -1 );
 }
 
-void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
+void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState )
 {
 	const auto& skeletons = cmfContent->m_cmfData->skeletons;
 	bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
@@ -1585,15 +1740,43 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 			{
 				for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
 				{
+					ImGui::PushID( bi );
 					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
 					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
 
 					ImGui::TableNextRow();
+
 					if( bi == m_meshDetailsState.linkedBoneIndex )
+					{
 						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+					}
 
 					ImGui::TableSetColumnIndex( 0 );
-					ImGui::Text( "%d", bi );
+
+					auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
+						return selected.GetValue() == (uint32_t)bi;
+					} );
+
+					bool itemIsSelected = index != appState.modelState.selectedBones.end();
+					if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
+					{
+						if( ImGui::GetIO().KeyCtrl )
+						{
+							if( itemIsSelected )
+							{
+								appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
+							}
+							else
+							{
+								appState.modelState.selectedBones.AddState( (uint32_t)bi );
+							}
+						}
+						else
+						{
+							appState.modelState.selectedBones.Clear();
+							appState.modelState.selectedBones.AddState( (uint32_t)bi );
+						}
+					}
 
 					char buf[128];
 					for( int col = 0; col < (int)activeColIndices.size(); ++col )
@@ -1650,6 +1833,7 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh )
 							break;
 						}
 					}
+					ImGui::PopID();
 				}
 			}
 			clipper.End();

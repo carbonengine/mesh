@@ -1,8 +1,7 @@
 #include "orientationGizmoRenderer.h"
 
 #include "models/axis.h"
-#include "vulkan/vulkanerrors.h"
-#include "vulkan/vulkanenums.h"
+#include "models/primitiveEffects.h"
 
 OrientationGizmoRenderer::OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
@@ -38,12 +37,14 @@ void OrientationGizmoRenderer::SetSize( uint32_t width, uint32_t height )
 void OrientationGizmoRenderer::Render( const AppState& state, const Camera& camera )
 {
 	m_graphicsCommandBuffer.Begin( m_renderer.get() );
+	const PrimitiveEffects::VertexUBO ubo{
+		OrthoMatrix( 5.0f, 5.0f, 0.01f, 100.f ),
+		camera.GetRotation() * TranslationMatrix( 0.0f, 0.0f, -10.0f ),
+		IdentityMatrix(),
+		Vector4( 0.0f, 0.0f, 0.0f, 0.0f )
+	};
 
-	PerFrameData perFrameData{};
-	perFrameData.proj = OrthoMatrix( 5.0f, 5.0f, 0.01f, 100.f );
-	perFrameData.view = camera.GetRotation() * TranslationMatrix( 0.0f, 0.0f, -10.0f );
-
-	m_axis.SetUniformData( 0, perFrameData );
+	m_axis.SetUniformData( 0, ubo );
 	m_axis.Render( m_graphicsCommandBuffer );
 
 	m_graphicsCommandBuffer.End();
