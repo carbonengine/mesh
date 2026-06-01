@@ -19,6 +19,24 @@ public:
 	void RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, Buffer* buffer );
 
 	template <typename T>
+	void RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, const T* data, size_t elementCount )
+	{
+		RegisterStorageBuffer( stage, layoutBindingIndex, reinterpret_cast<const uint8_t*>( data ), elementCount * sizeof( T ), sizeof( T ) );
+	};
+
+	template <typename T>
+	void RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, size_t elementCount )
+	{
+		RegisterStorageBuffer( stage, layoutBindingIndex, nullptr, elementCount * sizeof( T ), sizeof( T ) );
+	};
+
+	template <typename T>
+	void SetStorageBufferData( uint32_t layoutBindingIndex, const T* data, size_t elementCount )
+	{
+		SetStorageBuffer( layoutBindingIndex, reinterpret_cast<const uint8_t*>( data ), elementCount * sizeof( T ) );
+	};
+
+	template <typename T>
 	void RegisterUniformData( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex )
 	{
 		RegisterUniformData( stage, layoutBindingIndex, nullptr, sizeof( T ) );
@@ -36,11 +54,15 @@ public:
 		SetUniformData( layoutBindingIndex, reinterpret_cast<const uint8_t*>( &data ), sizeof( T ) );
 	};
 
-	void RegisterUniformData( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize );
-
 	bool IsInitialized();
 
 protected:
+	void RegisterStorageBuffer( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize, size_t elementSize );
+	void RegisterUniformData( VkShaderStageFlagBits stage, uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize );
+
+	void SetStorageBuffer( uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize );
+	void SetUniformData( uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize );
+
 	virtual VkResult CreatePipeline() = 0;
 
 	struct UniformBufferMemory
@@ -80,7 +102,6 @@ protected:
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 	bool m_initialized{ false };
 
-	void SetUniformData( uint32_t layoutBindingIndex, const uint8_t* data, size_t dataSize );
 	VkResult InitializeDescriptors();
 	VkResult InitializeBuffers();
 	VkResult InitializePipeline();

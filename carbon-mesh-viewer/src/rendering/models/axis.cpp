@@ -1,51 +1,35 @@
 #include "axis.h"
-#include "../vulkan/effect.h"
+#include "primitiveEffects.h"
 
 namespace Axis
 {
 struct AxisVertex
 {
-	float position[3];
-	float color[3];
+	Vector3 position;
+	Vector3 color;
 };
 
-const AxisVertex AXIS_MESH[6] = {
-	{ { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-	{ { 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-	{ { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-	{ { 0.0f, 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-	{ { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-	{ { 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+const Vector3 RED{ 1.0f, 0.0f, 0.0f };
+const Vector3 GREEN{ 0.0f, 1.0f, 0.0f };
+const Vector3 BLUE{ 0.0f, 0.0f, 1.0f };
+
+const std::array<AxisVertex, 6> AXIS_MESH = {
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, RED },
+	AxisVertex{ { 1.0f, 0.0f, 0.0f }, RED },
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, GREEN },
+	AxisVertex{ { 0.0f, 1.0f, 0.0f }, GREEN },
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, BLUE },
+	AxisVertex{ { 0.0f, 0.0f, 1.0f }, BLUE },
 };
 
 PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer )
 {
-	GraphicsEffect::Config config{};
-	config.availableVertexElements = {
-		{ cmf::Usage::Position,
-		  0,
-		  cmf::ElementType::Float32,
-		  3,
-		  0 },
-		{ cmf::Usage::Color,
-		  0,
-		  cmf::ElementType::Float32,
-		  3,
-		  sizeof( Vector3 ) },
-
-	};
-	config.lineWidth = 2.0f;
-	config.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	config.stride = sizeof( AxisVertex );
-
-	auto effect = GraphicsEffect( renderer );
-	effect.RegisterUniformData( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0, nullptr, sizeof( Matrix ) * 2 );
-	effect.SetConfig( config );
-	effect.SetShaderName( "orientationgizmo" );
+	auto effect = PrimitiveEffects::CreateAxisEffect( renderer );
 
 	auto model = PrimitiveRenderable( renderer, std::move( effect ) );
-	model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH ), sizeof( AXIS_MESH ), sizeof( AxisVertex ) );
+	model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH.data() ), (uint32_t)AXIS_MESH.size() * sizeof( AxisVertex ), sizeof( AxisVertex ) );
 
 	return model;
 }
+
 }

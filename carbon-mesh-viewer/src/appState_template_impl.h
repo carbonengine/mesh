@@ -74,22 +74,64 @@ size_t StateCollection<T>::AddState()
 {
 	State<T> state( m_initialValue );
 	m_states.push_back( state );
+	// the vector changed, fire the callback
+	m_fireCallbacks = true;
 	return m_states.size() - 1;
+}
+
+template <typename T>
+size_t StateCollection<T>::AddState( T initialValue )
+{
+	State<T> state( initialValue );
+	m_states.push_back( state );
+	// the vector changed, fire the callback
+	m_fireCallbacks = true;
+
+	return m_states.size() - 1;
+}
+
+template <typename T>
+void StateCollection<T>::RemoveAt( size_t index )
+{
+	if( index < m_states.size() )
+	{
+		m_states.erase( m_states.begin() + index );
+	}
+	// fire local callbacks to notify about the change in the collection
+	m_fireCallbacks = true;
+}
+
+template <typename T>
+void StateCollection<T>::RegisterCallback( std::function<void( std::vector<T>, AppState& )> callback )
+{
+	m_callbacks.push_back( callback );
 }
 
 template <typename T>
 void StateCollection<T>::CallCallbacks( AppState& appState )
 {
+	std::vector<T> values;
+	values.reserve( m_states.size() );
 	for( auto& state : m_states )
 	{
+		values.push_back( state.GetValue() );
 		state.CallCallbacks( appState );
+	}
+
+	if( m_fireCallbacks )
+	{
+		for( auto& callback : m_callbacks )
+		{
+			callback( values, appState );
+		}
+		m_fireCallbacks = false;
 	}
 }
 
 template <typename T>
 void StateCollection<T>::Clear()
 {
-    m_states.clear();
+	m_states.clear();
 }
 
 template <typename T>

@@ -37,8 +37,8 @@ public:
 
 	void BindIndexBuffer( const Buffer& indexBuffer );
 
-	void DrawIndexed( uint32_t firstElement, uint32_t elementCount );
-	void Draw( uint32_t firstElement, uint32_t elementCount );
+	void DrawIndexed( uint32_t firstElement, uint32_t elementCount, uint32_t instanceCount = 1 );
+	void Draw( uint32_t firstElement, uint32_t elementCount, uint32_t instanceCount = 1 );
 
 private:
 	VkExtent2D m_size{ 0, 0 };

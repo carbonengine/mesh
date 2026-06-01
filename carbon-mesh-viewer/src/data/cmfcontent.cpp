@@ -1,6 +1,7 @@
 #include "cmfcontent.h"
 
 #include <cmf/utils.h>
+#include <cmf/animation.h>
 #include <cmf/compression.h>
 
 #ifndef _WIN32
@@ -84,14 +85,35 @@ CmfContent::CmfContent( std::vector<uint8_t> fileContent, std::string filePath )
 
 CcpMath::Sphere CmfContent::GetBoundingSphere() const
 {
-	// add up all the bounding boxes and create a sphere
-	CcpMath::AxisAlignedBox accumulated;
-	for( const auto& mesh : m_cmfData->meshes )
+	if( !m_cmfData->meshes.empty() )
 	{
-		accumulated.IncludeBox( mesh.bounds );
+		// add up all the bounding boxes and create a sphere
+		CcpMath::AxisAlignedBox accumulated{};
+		for( const auto& mesh : m_cmfData->meshes )
+		{
+			accumulated.IncludeBox( mesh.bounds );
+		}
+
+		return CcpMath::Sphere( accumulated );
 	}
 
-	return CcpMath::Sphere( accumulated );
+	if( !m_cmfData->skeletons.empty() )
+	{
+		auto sphere = CcpMath::Sphere( Vector4( 0.0, 0.0, 0.0, 0.0 ) );
+		for( const auto& skeleton : m_cmfData->skeletons )
+		{
+			cmf::SkeletonPose pose;
+			cmf::RestPose( pose, skeleton );
+			std::vector<Matrix> boneWorldTransforms;
+			cmf::ComputeWorldTransforms( boneWorldTransforms, pose );
+			for( const auto& transform : boneWorldTransforms )
+			{
+				sphere.IncludePoint( transform.GetTranslation() );
+			}
+		}
+		return sphere;
+	}
+	return CcpMath::Sphere( Vector4( 0.0f, 0.0f, 0.0f, 1.0f ) );
 }
 
 const uint8_t* CmfContent::Index( size_t sectionIndex, size_t offset )

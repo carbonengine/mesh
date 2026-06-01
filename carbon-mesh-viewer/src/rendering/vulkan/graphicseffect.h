@@ -1,7 +1,6 @@
 #pragma once
 #include "../renderer.h"
 #include "effect.h"
-#include "vulkanerrors.h"
 
 class GraphicsEffect : public Effect
 {
@@ -22,6 +21,7 @@ public:
 
 	void SetConfig( GraphicsEffect::Config config );
 	void Bind( VkCommandBuffer commandBuffer, uint32_t currentFrameIndex ) override;
+	size_t GetStride() const;
 
 protected:
 	VkResult CreatePipeline() override;

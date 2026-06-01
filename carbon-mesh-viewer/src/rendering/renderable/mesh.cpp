@@ -2,8 +2,9 @@
 
 #include "../models/boundingBox.h"
 #include "../renderer.h"
-#include "../vulkan/vulkanenums.h"
 #include "../vulkan/vulkanerrors.h"
+#include "../models/primitiveEffects.h"
+
 
 MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
@@ -21,26 +22,33 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
 	m_stride = m_cmfMesh.lods[0].vb.stride;
 
-	if( data->m_cmfData->skeletons.size() > m_cmfMesh.skeleton )
+	if( m_cmfMesh.skeleton != 0xFF && m_cmfMesh.skeleton < data->m_cmfData->skeletons.size() )
 	{
-		m_baseSkeleton = std::make_unique<cmf::Skeleton>( data->m_cmfData->skeletons[m_cmfMesh.skeleton] );
-		cmf::RestPose( m_currentPose, *m_baseSkeleton.get() );
+		const auto& skeleton = data->m_cmfData->skeletons[m_cmfMesh.skeleton];
+		for( const auto& boneBinding : m_cmfMesh.boneBindings )
+		{
+			m_boneBindingToBoneIndexMapping.push_back( 0xFF );
+			auto it = std::find_if( skeleton.bones.begin(), skeleton.bones.end(), [boneBinding]( const cmf::String& name ) {
+				return name == boneBinding.name;
+			} );
+			if( it != skeleton.bones.end() )
+			{
+				m_boneBindingToBoneIndexMapping.back() = static_cast<uint32_t>( std::distance( skeleton.bones.begin(), it ) );
+			}
+		}
 	}
-}
-
-void MeshRenderable::InitializeAnimationData( std::shared_ptr<CmfContent> data )
-{
-	if( data->m_cmfData->skeletons.size() > m_cmfMesh.skeleton )
-	{
-		m_animationSkeleton = std::make_unique<cmf::Skeleton>( data->m_cmfData->skeletons[m_cmfMesh.skeleton] );
-	}
-	m_animations = data->m_cmfData->animations;
-	m_prepass.InitializeAnimationData( m_animationSkeleton.get(), m_baseSkeleton.get() );
-	SetAnimation( "" );
 }
 
 void MeshRenderable::Initialize( AppState& appState )
 {
+	appState.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
+		SetRenderingMode( appState.modelState.visualizationShader.GetValue(), mode );
+	} );
+
+	appState.modelState.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
+		SetRenderingMode( shaderName, appState.modelState.polygonMode.GetValue() );
+	} );
+
 	// Register mesh visibility state
 	size_t stateIndex = appState.modelState.meshVisibilityStates.AddState();
 	appState.modelState.meshVisibilityStates[stateIndex].RegisterCallback( [this]( bool visible, AppState& appState ) {
@@ -62,46 +70,15 @@ void MeshRenderable::Initialize( AppState& appState )
 		m_showBoundingBox = enabled;
 	} );
 
-	appState.modelState.currentAnimation.RegisterCallback( [this]( std::string animationName, AppState& appState ) {
-		SetAnimation( animationName );
-	} );
-
 	appState.modelState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
 		SetLod( lodIndex );
 	} );
 
-	appState.modelState.currentAnimationTime.RegisterCallback( [this]( float animationTime, AppState& appState ) {
-		if( m_animationPlayer )
-		{
-			for( const auto& [curveIndex, morphIndex] : m_morphCurveToTargetMapping )
-			{
-				float weight = cmf::SampleScalarCurve( m_currentAnimation->curves[curveIndex], animationTime );
-
-				m_prepass.SetMorphWeight( morphIndex, weight );
-				// the line above is the one that updates the morph target weight in the prepass, but we also need to update the app state so that the UI reflects the current weight
-				appState.modelState.morphTargetWeight[morphIndex].SetValueNoCallback( weight );
-			}
-
-			m_animationPlayer->Sample( m_currentPose, animationTime );
-
-			m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
-		}
-	} );
-
-	appState.modelState.animationOverride.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
-		auto contentToUse = content != nullptr ? content : appState.cmfContent.GetValue();
-		if( contentToUse != nullptr )
-		{
-			InitializeAnimationData( contentToUse );
-		}
-	} );
-
-	m_boundingBox.Initialize();
 	SetLod( appState.modelState.selectedLod.GetValue() );
 
 	m_prepass.Initialize( appState );
 
-	InitializeAnimationData( appState.cmfContent.GetValue() );
+	m_boundingBox.Initialize();
 
 	if( !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
 	{
@@ -115,6 +92,45 @@ void MeshRenderable::Initialize( AppState& appState )
 			sizeof( uint16_t ) );
 		m_audioOcclusionRenderable.Initialize();
 	}
+}
+
+void MeshRenderable::UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState )
+{
+	if( animation )
+	{
+		for( const auto& [curveIndex, morphIndex] : m_morphCurveToTargetMapping )
+		{
+			float weight = cmf::SampleScalarCurve( animation->curves[curveIndex], animationTime );
+
+			m_prepass.SetMorphWeight( morphIndex, weight );
+			// the line above is the one that updates the morph target weight in the prepass,
+			// but we also need to update the app state so that the UI reflects the current weight
+			// if we would do it the other way, then prepass would get the update with one frame delay
+			appState.modelState.morphTargetWeight[morphIndex].SetValueNoCallback( weight );
+		}
+	}
+}
+
+void MeshRenderable::SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms )
+{
+	std::array<Matrix, 0xFF> mappedBoneTransforms;
+	mappedBoneTransforms.fill( IdentityMatrix() );
+
+	uint32_t index = 0;
+	for( const auto& boneIndex : m_boneBindingToBoneIndexMapping )
+	{
+		if( boneIndex != 0xFF )
+		{
+			mappedBoneTransforms[index] = boneTransforms[boneIndex];
+		}
+		else
+		{
+			mappedBoneTransforms[index] = IdentityMatrix();
+		}
+		++index;
+	}
+
+	m_prepass.SetSkeletonPose( mappedBoneTransforms );
 }
 
 void MeshRenderable::SetLod( uint32_t lodLevel )
@@ -132,91 +148,33 @@ void MeshRenderable::SetLod( uint32_t lodLevel )
 	}
 }
 
-void MeshRenderable::SetAnimation( std::string animationName )
-{
-	if( m_animationSkeleton == nullptr || m_baseSkeleton == nullptr )
-	{
-		return;
-	}
-	m_morphCurveToTargetMapping.clear();
-	if( animationName.empty() )
-	{
-		m_animationPlayer.reset();
-		cmf::RestPose( m_currentPose, *m_animationSkeleton );
-		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
-		return;
-	}
-
-	auto foundAnimation = std::find_if( m_animations.begin(), m_animations.end(), [animationName]( const cmf::Animation& animation ) {
-		return cmf::ToStdString( animation.name ) == animationName;
-	} );
-
-	if( foundAnimation != m_animations.end() )
-	{
-		m_currentAnimation.reset( new cmf::Animation( *foundAnimation ) );
-		// check if there are any morph curves that we need to handle explicitly
-		for( const auto animationChannel : m_currentAnimation->channels )
-		{
-			if( animationChannel.targetType == cmf::AnimationChannelTargetType::MorphTarget )
-			{
-				auto foundMorphTarget = std::find_if( m_cmfMesh.morphTargets.targets.begin(), m_cmfMesh.morphTargets.targets.end(), [animationChannel]( const cmf::MorphTarget& morphTarget ) {
-					return morphTarget.name == animationChannel.target;
-				} );
-
-				if( foundMorphTarget != m_cmfMesh.morphTargets.targets.end() )
-				{
-					// register the mapping between the animation curve and the morph target index
-					uint32_t morphTargetIndex = uint32_t( std::distance( m_cmfMesh.morphTargets.targets.begin(), foundMorphTarget ) );
-					m_morphCurveToTargetMapping.push_back( { animationChannel.curveIndex, morphTargetIndex } );
-				}
-			}
-		}
-		// create the player
-		m_animationPlayer = std::make_unique<cmf::AnimationPlayer>( *m_animationSkeleton, *m_currentAnimation );
-
-		cmf::RestPose( m_currentPose, *m_animationSkeleton );
-		m_animationPlayer.get()->Sample( m_currentPose, 0 );
-		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
-	}
-	else
-	{
-		m_animationPlayer.reset();
-		cmf::RestPose( m_currentPose, *m_animationSkeleton );
-		m_prepass.SetSkeletonPose( m_currentPose, m_baseSkeleton.get() );
-	}
-}
-
 void MeshRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera )
 {
-	if( !m_display || !m_modelEffect.IsInitialized() )
-	{
-		return;
-	}
-
-	const Buffer indexBuffer = m_prepass.GetIndexBuffer();
-
-	auto vertexBuffer = m_prepass.GetVertexBuffer();
-
-	commandBuffer.BindVertexBuffer( vertexBuffer.GetGpuBuffer() );
-	if( indexBuffer.IsValid() )
-	{
-		commandBuffer.BindIndexBuffer( m_prepass.GetIndexBuffer() );
-	}
-
 	auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
 
-	m_modelEffect.SetUniformData( 0, viewProj );
+	auto vertexBuffer = m_prepass.GetVertexBuffer();
+	const Buffer indexBuffer = m_prepass.GetIndexBuffer();
 
-	commandBuffer.BindEffect( m_modelEffect );
-	if( indexBuffer.IsValid() )
+	if( m_display && m_modelEffect.IsInitialized() )
 	{
-		DrawIndexed( commandBuffer );
-	}
-	else
-	{
-		Draw( commandBuffer );
-	}
+		commandBuffer.BindVertexBuffer( vertexBuffer.GetGpuBuffer() );
+		if( indexBuffer.IsValid() )
+		{
+			commandBuffer.BindIndexBuffer( m_prepass.GetIndexBuffer() );
+		}
 
+		m_modelEffect.SetUniformData( 0, viewProj );
+
+		commandBuffer.BindEffect( m_modelEffect );
+		if( indexBuffer.IsValid() )
+		{
+			DrawIndexed( commandBuffer );
+		}
+		else
+		{
+			Draw( commandBuffer );
+		}
+	}
 	if( m_polygonMode != VK_POLYGON_MODE_LINE && m_wireframeEffect.IsInitialized() && m_wireframe )
 	{
 		m_wireframeEffect.SetUniformData( 0, viewProj );
@@ -232,16 +190,20 @@ void MeshRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppStat
 			Draw( commandBuffer );
 		}
 	}
+}
 
+void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera )
+{
 	if( m_showBoundingBox )
 	{
-		auto vertexData = BoundingBox::VertexUBO{ camera.GetProjection(), camera.GetView(), m_boundingBoxTransform };
+		auto vertexData = PrimitiveEffects::VertexUBO{ camera.GetProjection(), camera.GetView(), m_boundingBoxTransform, Vector4() };
 		m_boundingBox.SetUniformData( 0, vertexData );
 		m_boundingBox.Render( commandBuffer );
 	}
 
 	if( m_audioOcclusion && !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
 	{
+		auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
 		m_audioOcclusionRenderable.SetUniformData( 0, viewProj );
 		m_audioOcclusionRenderable.Render( commandBuffer );
 	}
@@ -343,6 +305,10 @@ GraphicsEffect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Re
 	effect.SetShaderName( "Face Normal" );
 	effect.SetConfig( config );
 	effect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
-
 	return effect;
+}
+
+uint8_t MeshRenderable::GetSkeletonIndex() const
+{
+	return m_cmfMesh.skeleton;
 }
