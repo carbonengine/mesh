@@ -171,11 +171,13 @@ private:
 	template <typename Decl>
 	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
 
+	void MeshTabWindow( AppState& appState, CmfContent* cmfContent );
 	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex );
 	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
+	void RenderSkeletonTab( AppState& appState, CmfContent* cmfContent );
 	void RenderHierarchyTab( CmfContent* cmfContent );
 	void RenderAnimationsTab( CmfContent* cmfContent );
 	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
