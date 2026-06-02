@@ -217,6 +217,15 @@ void UIRenderer::Render( AppState& appState )
 
 void UIRenderer::SetupUi( AppState& appState )
 {
+	float width = (float)appState.windowSize.GetValue().first;
+	float height = (float)appState.windowSize.GetValue().second;
+
+	// Catch if the window is minimized and stop all the elements becoming squished
+	if( width == 0.0f || height == 0.0f )
+	{
+		return;
+	}
+
 	UpdateUiState( appState );
 
 	CMFInfoWindow( appState );
