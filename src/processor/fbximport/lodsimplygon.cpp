@@ -532,7 +532,7 @@ std::pair<cmf::MeshLod, uint32_t> GenerateLod( const cmf::Mesh& mesh, uint32_t s
 	auto maxDeviation = scene->GetCustomFieldMaxDeviation()->GetItem( 0 );
 	auto diameter = scene->GetCustomFieldProcessedMeshesExtents()->GetBoundingSphereRadius() * 2.0f;
 
-	auto newScreenSize = uint32_t( diameter / maxDeviation );
+	auto newScreenSize = std::min( uint32_t( diameter / maxDeviation ), screenSize );
 	newLod.threshold = uint32_t( newScreenSize * options.screenSizeFactor );
 
 
