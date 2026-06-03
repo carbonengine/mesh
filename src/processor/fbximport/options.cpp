@@ -1,4 +1,5 @@
 #include "options.h"
+#include "lodsimplygon.h"
 
 
 bool NamedFilter::operator()( const std::string& name ) const
@@ -28,7 +29,9 @@ void to_json( nlohmann::json& j, const MorphTargetOptions& p )
 	j = nlohmann::json{ { "import", p.importMorphTargets }, { "useCustomNormals", p.useCustomNormals } };
 }
 
-void from_json( const nlohmann::json& j, cmf::ElementType& p )
+namespace cmf::v1
+{
+void from_json( const nlohmann::json& j, ElementType& p )
 {
 	p = cmf::ElementType::Float32;
 	if( j.is_string() )
@@ -85,7 +88,7 @@ void from_json( const nlohmann::json& j, cmf::ElementType& p )
 	}
 }
 
-void to_json( nlohmann::json& j, const cmf::ElementType& p )
+void to_json( nlohmann::json& j, const ElementType& p )
 {
 	std::string str;
 	switch( p )
@@ -122,6 +125,7 @@ void to_json( nlohmann::json& j, const cmf::ElementType& p )
 		break;
 	}
 	j = str;
+}
 }
 
 void from_json( const nlohmann::json& j, SimplygonLodOptions& p )
@@ -409,6 +413,10 @@ void from_json( const nlohmann::json& j, MeshImportOptions& p )
 	{
 		j.at( "colors" ).get_to( p.colors );
 	}
+	if( j.contains( "colorType" ) )
+	{
+		j.at( "colorType" ).get_to( p.colorType );
+	}
 	if( j.contains( "skinning" ) )
 	{
 		j.at( "skinning" ).get_to( p.skinning );
@@ -458,6 +466,7 @@ void to_json( nlohmann::json& j, const MeshImportOptions& p )
 		{ "compressTangents", p.compressTangents },
 		{ "legacyCompressedTangents", p.legacyCompressedTangents },
 		{ "colors", p.colors },
+		{ "colorType", p.colorType },
 		{ "skinning", p.skinning },
 		{ "bonesPerVertex", p.bonesPerVertex },
 		{ "boneIndexType", p.boneIndexType },
@@ -570,6 +579,10 @@ void to_json( nlohmann::json& j, const ImportOptions& p )
 
 void ValidateOptions( const ImportOptions& options )
 {
+	if( options.meshOptions.colors >= LOCKED_VERTEX_USAGE_INDEX )
+	{
+		throw std::runtime_error( "the number of vertex color sets cannot be greater than " + std::to_string( LOCKED_VERTEX_USAGE_INDEX - 1 ) );
+	}
 	if( options.meshOptions.tangents > 0 && !options.meshOptions.normals )
 	{
 		throw std::runtime_error( "tangents cannot be imported/computed if normals are not imported" );

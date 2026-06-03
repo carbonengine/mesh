@@ -2,6 +2,53 @@
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
 #include <meshoptimizer.h>
+#include <numeric>
+
+namespace
+{
+
+void CopyElement( const cmf::VertexElement& srcElement, const cmf::BufferView& srcView, const cmf::VertexElement& dstElement, const cmf::BufferView& dstView, cmf::BufferManager& bufferManager )
+{
+	const auto vertexCount = dstView.size / dstView.stride;
+	if( srcElement.type == dstElement.type && srcElement.elementCount == dstElement.elementCount )
+	{
+		const auto size = cmf::GetVertexElementSize( dstElement );
+		const auto* oldBuffer = static_cast<const uint8_t*>( bufferManager.GetData( srcView ) );
+		auto* newBuffer = static_cast<uint8_t*>( bufferManager.GetData( dstView ) );
+		for( uint32_t i = 0; i < vertexCount; ++i )
+		{
+			memcpy(
+				newBuffer + i * dstView.stride + dstElement.offset,
+				oldBuffer + i * srcView.stride + srcElement.offset,
+				size );
+		}
+	}
+	else
+	{
+		const cmf::ConstBufferElementStream<Vector4> oldStream( srcElement, srcView, bufferManager );
+		const cmf::BufferElementStream<Vector4> newStream( dstElement, dstView, bufferManager );
+		for( uint32_t i = 0; i < vertexCount; ++i )
+		{
+			newStream.set( i, oldStream[i] );
+		}
+	}
+}
+
+void ZeroFillElement( const cmf::VertexElement& element, const cmf::BufferView& view, cmf::BufferManager& bufferManager )
+{
+	const auto vertexCount = view.size / view.stride;
+	const auto size = cmf::GetVertexElementSize( element );
+	auto* buffer = static_cast<uint8_t*>( bufferManager.GetData( view ) );
+	for( uint32_t i = 0; i < vertexCount; ++i )
+	{
+		memset(
+			buffer + i * view.stride + element.offset,
+			0,
+			size );
+	}
+}
+
+}
 
 namespace cmf
 {
@@ -36,56 +83,22 @@ BufferView MakeIdentityIndexBuffer( uint32_t indexCount, MemoryAllocator& alloca
 
 BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
-	auto vertexCount = bufferView.size / bufferView.stride;
-	auto newVertexStride = 0u;
-	for( const auto& element : newDecl )
-	{
-		newVertexStride += GetVertexElementSize( element );
-	}
-	auto newView = bufferManager.AllocateBuffer( nullptr, vertexCount * newVertexStride, newVertexStride );
+	const auto vertexCount = bufferView.size / bufferView.stride;
+	const auto newVertexStride = std::accumulate( newDecl.begin(), newDecl.end(), 0u, []( uint32_t sum, const VertexElement& element ) {
+		return sum + GetVertexElementSize( element );
+	} );
+	const auto newView = bufferManager.AllocateBuffer( nullptr, vertexCount * newVertexStride, newVertexStride );
 
-	struct Mapping
+	for( const auto& newElement : newDecl )
 	{
-		uint32_t srcOffset;
-		uint32_t dstOffset;
-		uint32_t size;
-	};
-	std::vector<Mapping> elementMapping;
-
-	for( auto& newElement : newDecl )
-	{
-		auto oldElement = FindElement( oldDecl, newElement.usage, newElement.usageIndex );
+		const auto* oldElement = FindElement( oldDecl, newElement.usage, newElement.usageIndex );
 		if( oldElement )
 		{
-			elementMapping.push_back( { oldElement->offset, newElement.offset, GetVertexElementSize( *oldElement ) } );
+			CopyElement( *oldElement, bufferView, newElement, newView, bufferManager );
 		}
 		else
 		{
-			elementMapping.push_back( { 0xffffffff, newElement.offset, GetVertexElementSize( newElement ) } );
-		}
-	}
-
-	auto oldBuffer = static_cast<const uint8_t*>( bufferManager.GetData( bufferView ) );
-	auto newBuffer = static_cast<uint8_t*>( bufferManager.GetData( newView ) );
-
-	for( uint32_t i = 0; i < vertexCount; ++i )
-	{
-		for( const auto& mapping : elementMapping )
-		{
-			if( mapping.srcOffset != 0xffffffff )
-			{
-				memcpy(
-					newBuffer + i * newVertexStride + mapping.dstOffset,
-					oldBuffer + i * bufferView.stride + mapping.srcOffset,
-					mapping.size );
-			}
-			else
-			{
-				memset(
-					newBuffer + i * newVertexStride + mapping.dstOffset,
-					0,
-					mapping.size );
-			}
+			ZeroFillElement( newElement, newView, bufferManager );
 		}
 	}
 	return newView;

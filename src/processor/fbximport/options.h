@@ -22,10 +22,11 @@ struct MorphTargetOptions
 void from_json( const nlohmann::json& j, MorphTargetOptions& p );
 void to_json( nlohmann::json& j, const MorphTargetOptions& p );
 
-
-void from_json( const nlohmann::json& j, cmf::ElementType& p );
-void to_json( nlohmann::json& j, const cmf::ElementType& p );
-
+namespace cmf::v1
+{
+void from_json( const nlohmann::json& j, ElementType& p );
+void to_json( nlohmann::json& j, const ElementType& p );
+}
 
 struct SimplygonLodOptions
 {
@@ -131,8 +132,10 @@ struct MeshImportOptions
 	bool compressTangents = true;
 	// Use legacy tangent compression (angle-based) instead of quaternion-based compression
 	bool legacyCompressedTangents = false;
-	// Import vertex colors from the source mesh
-	bool colors = false;
+	// Number of vertex color sets to import from the source mesh
+	uint32_t colors = 0;
+	// Element type to use for vertex color sets.
+	cmf::ElementType colorType = cmf::ElementType::Float16;
 	// Import skinning information from the source mesh if available
 	bool skinning = true;
 	// Bones per vertex. Can be either 4 or 1. If 1, the file will not contain blend weight attributes.
