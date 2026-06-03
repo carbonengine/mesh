@@ -142,7 +142,7 @@ private:
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
-	void SetupMorphTarget( const MorphTargetUiState& morphTarget, AppState& appState );
+	void SetupMorphTarget( const MorphTargetUiState& morphTarget, size_t meshIndex, AppState& appState );
 	void SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& skeletonOwners, AppState& appState );
 	void SetupSkeletons( const std::vector<SkeletonUiState>& skeletonStates, AppState& appState );
 	void SetupPlaybackControls( AppState& appState );

@@ -45,8 +45,28 @@ void State<T>::SetValueNoCallback( T newValue )
 }
 
 template <typename T>
+T& State<T>::GetValue()
+{
+	return m_value;
+}
+
+namespace detail
+{
+	template <typename T, typename = void>
+	struct has_call_callbacks : std::false_type {};
+
+	template <typename T>
+	struct has_call_callbacks<T, std::void_t<decltype( std::declval<T&>().CallCallbacks( std::declval<AppState&>() ) )>> : std::true_type {};
+}
+
+template <typename T>
 void State<T>::CallCallbacks( AppState& appState )
 {
+	if constexpr( detail::has_call_callbacks<T>::value )
+	{
+		m_value.CallCallbacks( appState );
+	}
+
 	if( m_fireCallbacks )
 	{
 		for( auto& callback : m_callbacks )
@@ -91,6 +111,26 @@ size_t StateCollection<T>::AddState( T initialValue )
 }
 
 template <typename T>
+size_t StateCollection<T>::AddState( std::function<void( T& )> configurator )
+{
+	State<T> state( m_initialValue );
+	m_states.push_back( state );
+	configurator( m_states.back().GetValue() );
+	m_fireCallbacks = true;
+	return m_states.size() - 1;
+}
+
+template <typename T>
+size_t StateCollection<T>::AddState( T initialValue, std::function<void( T& )> configurator )
+{
+	State<T> state( initialValue );
+	m_states.push_back( state );
+	configurator( m_states.back().GetValue() );
+	m_fireCallbacks = true;
+	return m_states.size() - 1;
+}
+
+template <typename T>
 void StateCollection<T>::RemoveAt( size_t index )
 {
 	if( index < m_states.size() )
@@ -110,12 +150,16 @@ void StateCollection<T>::RegisterCallback( std::function<void( std::vector<T>, A
 template <typename T>
 void StateCollection<T>::CallCallbacks( AppState& appState )
 {
+	for( auto& state : m_states )
+	{
+		state.CallCallbacks( appState );
+	}
+
 	std::vector<T> values;
 	values.reserve( m_states.size() );
 	for( auto& state : m_states )
 	{
 		values.push_back( state.GetValue() );
-		state.CallCallbacks( appState );
 	}
 
 	if( m_fireCallbacks )

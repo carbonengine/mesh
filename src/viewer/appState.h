@@ -29,6 +29,7 @@ class State
 public:
 	State( T initialValue );
 	const T GetValue() const;
+	T& GetValue();
 	void SetValue( T newValue );
 	void ForceSetValue( T newValue );
 	void SetValueNoCallback( T newValue );
@@ -55,6 +56,8 @@ public:
 	StateCollection( T initialValue );
 	size_t AddState();
 	size_t AddState( T initialValue );
+	size_t AddState( std::function<void( T& )> configurator );
+	size_t AddState( T initialValue, std::function<void( T& )> configurator );
 
 	void Clear();
 	void CallCallbacks( AppState& appState );
@@ -98,14 +101,34 @@ enum class CameraTrigger
 	CAMERA_TRIGGER_LOOK_BACK,
 };
 
+struct MeshState
+{
+	State<bool> display{ true };
+	StateCollection<std::pair<float, bool>> morphs{ { 0.0f, true } };
+	State<bool> wireframeOverlay{ false };
+	State<bool> audioOcclusionMesh{ false };
+	State<bool> renderBoundingBox{ false };
+	State<uint32_t> activeLod{ 0 };
+	State<float> meshScreenSize{ 0.0f };
+
+	void CallCallbacks( AppState& appState )
+	{
+		display.CallCallbacks( appState );
+		morphs.CallCallbacks( appState );
+		wireframeOverlay.CallCallbacks( appState );
+		audioOcclusionMesh.CallCallbacks( appState );
+		renderBoundingBox.CallCallbacks( appState );
+		activeLod.CallCallbacks( appState );
+		meshScreenSize.CallCallbacks( appState );
+	}
+};
+
 struct ModelState
 {
 	/// The lod selected by the user (-1 for auto)
 	State<int32_t> selectedLod{ -1 };
 
-	/// The lod of the mesh that is currently active
-	StateCollection<uint32_t> activeLod{ 0 };
-	StateCollection<float> meshScreenSize{ 0.0f };
+	StateCollection<MeshState> meshes{ {} };
 
 	State<std::string> visualizationShader{ "" };
 	State<std::vector<std::string>> availableShaders{ {} };
@@ -114,12 +137,6 @@ struct ModelState
 	State<std::string> currentAnimation{ "" };
 	State<float> currentAnimationTime{ 0.0f };
 
-	StateCollection<bool> meshVisibilityStates{ true };
-	StateCollection<float> morphTargetWeight{ 0.0 };
-	StateCollection<bool> morphTargetEnabled{ true };
-	StateCollection<bool> meshWireframeOverlay{ false };
-	StateCollection<bool> audioOcclusionMesh{ false };
-	StateCollection<bool> meshBoundingBox{ false };
 	State<bool> boneDebug{ false };
 	State<bool> jointDebug{ false };
 	State<bool> jointAxisDebug{ false };
@@ -127,6 +144,24 @@ struct ModelState
 	State<std::shared_ptr<CmfContent>> activeAnimationOwner{ nullptr };
 	StateCollection<std::shared_ptr<CmfContent>> animationOverrides{ nullptr };
 	StateCollection<uint32_t> selectedBones{ 0xFF };
+
+	void CallCallbacks( AppState& appState )
+	{
+		selectedLod.CallCallbacks( appState );
+		meshes.CallCallbacks( appState );
+		visualizationShader.CallCallbacks( appState );
+		availableShaders.CallCallbacks( appState );
+		polygonMode.CallCallbacks( appState );
+		currentAnimation.CallCallbacks( appState );
+		currentAnimationTime.CallCallbacks( appState );
+		boneDebug.CallCallbacks( appState );
+		jointDebug.CallCallbacks( appState );
+		jointAxisDebug.CallCallbacks( appState );
+		modelBoundingBox.CallCallbacks( appState );
+		activeAnimationOwner.CallCallbacks( appState );
+		animationOverrides.CallCallbacks( appState );
+		selectedBones.CallCallbacks( appState );
+	}
 };
 
 struct AppState

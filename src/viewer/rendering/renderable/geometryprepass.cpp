@@ -28,23 +28,6 @@ GeometryPrePass::~GeometryPrePass()
 
 void GeometryPrePass::Initialize( AppState& appState )
 {
-	auto firstMorphState = appState.modelState.morphTargetEnabled.size();
-
-	// go through the morph targets so we can register to the morph weight and display flags
-	for( size_t i = 0; i < m_cmfMesh.morphTargets.targets.size(); i++ )
-	{
-		auto index = appState.modelState.morphTargetEnabled.AddState();
-		appState.modelState.morphTargetWeight.AddState();
-
-		appState.modelState.morphTargetWeight[index].RegisterCallback( [this, index, firstMorphState]( float weight, AppState& ) {
-			SetMorphWeight( index - firstMorphState, weight );
-		} );
-		appState.modelState.morphTargetEnabled[index].RegisterCallback( [this, index, firstMorphState]( bool enabled, AppState& appState ) {
-			float weight = enabled ? appState.modelState.morphTargetWeight[index].GetValue() : 0.0f;
-			SetMorphWeight( index - firstMorphState, weight );
-		} );
-	}
-
 	m_weights.resize( m_cmfMesh.morphTargets.targets.size(), 0.0f );
 	const auto boneElement = std::find_if( m_cmfMesh.decl.begin(), m_cmfMesh.decl.end(), []( const cmf::VertexElement& elem ) {
 		return elem.usage == cmf::Usage::BoneIndices;

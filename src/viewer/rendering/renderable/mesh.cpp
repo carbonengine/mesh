@@ -42,6 +42,8 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 
 void MeshRenderable::Initialize( AppState& appState )
 {
+	m_prepass.Initialize( appState );
+
 	appState.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
 		SetRenderingMode( appState.modelState.visualizationShader.GetValue(), mode );
 	} );
@@ -50,44 +52,38 @@ void MeshRenderable::Initialize( AppState& appState )
 		SetRenderingMode( shaderName, appState.modelState.polygonMode.GetValue() );
 	} );
 
-	// Register mesh visibility state
-	size_t stateIndex = appState.modelState.meshVisibilityStates.AddState();
-	appState.modelState.meshVisibilityStates[stateIndex].RegisterCallback( [this]( bool visible, AppState& appState ) {
-		m_display = visible;
-	} );
-
-	stateIndex = appState.modelState.meshWireframeOverlay.AddState();
-	appState.modelState.meshWireframeOverlay[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
-		m_wireframe = enabled;
-	} );
-
-	stateIndex = appState.modelState.audioOcclusionMesh.AddState();
-	appState.modelState.audioOcclusionMesh[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
-		m_audioOcclusion = enabled;
-	} );
-
-	stateIndex = appState.modelState.meshBoundingBox.AddState();
-	appState.modelState.meshBoundingBox[stateIndex].RegisterCallback( [this]( bool enabled, AppState& appState ) {
-		m_showBoundingBox = enabled;
-	} );
-
-	m_meshScreenSizeStateIndex = appState.modelState.meshScreenSize.AddState();
-	m_activeLodStateIndex = appState.modelState.activeLod.AddState();
-
-	appState.modelState.activeLod[m_activeLodStateIndex].RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
-		SetLod( lodIndex );
+	m_meshIndex = appState.modelState.meshes.AddState( [this]( MeshState& meshState ) {
+		meshState.display.RegisterCallback( [this]( bool visible, AppState& ) {
+			m_display = visible;
+		} );
+		meshState.wireframeOverlay.RegisterCallback( [this]( bool enabled, AppState& ) {
+			m_wireframe = enabled;
+		} );
+		meshState.audioOcclusionMesh.RegisterCallback( [this]( bool enabled, AppState& ) {
+			m_audioOcclusion = enabled;
+		} );
+		meshState.renderBoundingBox.RegisterCallback( [this]( bool enabled, AppState& ) {
+			m_showBoundingBox = enabled;
+		} );
+		meshState.activeLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
+			SetLod( lodIndex );
+		} );
+		SetLod( meshState.activeLod.GetValue() );
+		for( size_t i = 0; i < m_cmfMesh.morphTargets.targets.size(); ++i )
+		{
+			meshState.morphs.AddState();
+			meshState.morphs[i].RegisterCallback( [this, i]( std::pair<float, bool> morph, AppState& ) {
+				m_prepass.SetMorphWeight( static_cast<uint32_t>( i ), morph.second ? morph.first : 0.0f );
+			} );
+		}
 	} );
 
 	appState.modelState.selectedLod.RegisterCallback( [this]( int32_t lodIndex, AppState& appState ) {
 		if( lodIndex != -1 )
 		{
-			appState.modelState.activeLod[m_activeLodStateIndex].SetValue( lodIndex );
+			appState.modelState.meshes[m_meshIndex].GetValue().activeLod.SetValue( lodIndex );
 		}
 	} );
-
-	m_prepass.Initialize( appState );
-
-	SetLod( appState.modelState.activeLod[m_activeLodStateIndex].GetValue() );
 
 	m_boundingBox.Initialize();
 
@@ -118,7 +114,8 @@ void MeshRenderable::UpdateMeshCurves( float animationTime, const cmf::Animation
 			// the line above is the one that updates the morph target weight in the prepass,
 			// but we also need to update the app state so that the UI reflects the current weight
 			// if we would do it the other way, then prepass would get the update with one frame delay
-			appState.modelState.morphTargetWeight[morphIndex].SetValueNoCallback( weight );
+			auto& morphState = appState.modelState.meshes[m_meshIndex].GetValue().morphs[morphIndex];
+			morphState.SetValueNoCallback( { weight, morphState.GetValue().second } );
 		}
 	}
 }
@@ -178,7 +175,8 @@ void MeshRenderable::Update( AppState& appState, const Camera& camera )
 	{
 		// update the lod based on the camera and bounding sphere of the mesh
 		auto sizeOnScreen = camera.GetSizeOnScreen( m_boundingSphere );
-		appState.modelState.meshScreenSize[m_meshScreenSizeStateIndex].SetValueNoCallback( sizeOnScreen );
+		auto& meshState = appState.modelState.meshes[m_meshIndex].GetValue();
+		meshState.meshScreenSize.SetValueNoCallback( sizeOnScreen );
 		// find the closest lod that has the size on screen greater than the threshold
 		uint32_t lodLevel = 0;
 
@@ -192,10 +190,7 @@ void MeshRenderable::Update( AppState& appState, const Camera& camera )
 		if( m_currentLod != lodLevel )
 		{
 			SetLod( lodLevel );
-			if( m_activeLodStateIndex < appState.modelState.activeLod.size() )
-			{
-				appState.modelState.activeLod[m_activeLodStateIndex].SetValueNoCallback( lodLevel );
-			}
+			meshState.activeLod.SetValueNoCallback( lodLevel );
 		}
 	}
 }

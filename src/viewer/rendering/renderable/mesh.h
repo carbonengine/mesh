@@ -49,8 +49,7 @@ private:
 
 	uint32_t m_stride{ 0 };
 	uint32_t m_currentLod{ std::numeric_limits<uint32_t>::max() };
-	size_t m_activeLodStateIndex{ 0 };
-	size_t m_meshScreenSizeStateIndex{ 0 };
+	size_t m_meshIndex{ 0 };
 	CcpMath::Sphere m_boundingSphere{};
 	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
@@ -58,6 +57,8 @@ private:
 
 	bool m_display{ true };
 	bool m_wireframe{ false };
+	bool m_audioOcclusion{ false };
+	bool m_showBoundingBox{ false };
 	bool m_initialized{ false };
 
 	// effects
@@ -75,11 +76,9 @@ private:
 
 	// debug renderables
 	// bounding box
-	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
 
 	// audio occlusion
-	bool m_audioOcclusion{ false };
 	PrimitiveRenderable m_audioOcclusionRenderable;
 };

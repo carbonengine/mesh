@@ -457,13 +457,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Wireframe Overlay" );
 		ImGui::TableNextColumn();
-		bool wireframeOverlay = std::all_of( appState.modelState.meshWireframeOverlay.begin(), appState.modelState.meshWireframeOverlay.end(), []( const State<bool>& state ) {
-									return state.GetValue();
+		bool wireframeOverlay = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+									return state.GetValue().wireframeOverlay.GetValue();
 								} ) &&
-			appState.modelState.meshWireframeOverlay.size() > 0;
+			appState.modelState.meshes.size() > 0;
 		OnChange( ImGui::Checkbox( "##wireframecheckbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
-			std::for_each( appState.modelState.meshWireframeOverlay.begin(), appState.modelState.meshWireframeOverlay.end(), [wireframeOverlay]( State<bool>& state ) {
-				state.SetValue( wireframeOverlay );
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [wireframeOverlay]( State<MeshState>& state ) {
+				state.GetValue().wireframeOverlay.SetValue( wireframeOverlay );
 			} );
 		} );
 		ImGui::TableNextRow();
@@ -475,13 +475,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Audio Occlusion Mesh" );
 		ImGui::TableNextColumn();
-		bool audioOcclusion = std::all_of( appState.modelState.audioOcclusionMesh.begin(), appState.modelState.audioOcclusionMesh.end(), []( const State<bool>& state ) {
-								  return state.GetValue();
+		bool audioOcclusion = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+								  return state.GetValue().audioOcclusionMesh.GetValue();
 							  } ) &&
-			appState.modelState.audioOcclusionMesh.size() > 0;
+			appState.modelState.meshes.size() > 0;
 		OnChange( ImGui::Checkbox( "##audioocclusioncheckbox", &audioOcclusion ), [&appState, &audioOcclusion]() {
-			std::for_each( appState.modelState.audioOcclusionMesh.begin(), appState.modelState.audioOcclusionMesh.end(), [audioOcclusion]( State<bool>& state ) {
-				state.SetValue( audioOcclusion );
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [audioOcclusion]( State<MeshState>& state ) {
+				state.GetValue().audioOcclusionMesh.SetValue( audioOcclusion );
 			} );
 		} );
 		ImGui::TableNextRow();
@@ -557,7 +557,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool display = mesh.display;
 			OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &mesh, &display]() {
-				appState.modelState.meshVisibilityStates[mesh.meshIndex].SetValue( display );
+				appState.modelState.meshes[mesh.meshIndex].GetValue().display.SetValue( display );
 			} );
 
 			ImGui::TableNextRow();
@@ -568,7 +568,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool boundingBox = mesh.boundingBox;
 			OnChange( ImGui::Checkbox( "##boundingboxcheckbox", &boundingBox ), [&appState, &mesh, &boundingBox]() {
-				appState.modelState.meshBoundingBox[mesh.meshIndex].SetValue( boundingBox );
+				appState.modelState.meshes[mesh.meshIndex].GetValue().renderBoundingBox.SetValue( boundingBox );
 			} );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
@@ -578,7 +578,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool wireframeOverlay = mesh.wireframeOverlay;
 			OnChange( ImGui::Checkbox( "##wireframeoverlaycheckbox", &wireframeOverlay ), [&appState, &mesh, &wireframeOverlay]() {
-				appState.modelState.meshWireframeOverlay[mesh.meshIndex].SetValue( wireframeOverlay );
+				appState.modelState.meshes[mesh.meshIndex].GetValue().wireframeOverlay.SetValue( wireframeOverlay );
 			} );
 			ImGui::TableNextRow();
 
@@ -589,7 +589,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableNextColumn();
 			bool audioOcclusion = mesh.audioOcclusionMesh;
 			OnChange( ImGui::Checkbox( "##audioocclusionmeshcheckbox", &audioOcclusion ), [&appState, &mesh, &audioOcclusion]() {
-				appState.modelState.audioOcclusionMesh[mesh.meshIndex].SetValue( audioOcclusion );
+				appState.modelState.meshes[mesh.meshIndex].GetValue().audioOcclusionMesh.SetValue( audioOcclusion );
 			} );
 			ImGui::EndDisabled();
 
@@ -603,7 +603,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 					uint32_t index = 0;
 					for( const auto& morphTarget : mesh.morphTargets )
 					{
-						SetupMorphTarget( morphTarget, appState );
+						SetupMorphTarget( morphTarget, mesh.meshIndex, appState );
 					}
 				}
 			}
@@ -612,7 +612,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 	}
 }
 
-void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppState& appState )
+void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, size_t meshIndex, AppState& appState )
 {
 	ImGui::SeparatorText( morphTarget.name.c_str() );
 
@@ -628,14 +628,16 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, AppSta
 		ImGui::TableNextColumn();
 		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
 		float weight = morphTarget.weight;
-		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight]() {
-			appState.modelState.morphTargetWeight[morphTarget.index].SetValue( weight );
+		OnChange( ImGui::SliderFloat( "##slider", &weight, 0.0f, 1.0f, "%.6f" ), [&appState, &morphTarget, &weight, meshIndex]() {
+			auto& morphState = appState.modelState.meshes[meshIndex].GetValue().morphs[morphTarget.index];
+			morphState.SetValue( { weight, morphState.GetValue().second } );
 		} );
 		ImGui::TableNextColumn();
 		bool enabled = morphTarget.enabled;
 
-		OnChange( ImGui::Checkbox( "##checkbox", &enabled ), [&appState, &morphTarget, &enabled]() {
-			appState.modelState.morphTargetEnabled[morphTarget.index].SetValue( enabled );
+		OnChange( ImGui::Checkbox( "##checkbox", &enabled ), [&appState, &morphTarget, &enabled, meshIndex]() {
+			auto& morphState = appState.modelState.meshes[meshIndex].GetValue().morphs[morphTarget.index];
+			morphState.SetValue( { morphState.GetValue().first, enabled } );
 		} );
 		ImGui::SetItemTooltip( "Toggles the \"%s\" morph target", morphTarget.name.c_str() );
 		ImGui::EndTable();
@@ -1098,22 +1100,23 @@ void UIRenderer::UpdateUiState( AppState& appState )
 
 		for( const auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			if( meshIndex >= appState.modelState.meshVisibilityStates.size() )
+			if( meshIndex >= appState.modelState.meshes.size() )
 			{
 				break;
 			}
+			const auto& meshAppState = appState.modelState.meshes[meshIndex].GetValue();
 			MeshUiState meshState{};
 			meshState.meshIndex = meshIndex;
 			meshState.name = cmf::ToStdString( mesh.name );
-			meshState.lod = appState.modelState.activeLod[meshIndex].GetValue();
+			meshState.lod = meshAppState.activeLod.GetValue();
 			meshState.maxLodIndex = static_cast<uint32_t>( mesh.lods.size() ) - 1;
 			meshState.boundingSphereRadius = CcpMath::Sphere( mesh.bounds ).radius;
-			meshState.screenSize = appState.modelState.meshScreenSize[meshIndex].GetValue();
-			meshState.display = appState.modelState.meshVisibilityStates[meshIndex].GetValue();
-			meshState.wireframeOverlay = appState.modelState.meshWireframeOverlay[meshIndex].GetValue();
-			meshState.audioOcclusionMesh = appState.modelState.audioOcclusionMesh[meshIndex].GetValue();
+			meshState.screenSize = meshAppState.meshScreenSize.GetValue();
+			meshState.display = meshAppState.display.GetValue();
+			meshState.wireframeOverlay = meshAppState.wireframeOverlay.GetValue();
+			meshState.audioOcclusionMesh = meshAppState.audioOcclusionMesh.GetValue();
 			meshState.hasAudioOcclusionMesh = !mesh.audioOcclusionMesh.vertices.empty() && !mesh.audioOcclusionMesh.indices.empty();
-			meshState.boundingBox = appState.modelState.meshBoundingBox[meshIndex].GetValue();
+			meshState.boundingBox = meshAppState.renderBoundingBox.GetValue();
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
 			meshState.vertexCount = 0;
@@ -1134,17 +1137,19 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			m_uiState.modelStates.vertexCount += meshState.vertexCount;
 			m_uiState.modelStates.indexCount += meshState.indexCount;
 
-			for( const auto& morphTarget : mesh.morphTargets.targets )
+			for( size_t i = 0; i < mesh.morphTargets.targets.size(); ++i )
 			{
-				if( morphIndex >= appState.modelState.morphTargetWeight.size() )
+				if( i >= meshAppState.morphs.size() )
 				{
 					break;
 				}
+				const auto& morphTarget = mesh.morphTargets.targets[i];
+				const auto& morphPair = meshAppState.morphs[i].GetValue();
 				MorphTargetUiState morphTargetState{};
 				morphTargetState.name = cmf::ToStdString( morphTarget.name );
-				morphTargetState.weight = appState.modelState.morphTargetWeight[morphIndex].GetValue();
-				morphTargetState.enabled = appState.modelState.morphTargetEnabled[morphIndex].GetValue();
-				morphTargetState.index = morphIndex++;
+				morphTargetState.weight = morphPair.first;
+				morphTargetState.enabled = morphPair.second;
+				morphTargetState.index = i;
 				meshState.morphTargets.push_back( morphTargetState );
 			}
 
