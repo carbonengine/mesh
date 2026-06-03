@@ -87,7 +87,12 @@ Mesh settings
   compatibility with old assets and shaders.
 
 ``mesh.colors``
-  Type ``boolean``, default ``false``. Import vertex colors from the source mesh. If this setting is ``true``, source meshes must contain vertex colors, otherwise the importer fails.
+  Type ``number``, default ``0``. Number of vertex color sets to import from the source mesh. The source mesh must have at least this number of vertex color channels, otherwise the importer fails.
+
+``mesh.colorType``
+  Type ``string``, default ``Float16``. Number format to use for vertex colors in the output mesh. Possible supported values are ``UInt8Norm``, ``Float16``, and ``Float32``. With ``UInt8Norm`` vertex colors are stored in 
+  8 bits per channel and normalized to [0, 1] range, while with ``Float16`` they are stored as half-precision floats, which allows for HDR colors at the expense of increased memory requirements. The ``Float32`` 
+  option is also available, but it is rarely needed as it takes more memory without much visual improvement over ``Float16``.
 
 ``mesh.uvSets``
   Type ``number``, default ``1``. Number of UV sets to import from the source mesh. Source meshes are expected to have this many UV sets defined; the import fails if they don't.

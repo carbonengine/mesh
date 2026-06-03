@@ -182,7 +182,15 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 	const auto& positions = geom.vertex_position;
 	auto normals = geom.vertex_normal;
 	const auto& tangents = geom.vertex_tangent;
-	const auto& colors = geom.vertex_color;
+	std::vector<ufbx_vertex_vec4> colors;
+	for( uint32_t i = 0; i < options.colors; ++i )
+	{
+		const auto* found = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [i]( const ufbx_color_set& cs ) {
+			return cs.index == i;
+		} );
+		// No need for any checks here because CreateVertexDeclaration should have already verified that the color set exists and contains vertex colors.
+		colors.push_back( found->vertex_color );
+	}
 	auto lockedVertices = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [&options]( const ufbx_color_set& cs ) {
 		return ToString( cs.name ) == options.lods.simplygon.lockVertexChannel;
 	} );
@@ -258,14 +266,14 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 				AddToVertex( bitan );
 				break;
 			case cmf::Usage::Color:
-				if( element.usageIndex == 0 )
-				{
-					AddToVertex( ToVector4( colors[i] ) );
-				}
-				else
+				if( element.usageIndex == LOCKED_VERTEX_USAGE_INDEX )
 				{
 					// locked vertex flags
 					AddToVertex( ToVector4( lockedVertices->vertex_color[i] ) );
+				}
+				else
+				{
+					AddToVertex( ToVector4( colors[element.usageIndex][i] ) );
 				}
 				break;
 			case cmf::Usage::TexCoord: {
@@ -350,14 +358,20 @@ cmf::Span<cmf::VertexElement> CreateVertexDeclaration( const ufbx_mesh& geom, co
 			offset += sizeof( Vector3 );
 		}
 	}
-	if( options.colors )
+	if( options.colors > 0 )
 	{
-		if( !geom.vertex_color.exists )
+		for( uint32_t i = 0; i < options.colors; ++i )
 		{
-			throw std::runtime_error( "mesh is missing vertex colors" );
+			const auto* found = std::find_if( geom.color_sets.begin(), geom.color_sets.end(), [i]( const ufbx_color_set& cs ) {
+				return cs.index == i;
+			} );
+			if( found == geom.color_sets.end() || !found->vertex_color.exists )
+			{
+				throw std::runtime_error( "mesh is missing vertex color set " + std::to_string( i ) );
+			}
+			cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, uint8_t( i ), cmf::ElementType::Float32, 4, offset } );
+			offset += sizeof( Vector4 );
 		}
-		cmf::Modify( decl, allocator ).emplace_back( cmf::VertexElement{ cmf::Usage::Color, 0, cmf::ElementType::Float32, 4, offset } );
-		offset += sizeof( Vector4 );
 	}
 	if( !options.lods.simplygon.lockVertexChannel.empty() )
 	{
@@ -819,24 +833,25 @@ void UpdateMeshAreaData( cmf::Mesh& mesh, cmf::MemoryAllocator& allocator, cmf::
 	}
 }
 
-/** @brief Creates a new vertex declaration with compressed UVs based on the original declaration and the desired UV element type.
+/** @brief Creates a new vertex declaration with compressed elements for the specified usage based on the original declaration and the desired element type.
  *
  * @param decl The original vertex declaration to be modified.
- * @param uvType The element type to use for UV attributes in the new declaration (e.g., Float16 for half-precision).
+ * @param usage The usage type of the elements to be compressed (e.g., TexCoord for UVs).
+ * @param elementType The element type to use for the specified usage in the new declaration (e.g., Float16 for half-precision).
  * @param allocator The memory allocator used for allocating the new vertex declaration.
- * @return A new vertex declaration with compressed UVs.
+ * @return A new vertex declaration with compressed elements for the specified usage.
  */
-cmf::Span<cmf::VertexElement> GetCompressedUVDeclaration( const cmf::Span<cmf::VertexElement>& decl, cmf::ElementType uvType, cmf::MemoryAllocator& allocator )
+cmf::Span<cmf::VertexElement> GetCompressedElementDeclaration( const cmf::Span<cmf::VertexElement>& decl, cmf::Usage usage, cmf::ElementType elementType, cmf::MemoryAllocator& allocator )
 {
 	cmf::Span<cmf::VertexElement> newDecl;
 	uint32_t offset = 0;
-	for( auto& element : decl )
+	for( const auto& element : decl )
 	{
 		auto newElement = element;
 		newElement.offset = offset;
-		if( element.usage == cmf::Usage::TexCoord )
+		if( element.usage == usage )
 		{
-			newElement.type = uvType;
+			newElement.type = elementType;
 		}
 		cmf::Modify( newDecl, allocator ).push_back( newElement );
 		offset += cmf::GetVertexElementSize( newElement );
@@ -844,56 +859,35 @@ cmf::Span<cmf::VertexElement> GetCompressedUVDeclaration( const cmf::Span<cmf::V
 	return newDecl;
 }
 
-/** @brief Compresses the UV attributes of a mesh's vertex buffers to a more compact number format if specified.
+/** @brief Compresses the vertex attributes with the given usage of a mesh's vertex buffers to a more compact number format if specified.
  *
- * This changes element types for UV vertex attributes to the desired type and ajusts vertex declarations and vertex buffer contents.
+ * This changes element types for vertex attributes to the desired type and adjusts vertex declarations and vertex buffer contents.
+ * The function assumes the original element type is Float32.
  *
- * @param mesh The mesh whose UVs are to be compressed.
- * @param uvType The element type to use for UV attributes (e.g., Float16 for half-precision).
+ * @param mesh The mesh whose vertex attributes are to be compressed.
+ * @param usage The usage type of the vertex attributes to be compressed (e.g., TexCoord for UVs).
+ * @param elementType The element type to use for the specified usage (e.g., Float16 for half-precision).
  * @param allocator The memory allocator used for modifying the mesh data.
  * @param bufferAllocator The buffer manager used for accessing and modifying the mesh buffers.
  */
-void CompressUVs( cmf::Mesh& mesh, cmf::ElementType uvType, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
+void CompressElements( cmf::Mesh& mesh, cmf::Usage usage, cmf::ElementType elementType, cmf::MemoryAllocator& allocator, cmf::BufferManager& bufferAllocator )
 {
-	if( uvType == cmf::ElementType::Float32 )
+	if( elementType == cmf::ElementType::Float32 )
 	{
 		return;
 	}
 
-	bool hasUVs = std::any_of( mesh.decl.begin(), mesh.decl.end(), []( const cmf::VertexElement& element ) { return element.usage == cmf::Usage::TexCoord; } );
-	if( !hasUVs )
+	const bool hasAttributes = std::any_of( mesh.decl.begin(), mesh.decl.end(), [usage]( const cmf::VertexElement& element ) { return element.usage == usage; } );
+	if( !hasAttributes )
 	{
 		return;
 	}
 
-	cmf::Span<cmf::VertexElement> newDecl = GetCompressedUVDeclaration( mesh.decl, uvType, allocator );
+	const auto newDecl = GetCompressedElementDeclaration( mesh.decl, usage, elementType, allocator );
 
 	for( auto& lod : mesh.lods )
 	{
-		for( auto& element : mesh.decl )
-		{
-			if( element.usage == cmf::Usage::TexCoord )
-			{
-				auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferAllocator );
-
-				for( auto& oldElement : mesh.decl )
-				{
-					if( oldElement.usage == cmf::Usage::TexCoord )
-					{
-						auto newElement = newDecl[&oldElement - mesh.decl.begin()];
-
-						auto oldStream = cmf::BufferElementStream<Vector2>( oldElement, lod.vb, bufferAllocator );
-						auto newStream = cmf::BufferElementStream<Vector2>( newElement, vb, bufferAllocator );
-						for( uint32_t i = 0; i < oldStream.size(); ++i )
-						{
-							auto uv = oldStream[i];
-							newStream.set( i, uv );
-						}
-					}
-				}
-				lod.vb = vb;
-			}
-		}
+		lod.vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferAllocator );
 	}
 	mesh.decl = newDecl;
 }
@@ -1133,7 +1127,8 @@ cmf::Mesh ImportMesh( const ufbx_node& meshNode, const MeshImportOptions& option
 		lod.ib = ConvertTo16BitIndexBuffer( lod.ib, allocator, bufferAllocator );
 	}
 
-	CompressUVs( outMesh, options.uvType, allocator, bufferAllocator );
+	CompressElements( outMesh, cmf::Usage::TexCoord, options.uvType, allocator, bufferAllocator );
+	CompressElements( outMesh, cmf::Usage::Color, options.colorType, allocator, bufferAllocator );
 
 	GenerateAudioOcclusionMesh( outMesh, options.audioOcclusionMesh, allocator, bufferAllocator );
 
