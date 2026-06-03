@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmf/animation.h>
+#include <limits>
 
 #include "../camera.h"
 #include "../vulkan/commandbuffer.h"
@@ -15,6 +16,7 @@ public:
 	MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mesh& cmfMesh, std::shared_ptr<const Renderer> renderer );
 
 	void Initialize( AppState& appState );
+	void Update( AppState& appState, const Camera& camera );
 	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
@@ -46,12 +48,17 @@ private:
 	std::shared_ptr<const Renderer> m_renderer;
 
 	uint32_t m_stride{ 0 };
+	uint32_t m_currentLod{ std::numeric_limits<uint32_t>::max() };
+	size_t m_activeLodStateIndex{ 0 };
+	size_t m_meshScreenSizeStateIndex{ 0 };
+	CcpMath::Sphere m_boundingSphere{};
 	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
 	std::string m_shaderName{ "" };
 
 	bool m_display{ true };
 	bool m_wireframe{ false };
+	bool m_initialized{ false };
 
 	// effects
 	GraphicsEffect m_modelEffect;

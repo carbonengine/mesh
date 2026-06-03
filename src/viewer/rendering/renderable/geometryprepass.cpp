@@ -44,9 +44,6 @@ void GeometryPrePass::Initialize( AppState& appState )
 			SetMorphWeight( index - firstMorphState, weight );
 		} );
 	}
-	appState.modelState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
-		UpdateLod( lodIndex );
-	} );
 
 	m_weights.resize( m_cmfMesh.morphTargets.targets.size(), 0.0f );
 	const auto boneElement = std::find_if( m_cmfMesh.decl.begin(), m_cmfMesh.decl.end(), []( const cmf::VertexElement& elem ) {
@@ -55,8 +52,6 @@ void GeometryPrePass::Initialize( AppState& appState )
 
 	m_hasBoneIndices = boneElement != m_cmfMesh.decl.end();
 	m_isDynamic = !m_weights.empty() || m_hasBoneIndices;
-
-	UpdateLod( appState.modelState.selectedLod.GetValue() );
 }
 
 void GeometryPrePass::Process( ComputeCommandBuffer& commandBuffer )
@@ -145,28 +140,32 @@ void GeometryPrePass::SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTrans
 	}
 }
 
-void GeometryPrePass::UpdateLod( uint32_t lodIndex )
+void GeometryPrePass::SetLod( uint32_t lodIndex )
 {
+	if( lodIndex >= m_cmfMesh.lods.size() )
+	{
+		Log::Error( "SetLod: LOD index %u is out of range, LOD count is %zu", lodIndex, m_cmfMesh.lods.size() );
+		return;
+	}
 	if( m_currentLod == lodIndex )
 	{
 		return;
 	}
 
-	m_currentLod = lodIndex;
-
+	auto& lod = m_cmfMesh.lods[lodIndex];
 	if( m_isDynamic )
 	{
-		SetupForDynamicMesh();
+		SetupForDynamicMesh( lod );
 	}
 	else
 	{
-		SetupForStaticMesh();
+		SetupForStaticMesh( lod );
 	}
+	m_currentLod = lodIndex;
 }
 
-void GeometryPrePass::SetupForStaticMesh()
+void GeometryPrePass::SetupForStaticMesh( const cmf::MeshLod& lod )
 {
-	auto lod = m_cmfMesh.lods[m_currentLod];
 	const uint8_t* vertexData = m_cmfContent->Index( lod.vb.index, lod.vb.offset );
 
 	const uint8_t* indexData = nullptr;
@@ -197,7 +196,7 @@ void GeometryPrePass::SetupForStaticMesh()
 	}
 }
 
-void GeometryPrePass::SetupForDynamicMesh()
+void GeometryPrePass::SetupForDynamicMesh( const cmf::MeshLod& lod )
 {
 	m_effect = ComputeEffect( m_renderer );
 	// Clear out the morph jobs and bone element indices, since we will be rebuilding them for the new LOD
@@ -208,8 +207,6 @@ void GeometryPrePass::SetupForDynamicMesh()
 	elements.reserve( m_cmfMesh.decl.size() + m_cmfMesh.morphTargets.decl.size() );
 
 	std::vector<Element> skinnedElements{};
-
-	auto lod = m_cmfMesh.lods[m_currentLod];
 
 	const uint8_t* vertexData = m_cmfContent->Index( lod.vb.index, lod.vb.offset );
 

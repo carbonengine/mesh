@@ -15,7 +15,8 @@ public:
 	VkResult Initialize( AppState& appState );
 	VkResult PrepareModel( ComputeCommandBuffer& computeCommandBuffer );
 
-	void RenderMesh( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
+	void Update( AppState& appState, const Camera& camera );
+	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderNoDepthDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 
@@ -33,7 +34,6 @@ private:
 		Matrix proj;
 		Matrix view;
 	};
-
 
 	// one animation state per skeleton
 	std::vector<AnimationState> m_animationStates{};

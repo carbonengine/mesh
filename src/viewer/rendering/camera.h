@@ -30,6 +30,7 @@ public:
 	void Pan( Vector2 percentageChange );
 
 	void Update( float deltaTime );
+	float GetSizeOnScreen( const CcpMath::Sphere& sphere ) const;
 
 private:
 	float m_fov{ PI / 4.0f };
@@ -37,6 +38,7 @@ private:
 	Vector2 m_screenSize{ 0.0f, 0.0f };
 
 	Vector3 m_at{ 0.0, 0.0, 0.0 };
+	Vector3 m_eye{ 0.0, 0.0, 0.0 };
 	Vector3 m_targetAt{ 0.0, 0.0, 0.0 };
 
 	float m_zoom{ 0.0f };

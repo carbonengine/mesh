@@ -1,6 +1,7 @@
 #include "uiRenderer.h"
 
 #include <cmf/converters.h>
+#include <cmf/bufferstreams.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <tinyfiledialogs/tinyfiledialogs.h>
@@ -406,15 +407,21 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
+		ImGui::Text( "Lod" );
+		ImGui::TableNextColumn();
+		SetupCombo( "##lod", m_uiState.modelStates.lod, appState.modelState.selectedLod );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
 		ImGui::Text( "Vertices" );
 		ImGui::TableNextColumn();
-		ImGui::Text( "%d", m_uiState.modelStates.totalVertexCount );
+		ImGui::Text( "%u", m_uiState.modelStates.vertexCount );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Indices" );
 		ImGui::TableNextColumn();
-		ImGui::Text( "%d", m_uiState.modelStates.totalIndexCount );
+		ImGui::Text( "%u", m_uiState.modelStates.indexCount );
 		ImGui::TableNextRow();
 
 
@@ -511,24 +518,36 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
 			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableNextRow();
-
-			ImGui::TableNextColumn();
-			ImGui::Text( "LOD" );
-			ImGui::TableNextColumn();
-			ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-			SetupCombo( "##selectedlod", m_uiState.modelStates.lod, appState.modelState.selectedLod );
-
-			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Vertex Count" );
 			ImGui::TableNextColumn();
-			ImGui::Text( "%d", mesh.vertexCount );
+			ImGui::Text( "%u", mesh.vertexCount );
 
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Index Count" );
 			ImGui::TableNextColumn();
-			ImGui::Text( "%d", mesh.indexCount );
+			ImGui::Text( "%u", mesh.indexCount );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Current Lod" );
+			ImGui::TableNextColumn();
+			ImGui::Text( "%u/%u", mesh.lod, mesh.maxLodIndex );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Screen Size" );
+			ImGui::SetItemTooltip( "The approximate screen size based on the generated bounding sphere with radius %.3f (if it is infinite then the camera is inside of the sphere)", mesh.boundingSphereRadius );
+			ImGui::TableNextColumn();
+			if( mesh.screenSize == std::numeric_limits<float>::max() )
+			{
+				ImGui::Text( "infinite" );
+			}
+			else
+			{
+				ImGui::Text( "%upx", uint32_t( mesh.screenSize ) );
+			}
 
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
@@ -1016,8 +1035,8 @@ void UIRenderer::UpdateUiState( AppState& appState )
 {
 	if( m_loadStatus == LoadStatus::SUCCESSFUL )
 	{
-		// reset all appStae items related to cmf
-		appState.modelState.selectedLod.SetValue( 0 );
+		// reset all appState items related to cmf
+		appState.modelState.selectedLod.SetValue( -1 );
 		appState.modelState.currentAnimation.SetValue( "" );
 		appState.modelState.currentAnimationTime.SetValue( 0.0f );
 		m_playback = Playback{};
@@ -1086,7 +1105,10 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			MeshUiState meshState{};
 			meshState.meshIndex = meshIndex;
 			meshState.name = cmf::ToStdString( mesh.name );
-			meshState.lodCount = static_cast<uint32_t>( mesh.lods.size() );
+			meshState.lod = appState.modelState.activeLod[meshIndex].GetValue();
+			meshState.maxLodIndex = static_cast<uint32_t>( mesh.lods.size() ) - 1;
+			meshState.boundingSphereRadius = CcpMath::Sphere( mesh.bounds ).radius;
+			meshState.screenSize = appState.modelState.meshScreenSize[meshIndex].GetValue();
 			meshState.display = appState.modelState.meshVisibilityStates[meshIndex].GetValue();
 			meshState.wireframeOverlay = appState.modelState.meshWireframeOverlay[meshIndex].GetValue();
 			meshState.audioOcclusionMesh = appState.modelState.audioOcclusionMesh[meshIndex].GetValue();
@@ -1094,17 +1116,23 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.boundingBox = appState.modelState.meshBoundingBox[meshIndex].GetValue();
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
-
-			for( const auto& lod : mesh.lods )
+			meshState.vertexCount = 0;
+			meshState.indexCount = 0;
+			if( meshState.lod < mesh.lods.size() )
 			{
+				const auto& lod = mesh.lods[meshState.lod];
 				if( lod.vb.stride > 0 )
-					meshState.vertexCount += lod.vb.size / lod.vb.stride;
+				{
+					meshState.vertexCount = cmf::GetStreamElementCount( lod.vb );
+				}
 				if( lod.ib.stride > 0 )
-					meshState.indexCount += lod.ib.size / lod.ib.stride;
+				{
+					meshState.indexCount = cmf::GetStreamElementCount( lod.ib );
+				}
 			}
 
-			m_uiState.modelStates.totalVertexCount += meshState.vertexCount;
-			m_uiState.modelStates.totalIndexCount += meshState.indexCount;
+			m_uiState.modelStates.vertexCount += meshState.vertexCount;
+			m_uiState.modelStates.indexCount += meshState.indexCount;
 
 			for( const auto& morphTarget : mesh.morphTargets.targets )
 			{
@@ -1130,6 +1158,8 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			m_uiState.visualizationShaderComboBox.items.push_back( { shaderName, shaderName } );
 		}
 		m_uiState.visualizationShaderComboBox.SetSelectedItemByValue( appState.modelState.visualizationShader.GetValue() );
+
+		m_uiState.modelStates.lod.items.push_back( std::make_pair( "Auto", -1 ) );
 
 		for( uint32_t lod = 0; lod < maxLod; ++lod )
 		{

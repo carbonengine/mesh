@@ -21,6 +21,8 @@ void AppState::CallStateCallbacks()
 	exitRequested.CallCallbacks( *this );
 
 	modelState.selectedLod.CallCallbacks( *this );
+	modelState.activeLod.CallCallbacks( *this );
+	modelState.meshScreenSize.CallCallbacks( *this );
 	modelState.visualizationShader.CallCallbacks( *this );
 	modelState.availableShaders.CallCallbacks( *this );
 	modelState.polygonMode.CallCallbacks( *this );

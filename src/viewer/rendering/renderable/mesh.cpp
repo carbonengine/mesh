@@ -19,6 +19,7 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 	{
 		m_availableVertexElements.push_back( vertexElement );
 	}
+	m_boundingSphere = CcpMath::Sphere( m_cmfMesh.bounds );
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
 	m_stride = m_cmfMesh.lods[0].vb.stride;
 
@@ -70,13 +71,23 @@ void MeshRenderable::Initialize( AppState& appState )
 		m_showBoundingBox = enabled;
 	} );
 
-	appState.modelState.selectedLod.RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
+	m_meshScreenSizeStateIndex = appState.modelState.meshScreenSize.AddState();
+	m_activeLodStateIndex = appState.modelState.activeLod.AddState();
+
+	appState.modelState.activeLod[m_activeLodStateIndex].RegisterCallback( [this]( uint32_t lodIndex, AppState& appState ) {
 		SetLod( lodIndex );
 	} );
 
-	SetLod( appState.modelState.selectedLod.GetValue() );
+	appState.modelState.selectedLod.RegisterCallback( [this]( int32_t lodIndex, AppState& appState ) {
+		if( lodIndex != -1 )
+		{
+			appState.modelState.activeLod[m_activeLodStateIndex].SetValue( lodIndex );
+		}
+	} );
 
 	m_prepass.Initialize( appState );
+
+	SetLod( appState.modelState.activeLod[m_activeLodStateIndex].GetValue() );
 
 	m_boundingBox.Initialize();
 
@@ -92,6 +103,7 @@ void MeshRenderable::Initialize( AppState& appState )
 			sizeof( uint16_t ) );
 		m_audioOcclusionRenderable.Initialize();
 	}
+	m_initialized = true;
 }
 
 void MeshRenderable::UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState )
@@ -135,16 +147,56 @@ void MeshRenderable::SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransf
 
 void MeshRenderable::SetLod( uint32_t lodLevel )
 {
-	if( lodLevel >= m_cmfMesh.lods.size() )
+	if( lodLevel == m_currentLod )
 	{
-		Log::Error( "Invalid LOD level %d for mesh %s. It only has %zu", lodLevel, ToStdString( m_cmfMesh.name ).c_str(), m_cmfMesh.lods.size() );
 		return;
 	}
-	auto cmfLod = m_cmfMesh.lods[lodLevel];
+	// find the lod that is closest to the asked lodLevel, in the unlikely scenario that a model has multiple meshes with different lod levels
+	if( lodLevel >= m_cmfMesh.lods.size() && !m_cmfMesh.lods.empty() )
+	{
+		lodLevel = (uint32_t)m_cmfMesh.lods.size() - 1;
+	}
+
+	const auto& cmfLod = m_cmfMesh.lods[lodLevel];
 	m_areas.clear();
 	for( const auto& area : cmfLod.areas )
 	{
 		m_areas.push_back( { area.firstElement * 3, area.elementCount * 3 } );
+	}
+	m_prepass.SetLod( lodLevel );
+	m_currentLod = lodLevel;
+}
+
+void MeshRenderable::Update( AppState& appState, const Camera& camera )
+{
+	if( !m_initialized )
+	{
+		return;
+	}
+
+	if( appState.modelState.selectedLod.GetValue() < 0 )
+	{
+		// update the lod based on the camera and bounding sphere of the mesh
+		auto sizeOnScreen = camera.GetSizeOnScreen( m_boundingSphere );
+		appState.modelState.meshScreenSize[m_meshScreenSizeStateIndex].SetValueNoCallback( sizeOnScreen );
+		// find the closest lod that has the size on screen greater than the threshold
+		uint32_t lodLevel = 0;
+
+		for( lodLevel = (uint32_t)m_cmfMesh.lods.size() - 1; lodLevel > 0; --lodLevel )
+		{
+			if( sizeOnScreen <= m_cmfMesh.lods[lodLevel].threshold )
+			{
+				break;
+			}
+		}
+		if( m_currentLod != lodLevel )
+		{
+			SetLod( lodLevel );
+			if( m_activeLodStateIndex < appState.modelState.activeLod.size() )
+			{
+				appState.modelState.activeLod[m_activeLodStateIndex].SetValueNoCallback( lodLevel );
+			}
+		}
 	}
 }
 

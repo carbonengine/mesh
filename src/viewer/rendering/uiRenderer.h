@@ -56,7 +56,10 @@ private:
 	{
 		std::string name;
 		size_t meshIndex{ 0 };
-		uint32_t lodCount{ 0 };
+		uint32_t lod{ 0 };
+		uint32_t maxLodIndex{ 0 };
+		float screenSize{ 0 };
+		float boundingSphereRadius{ 0 };
 		uint32_t vertexCount{ 0 };
 		uint32_t indexCount{ 0 };
 		std::vector<MorphTargetUiState> morphTargets;
@@ -70,9 +73,9 @@ private:
 	struct ModelUiState
 	{
 		std::vector<MeshUiState> meshes;
-		CmfUiComboBox<uint32_t> lod;
-		uint32_t totalVertexCount{ 0 };
-		uint32_t totalIndexCount{ 0 };
+		CmfUiComboBox<int32_t> lod;
+		uint32_t vertexCount{ 0 };
+		uint32_t indexCount{ 0 };
 		bool boundingBox{ false };
 	};
 

@@ -53,6 +53,14 @@ void SceneRenderer::ReleaseModel()
 	}
 }
 
+void SceneRenderer::Update( AppState& appState, const Camera& camera )
+{
+	if( m_model != nullptr )
+	{
+		m_model->Update( appState, camera );
+	}
+}
+
 void SceneRenderer::PrePass()
 {
 	if( m_model != nullptr )
@@ -69,7 +77,7 @@ void SceneRenderer::Render( const AppState& state, const Camera& camera )
 
 	if( m_model != nullptr )
 	{
-		m_model->RenderMesh( m_graphicsCommandBuffer, state, camera );
+		m_model->Render( m_graphicsCommandBuffer, state, camera );
 
 		m_model->RenderDebug( m_graphicsCommandBuffer, state, camera );
 	}
@@ -87,6 +95,7 @@ void SceneRenderer::Render( const AppState& state, const Camera& camera )
 void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appState )
 {
 	ReleaseModel();
+	appState.ResetModelState();
 
 	if( data == nullptr )
 	{

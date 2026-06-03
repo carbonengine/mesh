@@ -15,6 +15,7 @@ public:
 
 	VkResult Initialize( AppState& state );
 
+	void Update( AppState& appState, const Camera& camera );
 	void PrePass();
 	void Render( const AppState& state, const Camera& camera );
 	void SetData( std::shared_ptr<CmfContent> data, AppState& appState );

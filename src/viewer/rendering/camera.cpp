@@ -199,4 +199,25 @@ void Camera::Update( float deltaTime )
 	m_zoom = m_zoom + ( m_targetZoom - m_zoom ) * std::min( deltaTime * 6.5f, 1.0f );
 	m_at = m_at + ( m_targetAt - m_at ) * std::min( deltaTime * 6.5f, 1.0f );
 	m_currentRotation = Slerp( m_currentRotation, m_targetRotation, std::min( deltaTime * 6.5f, 1.0f ) );
+	m_eye = Inverse( GetView() ).GetTranslation();
+}
+
+float Camera::GetSizeOnScreen( const CcpMath::Sphere& sphere ) const
+{
+	const auto projection = GetProjection();
+
+	Vector3 d( sphere.center - m_eye );
+
+	float lengthSqrd = LengthSq( d );
+	float radiusSqrd = sphere.radius * sphere.radius;
+	if( lengthSqrd < radiusSqrd )
+	{
+		//The camera is inside the object, it essentially has infinite screen size.
+		return std::numeric_limits<float>::max();
+	}
+
+	//adjusted distance based on the visible part of the sphere, that properly goes to infinity as you enter the sphere.
+	float distance = sqrt( lengthSqrd - radiusSqrd );
+
+	return sphere.radius / distance * projection._11 * m_screenSize.x;
 }
