@@ -96,7 +96,15 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 	return VK_SUCCESS;
 }
 
-void ModelRenderable::RenderMesh( GraphicsCommandBuffer& commandBuffer, const AppState& state, const Camera& camera )
+void ModelRenderable::Update( AppState& appState, const Camera& camera )
+{
+	for( auto& mesh : m_meshes )
+	{
+		mesh.Update( appState, camera );
+	}
+}
+
+void ModelRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppState& state, const Camera& camera )
 {
 	for( auto& mesh : m_meshes )
 	{

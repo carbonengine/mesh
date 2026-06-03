@@ -100,7 +100,13 @@ enum class CameraTrigger
 
 struct ModelState
 {
-	State<uint32_t> selectedLod{ 0 };
+	/// The lod selected by the user (-1 for auto)
+	State<int32_t> selectedLod{ -1 };
+
+	/// The lod of the mesh that is currently active
+	StateCollection<uint32_t> activeLod{ 0 };
+	StateCollection<float> meshScreenSize{ 0.0f };
+
 	State<std::string> visualizationShader{ "" };
 	State<std::vector<std::string>> availableShaders{ {} };
 

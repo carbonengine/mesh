@@ -29,11 +29,12 @@ public:
 	void SetMorphWeight( size_t morphIndex, float weight );
 	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
 
-private:
-	void SetupForDynamicMesh();
-	void SetupForStaticMesh();
+	void SetLod( uint32_t lod );
 
-	void UpdateLod( uint32_t lod );
+private:
+	void SetupForDynamicMesh( const cmf::MeshLod& lod );
+	void SetupForStaticMesh( const cmf::MeshLod& lod );
+
 
 	void IssueBarrier( VkCommandBuffer& commandBuffer, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask );
 
@@ -93,7 +94,6 @@ private:
 
 	ComputeEffect m_effect;
 	uint32_t m_currentLod{ std::numeric_limits<uint32_t>::max() };
-
 	std::array<Matrix, 0xFF> m_boneTransforms{};
 
 	bool m_isDynamic{ false };

@@ -169,6 +169,9 @@ void Application::Run()
 		float newTime = (float)glfwGetTime();
 		if( !m_minimized )
 		{
+			m_camera.Update( newTime - time );
+
+			m_sceneRenderer->Update( m_appState, m_camera );
 			if( m_renderer->BeginCompute() != VK_SUCCESS )
 			{
 				Log::Error( "Failed to begin compute step" );
@@ -189,8 +192,6 @@ void Application::Run()
 				break;
 			}
 			m_uiRenderer->BeginFrame();
-
-			m_camera.Update( newTime - time );
 
 			m_sceneRenderer->Render( m_appState, m_camera );
 			m_orientationGizmoRenderer->Render( m_appState, m_camera );
@@ -238,8 +239,6 @@ void Application::LoadCmfFile( const std::string& path )
 	else
 	{
 		Log::Info( "Applying model file %s", path.c_str() );
-		m_appState.ResetModelState();
-
 		// load the cmf content from the path and set it in the app state
 		m_appState.cmfPath.SetValue( path );
 		m_appState.modelState.activeAnimationOwner.SetValue( data );
