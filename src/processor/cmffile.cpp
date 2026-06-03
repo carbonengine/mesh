@@ -94,6 +94,13 @@ void CmfFile::Save( std::string_view path )
 	}
 
 	auto fileData = cmf::BuildFile( *m_data, m_bufferManager, m_metadata );
+
+	auto status = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
+	if( !status )
+	{
+		throw std::runtime_error( std::string( "Generated file is not valid: " ) + status.error );
+	}
+
 	WriteFile( std::string( path ).c_str(), fileData );
 }
 
