@@ -337,7 +337,8 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 
 		if( selectedFile->m_cmfData->skeletons.size() > 0 )
 		{
-			if( ImGui::BeginTabItem( "Skeleton" ) )
+			ImGuiTabItemFlags skeletonFlags = m_meshDetailsState.scrollToLinkedBone ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+			if( ImGui::BeginTabItem( "Skeleton", nullptr, skeletonFlags ) )
 			{
 				RenderSkeletonTab( appState, selectedFile );
 				ImGui::EndTabItem();
@@ -1299,8 +1300,7 @@ void UIRenderer::MeshTabWindow( AppState& appState, CmfContent* cmfContent )
 			RenderMorphDataTab( cmfContent, mesh, lod );
 			ImGui::EndTabItem();
 		}
-		ImGuiTabItemFlags bonesFlags = m_meshDetailsState.scrollToLinkedBone ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-		if( ImGui::BeginTabItem( "Bones", nullptr, bonesFlags ) )
+		if( ImGui::BeginTabItem( "Bones" ) )
 		{
 			RenderBonesTab( cmfContent, mesh, appState );
 			ImGui::EndTabItem();
@@ -1355,7 +1355,9 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 
 				ImGui::TableNextRow();
 				if( vi == m_meshDetailsState.linkedVertexIndex )
+				{
 					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+				}
 
 				ImGui::TableSetColumnIndex( 0 );
 				ImGui::Text( "%d", vi );
@@ -1434,7 +1436,9 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 	for( const auto& attr : allAttributes )
 	{
 		if( m_meshDetailsState.vertexAttributeFilter.find( attr.name ) == m_meshDetailsState.vertexAttributeFilter.end() )
+		{
 			m_meshDetailsState.vertexAttributeFilter[attr.name] = true;
+		}
 	}
 
 	// Vertex attribute filter list
@@ -1443,13 +1447,17 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 		if( ImGui::Button( "Reset##vf" ) )
 		{
 			for( auto& [name, enabled] : m_meshDetailsState.vertexAttributeFilter )
+			{
 				enabled = true;
+			}
 		}
 		for( const auto& attr : allAttributes )
 		{
 			bool enabled = m_meshDetailsState.vertexAttributeFilter[attr.name];
 			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
+			{
 				m_meshDetailsState.vertexAttributeFilter[attr.name] = enabled;
+			}
 		}
 	}
 
@@ -1457,7 +1465,9 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 	for( const auto& attr : allAttributes )
 	{
 		if( m_meshDetailsState.vertexAttributeFilter[attr.name] )
+		{
 			filteredAttributes.push_back( attr );
+		}
 	}
 
 	int scrollTarget = -1;
@@ -1499,7 +1509,9 @@ void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 		ImGui::Selectable( buf, isSelected, ImGuiSelectableFlags_None );
 		ImGui::PopStyleColor();
 		if( ImGui::IsItemClicked( ImGuiMouseButton_Left ) )
+		{
 			m_meshDetailsState.selectedIndexValue = (int)vertexIdx;
+		}
 		if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
 		{
 			m_meshDetailsState.linkedVertexIndex = (int)vertexIdx;
@@ -1583,7 +1595,9 @@ void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 
 					ImGui::TableNextRow();
 					if( (int)v == m_meshDetailsState.selectedIndexValue )
+					{
 						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg1, ImGui::GetColorU32( ImGuiCol_Header ) );
+					}
 
 					ImGui::TableSetColumnIndex( 0 );
 					ImGui::Text( "%d", ii );
@@ -1632,9 +1646,13 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 			auto name = cmf::ToStdString( morphTargets.targets[i].name );
 			bool selected = ( i == m_meshDetailsState.selectedMorphTargetIndex );
 			if( ImGui::Selectable( name.c_str(), selected ) )
+			{
 				m_meshDetailsState.selectedMorphTargetIndex = i;
+			}
 			if( selected )
+			{
 				ImGui::SetItemDefaultFocus();
+			}
 		}
 		ImGui::EndCombo();
 	}
@@ -1661,7 +1679,9 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 	for( const auto& attr : allAttributes )
 	{
 		if( m_meshDetailsState.morphAttributeFilter.find( attr.name ) == m_meshDetailsState.morphAttributeFilter.end() )
+		{
 			m_meshDetailsState.morphAttributeFilter[attr.name] = true;
+		}
 	}
 
 	if( ImGui::CollapsingHeader( "Filters" ) )
@@ -1669,13 +1689,17 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 		if( ImGui::Button( "Reset##mf" ) )
 		{
 			for( auto& [name, enabled] : m_meshDetailsState.morphAttributeFilter )
+			{
 				enabled = true;
+			}
 		}
 		for( const auto& attr : allAttributes )
 		{
 			bool enabled = m_meshDetailsState.morphAttributeFilter[attr.name];
 			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
+			{
 				m_meshDetailsState.morphAttributeFilter[attr.name] = enabled;
+			}
 		}
 	}
 
@@ -1683,7 +1707,9 @@ void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& me
 	for( const auto& attr : allAttributes )
 	{
 		if( m_meshDetailsState.morphAttributeFilter[attr.name] )
+		{
 			filteredAttributes.push_back( attr );
+		}
 	}
 
 	RenderAttributeTable( "##morphdata", vbData, vertexCount, morphLod.vb.stride, filteredAttributes, -1 );
@@ -1754,7 +1780,9 @@ void UIRenderer::RenderSkeletonTab( AppState& appState, CmfContent* cmfContent )
 		for( const auto& col : allBoneCols )
 		{
 			if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
+			{
 				m_meshDetailsState.boneColumnFilter[col] = true;
+			}
 		}
 
 		if( ImGui::CollapsingHeader( "Filters" ) )
@@ -1762,13 +1790,17 @@ void UIRenderer::RenderSkeletonTab( AppState& appState, CmfContent* cmfContent )
 			if( ImGui::Button( "Reset##bf" ) )
 			{
 				for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
+				{
 					enabled = true;
+				}
 			}
 			for( const auto& col : allBoneCols )
 			{
 				bool enabled = m_meshDetailsState.boneColumnFilter[col];
 				if( ImGui::Checkbox( col, &enabled ) )
+				{
 					m_meshDetailsState.boneColumnFilter[col] = enabled;
+				}
 			}
 		}
 
@@ -1776,7 +1808,9 @@ void UIRenderer::RenderSkeletonTab( AppState& appState, CmfContent* cmfContent )
 		for( int i = 0; i < 5; ++i )
 		{
 			if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
+			{
 				activeColIndices.push_back( i );
+			}
 		}
 
 		ImGuiTableFlags tableFlags =
@@ -1797,12 +1831,16 @@ void UIRenderer::RenderSkeletonTab( AppState& appState, CmfContent* cmfContent )
 		if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 		{
 			if( scrollToBone >= 0 )
+			{
 				ImGui::SetScrollY( (float)scrollToBone * ImGui::GetTextLineHeightWithSpacing() );
+			}
 
 			ImGui::TableSetupScrollFreeze( 1, 1 );
 			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
 			for( int ci : activeColIndices )
+			{
 				ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
+			}
 			ImGui::TableHeadersRow();
 
 			ImGuiListClipper clipper;
@@ -1940,7 +1978,9 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 		if( open && !isLeaf )
 		{
 			for( int child : children[bi] )
+			{
 				renderBone( child, skeleton, children );
+			}
 			ImGui::TreePop();
 		}
 	};
@@ -1954,9 +1994,13 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 		{
 			uint32_t parent = ( (size_t)i < skeleton.parents.size() ) ? skeleton.parents[i] : 0xffffffff;
 			if( parent == (uint32_t)i || parent >= (uint32_t)boneCount )
+			{
 				roots.push_back( i );
+			}
 			else
+			{
 				children[parent].push_back( i );
+			}
 		}
 
 		for( int root : roots )
@@ -2088,7 +2132,9 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 								{
 									std::string boneList = "Bones:";
 									for( uint16_t bi : area.bones )
+									{
 										boneList += " " + std::to_string( bi );
+									}
 									ImGui::TextUnformatted( boneList.c_str() );
 								}
 								ImGui::TreePop();
@@ -2108,9 +2154,13 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 							const auto& lod = mesh.lods[i];
 							std::string lodLabel;
 							if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
+							{
 								lodLabel = "LOD " + std::to_string( i ) + " (base)";
+							}
 							else
+							{
 								lodLabel = "LOD " + std::to_string( i ) + " (threshold: " + std::to_string( lod.threshold ) + "px)";
+							}
 
 							ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
 							bool lodOpen = ImGui::TreeNode( lodLabel.c_str() );
@@ -2127,9 +2177,13 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 								ImGui::Text( "Vertices: %u", vertexCount );
 								ImGui::Text( "Indices: %u", indexCount );
 								if( !lod.areas.empty() )
+								{
 									ImGui::Text( "Areas: %u", (uint32_t)lod.areas.size() );
+								}
 								if( !lod.morphTargets.empty() )
+								{
 									ImGui::Text( "Morph Targets: %u", (uint32_t)lod.morphTargets.size() );
+								}
 								ImGui::TreePop();
 							}
 						}
@@ -2178,9 +2232,13 @@ void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
 			auto name = cmf::ToStdString( animations[i].name );
 			bool selected = ( i == m_meshDetailsState.selectedAnimationIndex );
 			if( ImGui::Selectable( name.c_str(), selected ) )
+			{
 				m_meshDetailsState.selectedAnimationIndex = i;
+			}
 			if( selected )
+			{
 				ImGui::SetItemDefaultFocus();
+			}
 		}
 		ImGui::EndCombo();
 	}
@@ -2220,29 +2278,45 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 
 	static const char* allChannelCols[] = { "Target", "Type", "Curve" };
 	for( const auto& col : allChannelCols )
+	{
 		if( m_meshDetailsState.channelColumnFilter.find( col ) == m_meshDetailsState.channelColumnFilter.end() )
+		{
 			m_meshDetailsState.channelColumnFilter[col] = true;
+		}
+	}
 
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##chf" ) )
+		{
 			for( auto& [name, enabled] : m_meshDetailsState.channelColumnFilter )
+			{
 				enabled = true;
+			}
+		}
 		for( const auto& col : allChannelCols )
 		{
 			bool enabled = m_meshDetailsState.channelColumnFilter[col];
 			if( ImGui::Checkbox( col, &enabled ) )
+			{
 				m_meshDetailsState.channelColumnFilter[col] = enabled;
+			}
 		}
 	}
 
 	std::vector<ChannelColumn> activeChannelCols;
 	for( int i = 0; i < 3; ++i )
+	{
 		if( m_meshDetailsState.channelColumnFilter[allChannelCols[i]] )
+		{
 			activeChannelCols.push_back( static_cast<ChannelColumn>( i ) );
+		}
+	}
 
 	if( activeChannelCols.empty() )
+	{
 		return;
+	}
 
 	ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
@@ -2257,9 +2331,13 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 		for( ChannelColumn ci : activeChannelCols )
 		{
 			if( ci == ChannelColumn::Target )
+			{
 				ImGui::TableSetupColumn( allChannelCols[(int)ci], ImGuiTableColumnFlags_WidthStretch );
+			}
 			else
+			{
 				ImGui::TableSetupColumn( allChannelCols[(int)ci], ImGuiTableColumnFlags_WidthFixed, ci == ChannelColumn::Curve ? 48.0f : 120.0f );
+			}
 		}
 		ImGui::TableHeadersRow();
 
@@ -2344,26 +2422,40 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
 
 	static const char* allCurveCols[] = { "Interpolation", "Knot Type", "Value Type", "Dimensions", "Knots" };
 	for( const auto& col : allCurveCols )
+	{
 		if( m_meshDetailsState.curveColumnFilter.find( col ) == m_meshDetailsState.curveColumnFilter.end() )
+		{
 			m_meshDetailsState.curveColumnFilter[col] = true;
+		}
+	}
 
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
 		if( ImGui::Button( "Reset##cvf" ) )
+		{
 			for( auto& [name, enabled] : m_meshDetailsState.curveColumnFilter )
+			{
 				enabled = true;
+			}
+		}
 		for( const auto& col : allCurveCols )
 		{
 			bool enabled = m_meshDetailsState.curveColumnFilter[col];
 			if( ImGui::Checkbox( col, &enabled ) )
+			{
 				m_meshDetailsState.curveColumnFilter[col] = enabled;
+			}
 		}
 	}
 
 	std::vector<CurveColumn> activeCurveCols;
 	for( int i = 0; i < 5; ++i )
+	{
 		if( m_meshDetailsState.curveColumnFilter[allCurveCols[i]] )
+		{
 			activeCurveCols.push_back( static_cast<CurveColumn>( i ) );
+		}
+	}
 
 	ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
@@ -2376,7 +2468,9 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
 	if( ImGui::BeginTable( "##curvestable", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 	{
 		if( scrollToCurve >= 0 )
+		{
 			ImGui::SetScrollY( (float)scrollToCurve * ImGui::GetTextLineHeightWithSpacing() );
+		}
 
 		ImGui::TableSetupScrollFreeze( 1, 1 );
 		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
@@ -2401,7 +2495,9 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
 
 				ImGui::TableNextRow();
 				if( i == m_meshDetailsState.linkedCurveIndex )
+				{
 					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+				}
 
 				ImGui::TableSetColumnIndex( 0 );
 				ImGui::Text( "%d", i );
@@ -2461,26 +2557,40 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 	{
 		static const char* allVertCols[] = { "X", "Y", "Z" };
 		for( const auto& col : allVertCols )
+		{
 			if( m_meshDetailsState.audioVertexColumnFilter.find( col ) == m_meshDetailsState.audioVertexColumnFilter.end() )
+			{
 				m_meshDetailsState.audioVertexColumnFilter[col] = true;
+			}
+		}
 
 		if( ImGui::CollapsingHeader( "Filters##avf" ) )
 		{
 			if( ImGui::Button( "Reset##avr" ) )
+			{
 				for( auto& [name, enabled] : m_meshDetailsState.audioVertexColumnFilter )
+				{
 					enabled = true;
+				}
+			}
 			for( const auto& col : allVertCols )
 			{
 				bool enabled = m_meshDetailsState.audioVertexColumnFilter[col];
 				if( ImGui::Checkbox( col, &enabled ) )
+				{
 					m_meshDetailsState.audioVertexColumnFilter[col] = enabled;
+				}
 			}
 		}
 
 		std::vector<AudioVertexColumn> activeVertCols;
 		for( int i = 0; i < 3; ++i )
+		{
 			if( m_meshDetailsState.audioVertexColumnFilter[allVertCols[i]] )
+			{
 				activeVertCols.push_back( static_cast<AudioVertexColumn>( i ) );
+			}
+		}
 
 		ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
