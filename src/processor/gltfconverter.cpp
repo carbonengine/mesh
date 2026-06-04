@@ -258,6 +258,9 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 			case cmf::AnimationChannelTargetType::MorphTarget:
 				path = "weights";
 				break;
+			case cmf::AnimationChannelTargetType::Other:
+				printf( "Unsupported AnimationChannelTargetType, continuing.\n" );
+				continue;
 			}
 
 			int gltfValueType;
