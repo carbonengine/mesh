@@ -99,8 +99,8 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 		auto normal = data->normals[index];
 		Vector3 tangent = Vector3( tangentFloats[0], tangentFloats[1], tangentFloats[2] );
 		auto bitangent = Cross( tangent, normal ) * sign;
-		data->tangents[index] = tangent;
-		data->bitangents[index] = bitangent;
+		data->tangents.set( index, tangent );
+		data->bitangents.set( index, bitangent );
 	};
 
 
