@@ -56,7 +56,8 @@ public:
 			return m_data != other.m_data;
 		}
 
-		[[nodiscard]] T operator*() const
+		// Const return type is intentional to prevent accidental use as an l-value like a "normal" iterator.
+		[[nodiscard]] const T operator*() const // NOLINT( readability-const-return-type )
 		{
 			return m_conversion( m_data );
 		}
@@ -73,17 +74,18 @@ public:
 		Converter m_conversion;
 	};
 
-	Iterator begin() const
+	[[nodiscard]] Iterator begin() const
 	{
 		return Iterator( m_data, m_stride, m_conversion );
 	}
 
-	Iterator end() const
+	[[nodiscard]] Iterator end() const
 	{
 		return Iterator( m_data + m_stride * m_count, m_stride, m_conversion );
 	};
 
-	T operator[]( uint32_t index ) const
+	// Const return type is intentional to prevent accidental use as an l-value like a "normal" [] operator.
+	[[nodiscard]] const T operator[]( uint32_t index ) const // NOLINT( readability-const-return-type )
 	{
 		return m_conversion( m_data + m_stride * index );
 	}
