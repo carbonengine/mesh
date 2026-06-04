@@ -45,7 +45,8 @@ def enumerate_files( sourceDir, binaryDir, output):
                         raise e
 
                     inputDeclarations.append( ( int(match.group(1)), usage ))
-            vertexDeclarations[name] = inputDeclarations        
+            vertexDeclarations[name] = inputDeclarations 
+
     for filename in os.listdir(binaryDir):
         if not filename.endswith('.spv.h'):
             continue
@@ -87,22 +88,39 @@ def enumerate_files( sourceDir, binaryDir, output):
             compShader = """Shader( {
                 #include \"%s\"
              } )""" % shaders[2]
-
-
+            
         splitNames = name.replace("model_", "").split("_")
+        
+        shaderConfigs = [[(locationIndex, usage, 0) for (locationIndex, usage) in vertexDeclarations.get(name, [])]]
+        modelShader = name.startswith("model_")
+
         displayName = name
-        if name.startswith("model_"):
+        if modelShader:
             displayName = " ".join(s[0].upper() + s[1:] for s in splitNames)
-           
-        code +=  """
-{\"%s\", { 
-    %s,
-    %s,
-    %s,
-    %s,
-    { %s }
-    } 
-},""" % (displayName, vertShader, fragShader, compShader, str(name.startswith("model_")).lower(), ",\n".join(["{%d, %s}" % (index, usage) for (index, usage) in vertexDeclarations.get(name, {}) ]))
+            vertexElements = vertexDeclarations.get(name)
+            if len(vertexElements) == 2:
+                # recreate the config
+                shaderConfigs = []
+                for i in range(0, 8):
+                    config = []
+                    for index, usage in vertexDeclarations[name]:
+                        if usage != "cmf::Usage::Position":
+                            config.append( (index, usage, i) )
+                        else:
+                            config.append( (index, usage, 0) )
+
+                    shaderConfigs.append(config)
+
+        for (i, shaderConfig) in enumerate(shaderConfigs):
+            code +=  """
+    {\"%s\", { 
+        %s,
+        %s,
+        %s,
+        %s,
+        { %s }
+        } 
+    },""" % (displayName + ("" if i == 0 else " " + str(i)), vertShader, fragShader, compShader, str(modelShader).lower(), ",\n".join(["{%d, %s, %d}" % (locationIndex, usage, usageIndex) for (locationIndex, usage, usageIndex) in shaderConfig ]))
 
     code = code[:-1]
     with open(output, 'w') as f:

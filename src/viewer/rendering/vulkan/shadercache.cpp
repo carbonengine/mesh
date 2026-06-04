@@ -254,14 +254,14 @@ std::vector<std::string> ShaderCache::GetAvailableShaderNames( const std::vector
 	std::vector<std::string> result;
 	result.reserve( s_cache.size() );
 
-	std::vector<cmf::Usage> elements;
+	std::vector<std::pair<cmf::Usage, uint8_t>> elements;
 	elements.reserve( availableVertexElements.size() );
 	std::transform(
 		availableVertexElements.begin(),
 		availableVertexElements.end(),
 		std::back_inserter( elements ),
 		[]( const cmf::VertexElement& element ) {
-			return element.usage;
+			return std::make_pair( element.usage, element.usageIndex );
 		} );
 
 	std::for_each( s_cache.begin(), s_cache.end(), [&result, &elements]( const auto& keyValue ) {
@@ -275,7 +275,7 @@ std::vector<std::string> ShaderCache::GetAvailableShaderNames( const std::vector
 		// check if there are any inputs that the shader expects that is not in the cmf vertex declaration
 		for( const auto& inputLayout : shaderContainer.inputLayout )
 		{
-			if( std::find( elements.begin(), elements.end(), inputLayout.usage ) == elements.end() )
+			if( std::find( elements.begin(), elements.end(), std::make_pair( inputLayout.usage, inputLayout.usageIndex ) ) == elements.end() )
 			{
 				return;
 			}
@@ -318,7 +318,7 @@ void ShaderCache::GenerateVertexDescriptions( std::string shaderName, const std:
 	for( const auto& layout : shaderContainer.inputLayout )
 	{
 		auto foundElement = std::find_if( availableVertexElements.begin(), availableVertexElements.end(), [layout]( const cmf::VertexElement& element ) {
-			return element.usage == layout.usage;
+			return element.usage == layout.usage && element.usageIndex == layout.usageIndex;
 		} );
 
 		if( foundElement != availableVertexElements.end() )

@@ -31,6 +31,7 @@ struct ShaderInputLayout
 {
 	uint8_t location;
 	cmf::Usage usage;
+	uint8_t usageIndex;
 };
 
 struct ShaderContainer

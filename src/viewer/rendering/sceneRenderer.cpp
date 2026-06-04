@@ -4,6 +4,14 @@
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 
+const std::vector<std::string> DEFAULT_SHADER_ORDER
+{
+	"Normal",
+	"Packed Normal",
+	"Packed Normal Legacy",
+	"Face Normal"
+};
+
 SceneRenderer::SceneRenderer( std::shared_ptr<Renderer> renderer ) :
 	m_renderer( renderer ),
 	m_graphicsCommandBuffer( renderer.get() ),
@@ -120,7 +128,20 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 
 	if( foundItem == shaderNames.end() && shaderNames.size() > 0 )
 	{
-		appState.modelState.visualizationShader.SetValue( shaderNames[0] );
+		// pick the shader that best matches our default shader order
+		auto defaultShaderIt = std::find_if( DEFAULT_SHADER_ORDER.begin(), DEFAULT_SHADER_ORDER.end(), [&]( auto defaultShaderName ) {
+			return std::find_if( shaderNames.begin(), shaderNames.end(), [&]( auto shaderName ) {
+					   return shaderName == defaultShaderName;
+				   } ) != shaderNames.end();
+		} );
+		if( defaultShaderIt != DEFAULT_SHADER_ORDER.end() )
+		{
+			appState.modelState.visualizationShader.SetValue( *defaultShaderIt );
+		}
+		else
+		{
+			appState.modelState.visualizationShader.SetValue( shaderNames[0] );
+		}
 	}
 	appState.modelState.availableShaders.SetValue( shaderNames );
 
