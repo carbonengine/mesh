@@ -80,6 +80,8 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 		UpdateAnimation( animationTime, appState );
 	} );
 
+	appState.modelState.activeAnimationOwner.SetValue( m_cmfContent );
+
 
 	for( auto& animationState : m_animationStates )
 	{
