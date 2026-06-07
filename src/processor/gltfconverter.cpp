@@ -429,53 +429,84 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 		}
 	}
 
+	// Convert morph targets from absolute to relative values
+	for( auto& mesh : data.meshes )
+	{
+		for( auto& lod : mesh.lods )
+		{
+			for( auto morphTarget : lod.morphTargets )
+			{
+				for( auto elem : mesh.morphTargets.decl )
+				{
+					auto meshElem = cmf::FindElement( mesh.decl, elem.usage, elem.usageIndex );
+					cmf::BufferElementStream<Vector4> morphStream( elem, morphTarget.vb, bufferManager );
+					cmf::ConstBufferElementStream<Vector4> meshStream( *meshElem, lod.vb, bufferManager );
+					for( uint32_t i = 0; i < morphStream.size(); i++ )
+					{
+						morphStream.set( i, morphStream[i] - meshStream[i] );
+					}
+				}
+			}
+		}
+	}
+
 	// Generate new decl for the mesh where all data is stored in float format
 	for( auto& mesh : data.meshes )
 	{
-		cmf::Span<cmf::VertexElement> newDecl;
-		for( const auto& elem : mesh.decl )
+		auto generateNewDecl = [&allocator]( const cmf::Span<cmf::VertexElement>& oldDecl, uint8_t tangentElementCount ) -> cmf::Span<cmf::VertexElement>
 		{
-			if( elem.usage == cmf::Usage::Binormal )
+			cmf::Span<cmf::VertexElement> newDecl;
+			for( const auto& elem : oldDecl )
 			{
-				// Skip binormal elements since we are converting them into tangents with binormal sign baked in according to the glTF spec
-			}
-			else if( elem.usage == cmf::Usage::Tangent )
-			{
-				// glTF requires TANGENT to be a float VEC4 with the binormal sign in the W component
-				auto newElem = elem;
-				newElem.type = cmf::ElementType::Float32;
-				newElem.elementCount = 4;
-				cmf::Modify( newDecl, allocator ).push_back( newElem );
-			}
-			else if( elem.usage == cmf::Usage::BoneIndices )
-			{
-				// glTF requires JOINTS to be unsigned byte/short, never float or signed
-				auto newElem = elem;
-				if( elem.type != cmf::ElementType::UInt8 && elem.type != cmf::ElementType::UInt16 )
+				if( elem.usage == cmf::Usage::Binormal )
 				{
-					// Convert any other source type to UInt16, which is large enough for any bone count we support
-					newElem.type = cmf::ElementType::UInt16;
+					// Skip binormal elements since we are converting them into tangents with binormal sign baked in according to the glTF spec
 				}
-				cmf::Modify( newDecl, allocator ).push_back( newElem );
+				else if( elem.usage == cmf::Usage::Tangent )
+				{
+					// glTF requires TANGENT to be a float VEC4 with the binormal sign in the W component
+					auto newElem = elem;
+					newElem.type = cmf::ElementType::Float32;
+					newElem.elementCount = tangentElementCount;
+					cmf::Modify( newDecl, allocator ).push_back( newElem );
+				}
+				else if( elem.usage == cmf::Usage::BoneIndices )
+				{
+					// glTF requires JOINTS to be unsigned byte/short, never float or signed
+					auto newElem = elem;
+					if( elem.type != cmf::ElementType::UInt8 && elem.type != cmf::ElementType::UInt16 )
+					{
+						// Convert any other source type to UInt16, which is large enough for any bone count we support
+						newElem.type = cmf::ElementType::UInt16;
+					}
+					cmf::Modify( newDecl, allocator ).push_back( newElem );
+				}
+				else if( elem.usage == cmf::Usage::Position || elem.usage == cmf::Usage::Normal || elem.type == cmf::ElementType::Float16 )
+				{
+					// glTF requires POSITION and NORMAL to be float, and we convert float16 into float32 for compatability
+					auto newElem = elem;
+					newElem.type = cmf::ElementType::Float32;
+					cmf::Modify( newDecl, allocator ).push_back( newElem );
+				}
+				else
+				{
+					cmf::Modify( newDecl, allocator ).push_back( elem );
+				}
 			}
-			else if( elem.usage == cmf::Usage::Position || elem.usage == cmf::Usage::Normal || elem.type == cmf::ElementType::Float16 )
+
+			uint32_t offset = 0;
+			for( auto& elem : newDecl )
 			{
-				// glTF requires POSITION and NORMAL to be float, and we convert float16 into float32 for compatability
-				auto newElem = elem;
-				newElem.type = cmf::ElementType::Float32;
-				cmf::Modify( newDecl, allocator ).push_back( newElem );
+				elem.offset = offset;
+				offset += cmf::GetVertexElementSize( elem );
 			}
-			else
-			{
-				cmf::Modify( newDecl, allocator ).push_back( elem );
-			}
-		}
-		uint32_t offset = 0;
-		for( auto& elem : newDecl )
-		{
-			elem.offset = offset;
-			offset += cmf::GetVertexElementSize( elem );
-		}
+
+			return newDecl;
+		};
+		
+		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4 );
+		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3 );
+		
 		for( auto& lod : mesh.lods )
 		{
 			auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferManager );
@@ -513,8 +544,15 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 				}
 			}
 			lod.vb = vb;
+
+			for( auto& morphTarget : lod.morphTargets )
+			{
+				morphTarget.vb = cmf::ChangeBufferVertexDeclaration( morphTarget.vb, mesh.morphTargets.decl, newMorphTargetsDecl, allocator, bufferManager );
+			}
 		}
+
 		mesh.decl = newDecl;
+		mesh.morphTargets.decl = newMorphTargetsDecl;
 	}
 }
 
@@ -603,68 +641,80 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			}
 
 			// Process vertex data
-			const auto* vbBytes = static_cast<const uint8_t*>( bufferManager.GetData( lod.vb ) );
-
-			AlignBuffer( gltfBuffer, sizeof( float ) );
-			const size_t byteOffset = gltfBuffer.data.size();
-			const size_t byteLength = static_cast<size_t>( lod.vb.size );
-			gltfBuffer.data.resize( byteOffset + byteLength );
-
-			uint8_t* dst = gltfBuffer.data.data() + byteOffset;
-
-			// Since Gltf supports interleaved data, just copy the whole buffer into the new gltf buffer
-			memcpy( dst, vbBytes, lod.vb.size );
-
-			// A single interleaved buffer view shared by all the vertex attribute accessors
-			const int vbBVIdx = static_cast<int>( model.bufferViews.size() );
+			auto processVertexData = [&gltfBuffer, &model, &vertexCount, &bufferManager]( std::map<std::string, int>& attributes, 
+				const cmf::BufferView& vb, const cmf::Span<cmf::VertexElement>& decl )
 			{
-				tinygltf::BufferView bv;
-				bv.buffer = 0;
-				bv.byteOffset = byteOffset;
-				bv.byteLength = byteLength;
-				bv.target = TINYGLTF_TARGET_ARRAY_BUFFER;
-				bv.byteStride = lod.vb.stride;
-				model.bufferViews.push_back( bv );
-			}
+				const auto* vbBytes = static_cast<const uint8_t*>( bufferManager.GetData( vb ) );
 
-			for( const auto& elem : mesh.decl )
-			{
-				const std::string name = GenerateAttributeName( prim.attributes, elem.usage, elem.usageIndex );
+				AlignBuffer( gltfBuffer, sizeof( float ) );
+				const size_t byteOffset = gltfBuffer.data.size();
+				const size_t byteLength = static_cast<size_t>( vb.size );
+				gltfBuffer.data.resize( byteOffset + byteLength );
 
-				tinygltf::Accessor acc;
-				acc.bufferView = vbBVIdx;
-				acc.byteOffset = elem.offset;
-				acc.componentType = GetGltfComponentType( elem.type );
-				acc.normalized = cmf::IsNormalizedElementType( elem.type );
-				acc.type = GetGLTFTypeFromComponentCount( elem.elementCount );
-				acc.count = vertexCount;
+				uint8_t* dst = gltfBuffer.data.data() + byteOffset;
 
-				// glTF only requires min/max bounds on the position accessor, but we provide them for all
-				// float attributes. Non-float attributes are skipped since this loop reads float components.
-				if( elem.type == cmf::ElementType::Float32 )
+				// Since Gltf supports interleaved data, just copy the whole buffer into the new gltf buffer
+				memcpy( dst, vbBytes, vb.size );
+
+				// A single interleaved buffer view shared by all the vertex attribute accessors
+				const int vbBVIdx = static_cast<int>( model.bufferViews.size() );
 				{
-					std::vector<double> minVals( elem.elementCount, DBL_MAX );
-					std::vector<double> maxVals( elem.elementCount, -DBL_MAX );
-
-					for( uint32_t i = 0; i < vertexCount; i++ )
-					{
-						const uint32_t vertexRowOffset = i * lod.vb.stride + elem.offset;
-						for( int j = 0; j < elem.elementCount; j++ )
-						{
-							float value = 0;
-							memcpy( &value, vbBytes + vertexRowOffset + j * sizeof( float ), sizeof( float ) );
-							minVals[j] = std::min( minVals[j], static_cast<double>( value ) );
-							maxVals[j] = std::max( maxVals[j], static_cast<double>( value ) );
-						}
-					}
-
-					acc.minValues = minVals;
-					acc.maxValues = maxVals;
+					tinygltf::BufferView bv;
+					bv.buffer = 0;
+					bv.byteOffset = byteOffset;
+					bv.byteLength = byteLength;
+					bv.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+					bv.byteStride = vb.stride;
+					model.bufferViews.push_back( bv );
 				}
 
-				const int accIdx = static_cast<int>( model.accessors.size() );
-				model.accessors.push_back( acc );
-				prim.attributes[name] = accIdx;
+				for( const auto& elem : decl )
+				{
+					const std::string name = GenerateAttributeName( attributes, elem.usage, elem.usageIndex );
+
+					tinygltf::Accessor acc;
+					acc.bufferView = vbBVIdx;
+					acc.byteOffset = elem.offset;
+					acc.componentType = GetGltfComponentType( elem.type );
+					acc.normalized = cmf::IsNormalizedElementType( elem.type );
+					acc.type = GetGLTFTypeFromComponentCount( elem.elementCount );
+					acc.count = vertexCount;
+
+					// glTF only requires min/max bounds on the position accessor, but we provide them for all
+					// float attributes. Non-float attributes are skipped since this loop reads float components.
+					if( elem.type == cmf::ElementType::Float32 )
+					{
+						std::vector<double> minVals( elem.elementCount, DBL_MAX );
+						std::vector<double> maxVals( elem.elementCount, -DBL_MAX );
+
+						for( uint32_t i = 0; i < vertexCount; i++ )
+						{
+							const uint32_t vertexRowOffset = i * vb.stride + elem.offset;
+							for( int j = 0; j < elem.elementCount; j++ )
+							{
+								float value = 0;
+								memcpy( &value, vbBytes + vertexRowOffset + j * sizeof( float ), sizeof( float ) );
+								minVals[j] = std::min( minVals[j], static_cast<double>( value ) );
+								maxVals[j] = std::max( maxVals[j], static_cast<double>( value ) );
+							}
+						}
+
+						acc.minValues = minVals;
+						acc.maxValues = maxVals;
+					}
+
+					const int accIdx = static_cast<int>( model.accessors.size() );
+					model.accessors.push_back( acc );
+					attributes[name] = accIdx;
+				}
+			};
+			
+			processVertexData( prim.attributes, lod.vb, mesh.decl );
+
+			prim.targets.resize( mesh.morphTargets.targets.size() );
+			for( size_t i = 0; i < mesh.morphTargets.targets.size(); i++ )
+			{
+				processVertexData( prim.targets[i], lod.morphTargets[i].vb, mesh.morphTargets.decl );
 			}
 
 			const int meshIdx = static_cast<int>( model.meshes.size() );
@@ -680,6 +730,10 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 				tinygltf::Node node;
 				node.name = meshName;
 				node.mesh = meshIdx;
+				if( mesh.skeleton != 0xFF )
+				{
+					node.skin = mesh.skeleton;
+				}
 				model.nodes.push_back( node );
 			}
 
