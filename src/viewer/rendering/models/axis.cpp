@@ -22,6 +22,22 @@ const std::array<AxisVertex, 6> AXIS_MESH = {
 	AxisVertex{ { 0.0f, 0.0f, 1.0f }, BLUE },
 };
 
+const std::array<AxisVertex, 2> NORMAL_MESH = {
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, GREEN },
+	AxisVertex{ { 0.0f, 1.0f, 0.0f }, GREEN },
+};
+
+
+const std::array<AxisVertex, 2> TANGENT_MESH = {
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, RED },
+	AxisVertex{ { 1.0f, 0.0f, 0.0f }, RED },
+};
+
+const std::array<AxisVertex, 2> BITANGENT_MESH = {
+	AxisVertex{ { 0.0f, 0.0f, 0.0f }, BLUE },
+	AxisVertex{ { 0.0f, 0.0f, 1.0f }, BLUE },
+};
+
 PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer )
 {
 	auto effect = PrimitiveEffects::CreateAxisEffect( renderer );
@@ -30,6 +46,60 @@ PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer )
 	model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH.data() ), (uint32_t)AXIS_MESH.size() * sizeof( AxisVertex ), sizeof( AxisVertex ) );
 
 	return model;
+}
+
+PrimitiveRenderable CreateNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreateUnpackedAxisEffect( renderer, cmf::Usage::Normal, mesh ) );
+}
+
+PrimitiveRenderable CreateTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreateUnpackedAxisEffect( renderer, cmf::Usage::Tangent, mesh ) );
+}
+
+PrimitiveRenderable CreateBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreateUnpackedAxisEffect( renderer, cmf::Usage::Binormal, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedAxisEffect( renderer, cmf::Usage::Normal, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedAxisEffect( renderer, cmf::Usage::Tangent, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedAxisEffect( renderer, cmf::Usage::Binormal, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedLegacyNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedLegacyAxisEffect( renderer, cmf::Usage::Normal, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedLegacyTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedLegacyAxisEffect( renderer, cmf::Usage::Tangent, mesh ) );
+}
+
+PrimitiveRenderable CreatePackedLegacyBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh )
+{
+	// the bufferdata is the output of the geoprepass and will be handled later
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedLegacyAxisEffect( renderer, cmf::Usage::Binormal, mesh ) );
 }
 
 }

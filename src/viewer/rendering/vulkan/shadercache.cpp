@@ -168,7 +168,7 @@ VkResult ShaderCache::CreateGraphicsPipeline( const Renderer* renderer, std::str
 
 	VkVertexInputBindingDescription bindingDecl{};
 	bindingDecl.binding = 0; // expected to be 0 since we only support one vertex buffer
-	bindingDecl.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	bindingDecl.inputRate = config.vertexInputRate;
 	bindingDecl.stride = (uint32_t)config.stride;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState{};

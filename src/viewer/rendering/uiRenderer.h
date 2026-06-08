@@ -68,6 +68,9 @@ private:
 		bool wireframeOverlay{ false };
 		bool audioOcclusionMesh{ false };
 		bool hasAudioOcclusionMesh{ false };
+		bool showVertexNormals{ false };
+		bool showVertexTangents{ false };
+		bool showVertexBinormals{ false };
 	};
 
 	struct ModelUiState

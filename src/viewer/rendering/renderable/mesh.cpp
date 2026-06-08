@@ -1,6 +1,7 @@
 #include "mesh.h"
 
 #include "../models/boundingBox.h"
+#include "../models/axis.h"
 #include "../renderer.h"
 #include "../vulkan/vulkanerrors.h"
 #include "../models/primitiveEffects.h"
@@ -18,8 +19,34 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 	for( const auto& vertexElement : m_cmfMesh.decl )
 	{
 		m_availableVertexElements.push_back( vertexElement );
+		if( vertexElement.usage == cmf::Usage::Normal )
+		{
+			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateNormal( renderer, m_cmfMesh ) );
+		}
+		else if( vertexElement.usage == cmf::Usage::Tangent )
+		{
+			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateTangent( renderer, m_cmfMesh ) );
+		}
+		else if( vertexElement.usage == cmf::Usage::Binormal )
+		{
+			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateBinormal( renderer, m_cmfMesh ) );
+		}
+		else if( vertexElement.usage == cmf::Usage::PackedTangent )
+		{
+			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedNormal( renderer, m_cmfMesh ) );
+			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedTangent( renderer, m_cmfMesh ) );
+			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedBinormal( renderer, m_cmfMesh ) );
+		}
+		else if( vertexElement.usage == cmf::Usage::PackedTangentLegacy )
+		{
+			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedNormal( renderer, m_cmfMesh ) );
+			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedTangent( renderer, m_cmfMesh ) );
+			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedBinormal( renderer, m_cmfMesh ) );
+		}
 	}
+
 	m_boundingSphere = CcpMath::Sphere( m_cmfMesh.bounds );
+
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
 	m_stride = m_cmfMesh.lods[0].vb.stride;
 
@@ -98,6 +125,19 @@ void MeshRenderable::Initialize( AppState& appState )
 			uint32_t( m_cmfMesh.audioOcclusionMesh.indices.size() * sizeof( uint16_t ) ),
 			sizeof( uint16_t ) );
 		m_audioOcclusionRenderable.Initialize();
+	}
+
+	if( m_normalAxisRenderable )
+	{
+		m_normalAxisRenderable->Initialize();
+	}
+	if( m_tangentAxisRenderable )
+	{
+		m_tangentAxisRenderable->Initialize();
+	}
+	if( m_binormalAxisRenderable )
+	{
+		m_binormalAxisRenderable->Initialize();
 	}
 	m_initialized = true;
 }
@@ -197,7 +237,7 @@ void MeshRenderable::Update( AppState& appState, const Camera& camera )
 
 void MeshRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera )
 {
-	auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
+	auto viewProj = GraphicsEffect::VertexUboData{ camera.GetProjection(), camera.GetView() };
 
 	auto vertexBuffer = m_prepass.GetVertexBuffer();
 	const Buffer indexBuffer = m_prepass.GetIndexBuffer();
@@ -241,6 +281,7 @@ void MeshRenderable::Render( GraphicsCommandBuffer& commandBuffer, const AppStat
 
 void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera )
 {
+	auto viewProj = GraphicsEffect::VertexUboData{ camera.GetProjection(), camera.GetView() };
 	if( m_showBoundingBox )
 	{
 		auto vertexData = PrimitiveEffects::VertexUBO{ camera.GetProjection(), camera.GetView(), m_boundingBoxTransform, Vector4() };
@@ -250,9 +291,25 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 
 	if( m_audioOcclusion && !m_cmfMesh.audioOcclusionMesh.vertices.empty() && !m_cmfMesh.audioOcclusionMesh.indices.empty() )
 	{
-		auto viewProj = VertexUboData{ camera.GetProjection(), camera.GetView() };
 		m_audioOcclusionRenderable.SetUniformData( 0, viewProj );
 		m_audioOcclusionRenderable.Render( commandBuffer );
+	}
+	const auto& meshState = appState.modelState.meshes[m_meshIndex].GetValue();
+
+	if( m_tangentAxisRenderable && meshState.showVertexTangents.GetValue() )
+	{
+		m_tangentAxisRenderable->SetUniformData( 0, viewProj );
+		m_tangentAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount(m_cmfMesh.lods[m_currentLod].vb) );
+	}
+	if( m_normalAxisRenderable && meshState.showVertexNormals.GetValue() )
+	{
+		m_normalAxisRenderable->SetUniformData( 0, viewProj );
+		m_normalAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
+	}
+	if( m_binormalAxisRenderable && meshState.showVertexBinormals.GetValue() )
+	{
+		m_binormalAxisRenderable->SetUniformData( 0, viewProj );
+		m_binormalAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
 	}
 }
 
@@ -304,7 +361,7 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 	m_modelEffect.SetConfig( config );
 	if( !m_modelEffect.IsInitialized() )
 	{
-		m_modelEffect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+		m_modelEffect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 		m_modelEffect.Initialize();
 	}
 
@@ -325,7 +382,7 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 
 		m_wireframeEffect.SetShaderName( "wireframeoverlay" );
 		m_wireframeEffect.SetConfig( wireframeConfig );
-		m_wireframeEffect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+		m_wireframeEffect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 		m_wireframeEffect.Initialize();
 	}
 	return VK_SUCCESS;
@@ -351,7 +408,7 @@ GraphicsEffect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Re
 	GraphicsEffect effect( renderer );
 	effect.SetShaderName( "Face Normal" );
 	effect.SetConfig( config );
-	effect.RegisterUniformData<VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
+	effect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 	return effect;
 }
 

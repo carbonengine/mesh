@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../vulkan/graphicseffect.h"
+#include <cmf/v1.h>
 
 namespace PrimitiveEffects
 {
@@ -13,6 +14,13 @@ struct VertexUBO
 	Vector4 boneInfo; // x = boneCount, y = how many bones transforms are used per instance
 };
 
+struct AxisConfig
+{
+	Vector3 color;
+	float scale;
+	uint32_t axisIndex; // 0 for normal, 1 for tangent, 2 for bitangent
+};
+
 struct ColorInfo
 {
 	Vector4 unselected;
@@ -21,4 +29,8 @@ struct ColorInfo
 
 GraphicsEffect CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffect::Config config, std::vector<uint32_t> vertexToBoneMapping );
 GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer );
+GraphicsEffect CreateUnpackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
+GraphicsEffect CreatePackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
+GraphicsEffect CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
+
 };

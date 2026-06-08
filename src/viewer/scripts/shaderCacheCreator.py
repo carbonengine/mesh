@@ -61,6 +61,8 @@ def enumerate_files( sourceDir, binaryDir, output):
             shaders[1] = filename
         elif shaderType == 'comp':
             shaders[2] = filename
+        else:
+            continueu
 
         shaderGroups[name] = shaders
 

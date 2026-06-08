@@ -38,12 +38,6 @@ private:
 	};
 	GraphicsEffect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh );
 
-	struct VertexUboData
-	{
-		Matrix proj;
-		Matrix view;
-	};
-
 	std::vector<cmf::VertexElement> m_availableVertexElements;
 	std::shared_ptr<const Renderer> m_renderer;
 
@@ -78,6 +72,10 @@ private:
 	// bounding box
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
+
+	std::unique_ptr<PrimitiveRenderable> m_normalAxisRenderable;
+	std::unique_ptr<PrimitiveRenderable> m_tangentAxisRenderable;
+	std::unique_ptr<PrimitiveRenderable> m_binormalAxisRenderable;
 
 	// audio occlusion
 	PrimitiveRenderable m_audioOcclusionRenderable;

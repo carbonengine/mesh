@@ -11,6 +11,7 @@ public:
 	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, GraphicsEffect&& effect );
 	~PrimitiveRenderable();
 
+	void SetBuffer( const Buffer* buffer );
 	void SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride );
 	void SetIndexData( const uint8_t* data, uint32_t size, uint32_t stride );
 	GraphicsEffect& GetEffect();
@@ -23,6 +24,7 @@ public:
 
 	VkResult Initialize();
 	void Render( GraphicsCommandBuffer& commandBuffer, uint32_t instanceCount = 1 );
+	void Render( GraphicsCommandBuffer& commandBuffer, const Buffer* vertexBuffer, const Buffer* indexBuffer, uint32_t elements, uint32_t instanceCount );
 
 private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };

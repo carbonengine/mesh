@@ -424,7 +424,6 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "%u", m_uiState.modelStates.indexCount );
 		ImGui::TableNextRow();
 
-
 		ImGui::TableNextColumn();
 		ImGui::Text( "Meshes" );
 		ImGui::TableNextColumn();
@@ -486,6 +485,50 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		} );
 		ImGui::TableNextRow();
 		ImGui::EndDisabled();
+
+		ImGui::TableNextColumn();
+		ImGui::Text( "Normals" );
+		ImGui::SetItemTooltip( "Toggles the normals for all meshes" );
+		ImGui::TableNextColumn();
+		bool normals = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+						   return state.GetValue().showVertexNormals.GetValue();
+					   } ) &&
+			appState.modelState.meshes.size() > 0;
+		OnChange( ImGui::Checkbox( "##vertexnormals", &normals ), [&appState, &normals]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [normals]( State<MeshState>& state ) {
+				state.GetValue().showVertexNormals.SetValue( normals );
+			} );
+		} );
+
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		ImGui::Text( "Tangents" );
+		ImGui::SetItemTooltip( "Toggles the tangents for all meshes" );
+		ImGui::TableNextColumn();
+		bool tangents = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+							return state.GetValue().showVertexTangents.GetValue();
+						} ) &&
+			appState.modelState.meshes.size() > 0;
+		OnChange( ImGui::Checkbox( "##vertextangents", &tangents ), [&appState, &tangents]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [tangents]( State<MeshState>& state ) {
+				state.GetValue().showVertexTangents.SetValue( tangents );
+			} );
+		} );
+
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		ImGui::Text( "Bitangents" );
+		ImGui::SetItemTooltip( "Toggles the bitangents for all meshes" );
+		ImGui::TableNextColumn();
+		bool bitangents = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+							  return state.GetValue().showVertexBinormals.GetValue();
+						  } ) &&
+			appState.modelState.meshes.size() > 0;
+		OnChange( ImGui::Checkbox( "##vertexbitangents", &bitangents ), [&appState, &bitangents]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [bitangents]( State<MeshState>& state ) {
+				state.GetValue().showVertexBinormals.SetValue( bitangents );
+			} );
+		} );
 
 		ImGui::EndTable();
 	}
@@ -594,17 +637,43 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			ImGui::EndDisabled();
 
 			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Normals" );
+			ImGui::SetItemTooltip( "Toggles the normals" );
+			ImGui::TableNextColumn();
+			bool normals = mesh.showVertexNormals;
+			OnChange( ImGui::Checkbox( "##vertexnormals", &normals ), [&appState, &mesh, &normals]() {
+				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexNormals.SetValue( normals );
+			} );
 
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Tangents" );
+			ImGui::SetItemTooltip( "Toggles the tangents" );
+			ImGui::TableNextColumn();
+			bool tangents = mesh.showVertexTangents;
+			OnChange( ImGui::Checkbox( "##vertextangents", &tangents ), [&appState, &mesh, &tangents]() {
+				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexTangents.SetValue( tangents );
+			} );
+
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::Text( "Bitangents" );
+			ImGui::SetItemTooltip( "Toggles the bitangents" );
+			ImGui::TableNextColumn();
+			bool bitangents = mesh.showVertexBinormals;
+			OnChange( ImGui::Checkbox( "##vertexbitangents", &bitangents ), [&appState, &mesh, &bitangents]() {
+				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexBinormals.SetValue( bitangents );
+			} );
 			ImGui::EndTable();
-			if( !mesh.morphTargets.empty() )
+
+			std::string header = "Morph Targets (" + std::to_string( mesh.morphTargets.size() ) + ")";
+			if( ImGui::CollapsingHeader( header.c_str() ) )
 			{
-				if( ImGui::CollapsingHeader( "Morph Targets" ) )
+				uint32_t index = 0;
+				for( const auto& morphTarget : mesh.morphTargets )
 				{
-					uint32_t index = 0;
-					for( const auto& morphTarget : mesh.morphTargets )
-					{
-						SetupMorphTarget( morphTarget, mesh.meshIndex, appState );
-					}
+					SetupMorphTarget( morphTarget, mesh.meshIndex, appState );
 				}
 			}
 		}
@@ -1117,6 +1186,12 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.audioOcclusionMesh = meshAppState.audioOcclusionMesh.GetValue();
 			meshState.hasAudioOcclusionMesh = !mesh.audioOcclusionMesh.vertices.empty() && !mesh.audioOcclusionMesh.indices.empty();
 			meshState.boundingBox = meshAppState.renderBoundingBox.GetValue();
+			meshState.showVertexNormals = meshAppState.showVertexNormals.GetValue();
+			meshState.showVertexBinormals = meshAppState.showVertexBinormals.GetValue();
+			meshState.showVertexTangents = meshAppState.showVertexTangents.GetValue();
+
+			bool showVertexTangents{ false };
+			bool showVertexBinormals{ false };
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
 			meshState.vertexCount = 0;

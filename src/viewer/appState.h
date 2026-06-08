@@ -108,6 +108,9 @@ struct MeshState
 	State<bool> wireframeOverlay{ false };
 	State<bool> audioOcclusionMesh{ false };
 	State<bool> renderBoundingBox{ false };
+	State<bool> showVertexNormals{ false };
+	State<bool> showVertexTangents{ false };
+	State<bool> showVertexBinormals{ false };
 	State<uint32_t> activeLod{ 0 };
 	State<float> meshScreenSize{ 0.0f };
 
