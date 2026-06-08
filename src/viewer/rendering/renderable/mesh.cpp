@@ -39,9 +39,9 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 		}
 		else if( vertexElement.usage == cmf::Usage::PackedTangentLegacy )
 		{
-			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedNormal( renderer, m_cmfMesh ) );
-			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedTangent( renderer, m_cmfMesh ) );
-			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedBinormal( renderer, m_cmfMesh ) );
+			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyNormal( renderer, m_cmfMesh ) );
+			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyTangent( renderer, m_cmfMesh ) );
+			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyBinormal( renderer, m_cmfMesh ) );
 		}
 	}
 

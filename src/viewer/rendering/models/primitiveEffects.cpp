@@ -129,6 +129,6 @@ GraphicsEffect PrimitiveEffects::CreatePackedAxisEffect( std::shared_ptr<const R
 GraphicsEffect PrimitiveEffects::CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
 {
 	auto effect = CreateAxisEffect( renderer, usage, mesh );
-	effect.SetShaderName( "packedtangentaxislegacy" );
+	effect.SetShaderName( "packedtangentlegacyaxis" );
 	return effect;
 }
