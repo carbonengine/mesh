@@ -52,11 +52,15 @@ T& State<T>::GetValue()
 
 namespace detail
 {
-	template <typename T, typename = void>
-	struct has_call_callbacks : std::false_type {};
+template <typename T, typename = void>
+struct has_call_callbacks : std::false_type
+{
+};
 
-	template <typename T>
-	struct has_call_callbacks<T, std::void_t<decltype( std::declval<T&>().CallCallbacks( std::declval<AppState&>() ) )>> : std::true_type {};
+template <typename T>
+struct has_call_callbacks<T, std::void_t<decltype( std::declval<T&>().CallCallbacks( std::declval<AppState&>() ) )>> : std::true_type
+{
+};
 }
 
 template <typename T>

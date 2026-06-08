@@ -448,8 +448,8 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "Display" );
 		ImGui::TableNextColumn();
 		bool display = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-									return state.GetValue().display.GetValue();
-								} ) &&
+						   return state.GetValue().display.GetValue();
+					   } ) &&
 			appState.modelState.meshes.size() > 0;
 		OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &display]() {
 			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [display]( State<MeshState>& state ) {
@@ -684,7 +684,6 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			std::string header = "Morph Targets (" + std::to_string( mesh.morphTargets.size() ) + ")";
 			if( ImGui::CollapsingHeader( header.c_str() ) )
 			{
-				uint32_t index = 0;
 				for( const auto& morphTarget : mesh.morphTargets )
 				{
 					SetupMorphTarget( morphTarget, mesh.meshIndex, appState );
@@ -1203,9 +1202,6 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.showVertexNormals = meshAppState.showVertexNormals.GetValue();
 			meshState.showVertexBinormals = meshAppState.showVertexBinormals.GetValue();
 			meshState.showVertexTangents = meshAppState.showVertexTangents.GetValue();
-
-			bool showVertexTangents{ false };
-			bool showVertexBinormals{ false };
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
 			meshState.vertexCount = 0;

@@ -5,7 +5,6 @@ layout( binding = 0 ) uniform PerFrame
 {
     mat4 projectionMatrix;
     mat4 viewMatrix;
-    mat4 modelMatrix;
 } perframe;
 
 

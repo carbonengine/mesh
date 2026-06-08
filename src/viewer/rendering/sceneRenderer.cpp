@@ -4,13 +4,15 @@
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
 
-const std::vector<std::string> DEFAULT_SHADER_ORDER
+namespace
 {
+const std::vector<std::string> DEFAULT_SHADER_ORDER{
 	"Normal",
 	"Packed Normal",
 	"Packed Normal Legacy",
 	"Face Normal"
 };
+}
 
 SceneRenderer::SceneRenderer( std::shared_ptr<Renderer> renderer ) :
 	m_renderer( renderer ),

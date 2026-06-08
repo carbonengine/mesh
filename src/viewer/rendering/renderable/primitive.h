@@ -11,7 +11,6 @@ public:
 	PrimitiveRenderable( std::shared_ptr<const Renderer> renderer, GraphicsEffect&& effect );
 	~PrimitiveRenderable();
 
-	void SetBuffer( const Buffer* buffer );
 	void SetBufferData( const uint8_t* data, uint32_t size, uint32_t stride );
 	void SetIndexData( const uint8_t* data, uint32_t size, uint32_t stride );
 	GraphicsEffect& GetEffect();

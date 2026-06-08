@@ -8,7 +8,7 @@
 namespace Axis
 {
 
-PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer );
+PrimitiveRenderable CreateOrientationPrimitive( std::shared_ptr<const Renderer> renderer );
 
 PrimitiveRenderable CreateNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh );
 PrimitiveRenderable CreateTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh );

@@ -123,6 +123,9 @@ struct MeshState
 		renderBoundingBox.CallCallbacks( appState );
 		activeLod.CallCallbacks( appState );
 		meshScreenSize.CallCallbacks( appState );
+		showVertexNormals.CallCallbacks( appState );
+		showVertexTangents.CallCallbacks( appState );
+		showVertexBinormals.CallCallbacks( appState );
 	}
 };
 

@@ -6,7 +6,7 @@
 OrientationGizmoRenderer::OrientationGizmoRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
 	m_graphicsCommandBuffer( renderer.get() ),
-	m_axis( Axis::Create( renderer ) )
+	m_axis( Axis::CreateOrientationPrimitive( renderer ) )
 {
 	m_graphicsCommandBuffer.SetClearDepth( 1.0f );
 }

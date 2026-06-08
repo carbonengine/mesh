@@ -78,6 +78,8 @@ VkResult PrimitiveRenderable::Initialize()
 
 void PrimitiveRenderable::Render( GraphicsCommandBuffer& commandBuffer, const Buffer* vertexBuffer, const Buffer* indexBuffer, uint32_t elements, uint32_t instanceCount )
 {
+	assert( vertexBuffer != nullptr );
+
 	commandBuffer.BindEffect( m_effect );
 	commandBuffer.BindVertexBuffer( vertexBuffer->GetGpuBuffer() );
 	if( indexBuffer )

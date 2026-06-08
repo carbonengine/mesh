@@ -22,25 +22,9 @@ const std::array<AxisVertex, 6> AXIS_MESH = {
 	AxisVertex{ { 0.0f, 0.0f, 1.0f }, BLUE },
 };
 
-const std::array<AxisVertex, 2> NORMAL_MESH = {
-	AxisVertex{ { 0.0f, 0.0f, 0.0f }, GREEN },
-	AxisVertex{ { 0.0f, 1.0f, 0.0f }, GREEN },
-};
-
-
-const std::array<AxisVertex, 2> TANGENT_MESH = {
-	AxisVertex{ { 0.0f, 0.0f, 0.0f }, RED },
-	AxisVertex{ { 1.0f, 0.0f, 0.0f }, RED },
-};
-
-const std::array<AxisVertex, 2> BITANGENT_MESH = {
-	AxisVertex{ { 0.0f, 0.0f, 0.0f }, BLUE },
-	AxisVertex{ { 0.0f, 0.0f, 1.0f }, BLUE },
-};
-
-PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer )
+PrimitiveRenderable CreateOrientationPrimitive( std::shared_ptr<const Renderer> renderer )
 {
-	auto effect = PrimitiveEffects::CreateAxisEffect( renderer );
+	auto effect = PrimitiveEffects::CreateOrientationEffect( renderer );
 
 	auto model = PrimitiveRenderable( renderer, std::move( effect ) );
 	model.SetBufferData( reinterpret_cast<const uint8_t*>( AXIS_MESH.data() ), (uint32_t)AXIS_MESH.size() * sizeof( AxisVertex ), sizeof( AxisVertex ) );

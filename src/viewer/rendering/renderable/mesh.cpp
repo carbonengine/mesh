@@ -299,7 +299,7 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 	if( m_tangentAxisRenderable && meshState.showVertexTangents.GetValue() )
 	{
 		m_tangentAxisRenderable->SetUniformData( 0, viewProj );
-		m_tangentAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount(m_cmfMesh.lods[m_currentLod].vb) );
+		m_tangentAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
 	}
 	if( m_normalAxisRenderable && meshState.showVertexNormals.GetValue() )
 	{
