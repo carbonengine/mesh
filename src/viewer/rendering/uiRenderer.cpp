@@ -445,6 +445,20 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
+		ImGui::Text( "Display" );
+		ImGui::TableNextColumn();
+		bool display = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+									return state.GetValue().display.GetValue();
+								} ) &&
+			appState.modelState.meshes.size() > 0;
+		OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &display]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [display]( State<MeshState>& state ) {
+				state.GetValue().display.SetValue( display );
+			} );
+		} );
+		ImGui::TableNextRow();
+
+		ImGui::TableNextColumn();
 		ImGui::Text( "Bounding Box" );
 		ImGui::TableNextColumn();
 		bool boundingBox = m_uiState.modelStates.boundingBox;
