@@ -39,7 +39,13 @@ const cmf::VertexElement* FindPackedTangentElement( const cmf::Span<cmf::VertexE
 }
 
 
-void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> positions, cmf::ConstBufferElementStream<Vector3> normals, cmf::ConstBufferElementStream<Vector2> texCoords, cmf::BufferElementStream<Vector3> tangents, cmf::BufferElementStream<Vector3> bitangents )
+void GenerateMikkTSpaceTangents(
+	cmf::ConstBufferElementStream<Vector3> positions,
+	cmf::ConstBufferElementStream<Vector3> normals,
+	cmf::ConstBufferElementStream<Vector2> texCoords,
+	const cmf::FlipTangentOptions& flip,
+	cmf::BufferElementStream<Vector3> tangents,
+	cmf::BufferElementStream<Vector3> bitangents )
 {
 	const int vertexCount = (int)positions.size();
 	const int faceCount = vertexCount / 3;
@@ -48,6 +54,7 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 	struct MikkTSpaceData
 	{
 		int faceCount;
+		cmf::FlipTangentOptions flip;
 
 		cmf::ConstBufferElementStream<Vector3> positions;
 		cmf::ConstBufferElementStream<Vector3> normals;
@@ -57,7 +64,7 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 		cmf::BufferElementStream<Vector3> bitangents;
 	};
 
-	MikkTSpaceData data = { faceCount, positions, normals, texCoords, tangents, bitangents };
+	MikkTSpaceData data = { faceCount, flip, positions, normals, texCoords, tangents, bitangents };
 
 	SMikkTSpaceInterface interface = {};
 
@@ -99,6 +106,14 @@ void GenerateMikkTSpaceTangents( cmf::ConstBufferElementStream<Vector3> position
 		auto normal = data->normals[index];
 		Vector3 tangent = Vector3( tangentFloats[0], tangentFloats[1], tangentFloats[2] );
 		auto bitangent = Cross( tangent, normal ) * sign;
+		if( data->flip.flipTangent )
+		{
+			tangent = -tangent;
+		}
+		if( data->flip.flipBinormal )
+		{
+			bitangent = -bitangent;
+		}
 		data->tangents.set( index, tangent );
 		data->bitangents.set( index, bitangent );
 	};
@@ -116,7 +131,7 @@ namespace cmf
 {
 
 
-bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
+bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, const FlipTangentOptions& flip, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager )
 {
 	bool success = true;
 
@@ -212,6 +227,7 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
 					ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
 					ConstBufferElementStream<Vector2>( *texCoordElement, lod.vb, bufferManager ),
+					flip,
 					BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
 					BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 
@@ -252,11 +268,12 @@ bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, Memor
 					auto newBitangents = BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager );
 
 					GenerateMikkTSpaceTangents(
-						ConstBufferElementStream<Vector3>( *positionElement, lod.vb, bufferManager ),
-						ConstBufferElementStream<Vector3>( *normalElement, lod.vb, bufferManager ),
+						ConstBufferElementStream<Vector3>( *positionElement, morphTarget.vb, bufferManager ),
+						ConstBufferElementStream<Vector3>( *normalElement, morphTarget.vb, bufferManager ),
 						morphTexCoordElement ?
 							ConstBufferElementStream<Vector2>( *morphTexCoordElement, morphTarget.vb, bufferManager ) :
 							ConstBufferElementStream<Vector2>( *meshTexCoordElement, lod.vb, bufferManager ),
+						flip,
 						BufferElementStream<Vector3>( newTangentElement, newVb, bufferManager ),
 						BufferElementStream<Vector3>( newBitangentElement, newVb, bufferManager ) );
 

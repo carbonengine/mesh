@@ -15,32 +15,26 @@
  */
 void ImportBone( const ufbx_node& obj, cmf::Skeleton& skeleton, uint32_t parentIndex, cmf::MemoryAllocator& allocator, std::vector<const ufbx_node*>& bones, bool moveToOrigin, const CoordinateSystem& system )
 {
+	const auto isRootBone = parentIndex == 0xffffffff;
 	bones.push_back( &obj );
 
 	cmf::Modify( skeleton.bones, allocator ).push_back( allocator.AllocateString( ToString( obj.name ) ) );
 	cmf::Modify( skeleton.parents, allocator ).push_back( parentIndex );
 	parentIndex = uint32_t( skeleton.bones.size() - 1 );
 
-	Matrix globalTransform = ToMatrix( obj.geometry_to_world );
-	auto invTransform = system.TransformMatrix( Inverse( globalTransform ) );
-	cmf::Modify( skeleton.invBindTransforms, allocator ).push_back( invTransform );
-
-	ufbx_transform transform = obj.local_transform;
-	if( moveToOrigin )
+	Matrix localTransform = ToMatrix( obj.local_transform );
+	if( isRootBone )
 	{
-		transform.translation.x = 0.f;
-		transform.translation.y = 0.f;
-		transform.translation.z = 0.f;
-		transform.rotation.x = 0.f;
-		transform.rotation.y = 0.f;
-		transform.rotation.z = 0.f;
-		transform.rotation.w = 1.f;
+		localTransform = ToMatrix( obj.node_to_world ) * system.m_transform;
 	}
-	Matrix localTransform = ToMatrix( transform );
-	localTransform = system.TransformMatrix( localTransform );
-
 	cmf::Transform restTransform;
 	Decompose( restTransform.scale, restTransform.rotation, restTransform.position, localTransform );
+	restTransform.position *= system.m_scale;
+	if( moveToOrigin )
+	{
+		restTransform.position = Vector3( 0, 0, 0 );
+		restTransform.rotation = Quaternion( 0, 0, 0, 1 );
+	}
 
 	cmf::Modify( skeleton.restTransforms, allocator ).push_back( restTransform );
 
@@ -59,7 +53,7 @@ void ImportBone( const ufbx_node& obj, cmf::Skeleton& skeleton, uint32_t parentI
 			cmf::Modify( skeleton.boneMasks, allocator ).push_back( mask );
 			found = skeleton.boneMasks.end() - 1;
 		}
-		cmf::Modify( found->weights, allocator ).push_back( { parentIndex, float( prop.value_real ) } );
+		cmf::Modify( found->weights, allocator ).push_back( { parentIndex, std::clamp( float( prop.value_real ), 0.0f, 1.0f ) } );
 	}
 
 	for( int i = 0; i < obj.children.count; ++i )
@@ -90,6 +84,20 @@ std::pair<cmf::Skeleton, std::vector<const ufbx_node*>> ImportSkeleton( const uf
 	skeleton.name = allocator.AllocateString( ToString( node.name ) );
 	std::vector<const ufbx_node*> bones;
 	ImportBone( node, skeleton, -1, allocator, bones, options.moveToOrigin, system );
+
+	skeleton.invBindTransforms = allocator.AllocateSpan<Matrix>( skeleton.bones.size() );
+	for( uint32_t i = 0; i < skeleton.bones.size(); ++i )
+	{
+		auto localTransform = TransformationMatrix( skeleton.restTransforms[i].scale, skeleton.restTransforms[i].rotation, skeleton.restTransforms[i].position );
+		Matrix parentInvTransform = IdentityMatrix();
+		if( skeleton.parents[i] != 0xffffffff )
+		{
+			parentInvTransform = skeleton.invBindTransforms[skeleton.parents[i]];
+		}
+		auto invTransform = parentInvTransform * Inverse( localTransform );
+		skeleton.invBindTransforms[i] = invTransform;
+	}
+
 	return { skeleton, bones };
 }
 
@@ -111,14 +119,6 @@ std::pair<cmf::Span<cmf::Skeleton>, BoneMap> ImportSkeletons( const ufbx_scene& 
 			{
 				continue;
 			}
-
-			// Some skeletons are nested inside mesh nodes. We need to include the parent node in this case as if
-			// it is a root bone to match legacy importer.
-			if( obj->parent && ufbx_as_node( &obj->parent->element ) && obj->parent != scene.root_node )
-			{
-				obj = obj->parent;
-			}
-
 			if( !options.namedFilter( ToString( obj->name ) ) )
 			{
 				continue;
@@ -130,9 +130,6 @@ std::pair<cmf::Span<cmf::Skeleton>, BoneMap> ImportSkeletons( const ufbx_scene& 
 				boneMap[bone] = { uint32_t( skeletons.size() - 1 ), bone == obj };
 			}
 		}
-
-		// To match the order of skeletons in the legacy importer
-		std::reverse( skeletons.begin(), skeletons.end() );
 	}
 	return { skeletons, boneMap };
 }

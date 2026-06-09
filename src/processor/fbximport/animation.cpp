@@ -114,23 +114,45 @@ void ImportSkeletalAnimations(
 		scale.curveIndex = uint32_t( curves.size() ) + 2;
 		cmf::Modify( channels, allocator ).push_back( scale );
 
+		const auto isRootBone = boneMap.find( target )->second.isRoot;
 		auto moveBoneToOrigin = moveToOrigin && boneMap.find( target )->second.isRoot;
 
 		Vector3 initialPosition = { 0, 0, 0 };
 		Quaternion initialRotation = { 0, 0, 0, 1 };
 		if( moveBoneToOrigin )
 		{
-			initialPosition = ToVector3( bake_node->translation_keys[0].value );
+			initialPosition = system.TransformPoint( ToVector3( bake_node->translation_keys[0].value ) );
 			initialRotation = system.TransformRotation( ToQuaternion( bake_node->rotation_keys[0].value ) );
 		}
+		auto parentTransform = ( target->parent ? ToMatrix( target->parent->node_to_world ) : IdentityMatrix() ) * system.m_transform;
 
-		cmf::AnimationCurve outPosition = ImportCurve( bake_node->translation_keys, allocator, [&]( const ufbx_vec3& v ) {
-			return system.TransformPoint( ToVector3( v ) - initialPosition );
+		const cmf::AnimationCurve outPosition = ImportCurve( bake_node->translation_keys, allocator, [&]( const ufbx_vec3& v ) {
+			if( isRootBone )
+			{
+				if( moveBoneToOrigin )
+				{
+					return system.TransformPoint( ToVector3( v ) ) - initialPosition;
+				}
+				return TransformCoord( ToVector3( v ), parentTransform ) * system.m_scale;
+			}
+			return ToVector3( v ) * system.m_scale;
 		} );
-		cmf::AnimationCurve outRotation = ImportCurve( bake_node->rotation_keys, allocator, [&]( const ufbx_quat& q ) {
-			return system.TransformRotation( ToQuaternion( q ) ) * Inverse( initialRotation );
+		const cmf::AnimationCurve outRotation = ImportCurve( bake_node->rotation_keys, allocator, [&]( const ufbx_quat& q ) {
+			if( isRootBone )
+			{
+				if( moveBoneToOrigin )
+				{
+					return system.TransformRotation( ToQuaternion( q ) ) * Inverse( initialRotation );
+				}
+				auto m = RotationMatrix( ToQuaternion( q ) ) * parentTransform;
+				Vector3 position, scale;
+				Quaternion rotation;
+				Decompose( scale, rotation, position, m );
+				return rotation;
+			}
+			return ToQuaternion( q );
 		} );
-		cmf::AnimationCurve outScale = ImportCurve( bake_node->scale_keys, allocator, []( const ufbx_vec3& v ) {
+		const cmf::AnimationCurve outScale = ImportCurve( bake_node->scale_keys, allocator, [&]( const ufbx_vec3& v ) {
 			return ToVector3( v );
 		} );
 
