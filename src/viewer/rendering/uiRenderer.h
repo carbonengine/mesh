@@ -158,6 +158,7 @@ private:
 	void SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState );
 
 	void UpdateUiState( AppState& appState );
+	void ToggleUiVisibility();
 	const char* FileOpenDialog();
 
 	struct AttributeInfo
@@ -191,6 +192,7 @@ private:
 	GraphicsCommandBuffer m_graphicsCommandBuffer;
 
 	UiState m_uiState{};
+	bool m_showMainUI{ true };
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	Playback m_playback{};
 	MeshDetailsState m_meshDetailsState{};

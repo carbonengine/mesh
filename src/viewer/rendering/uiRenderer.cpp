@@ -219,12 +219,13 @@ void UIRenderer::Render( AppState& appState )
 void UIRenderer::SetupUi( AppState& appState )
 {
 	UpdateUiState( appState );
+	if( m_showMainUI )
+	{
+		CMFInfoWindow( appState );
+		MeshDetailsWindow( appState );
 
-	CMFInfoWindow( appState );
-	MeshDetailsWindow( appState );
-
-	SetupPlaybackControls( appState );
-
+		SetupPlaybackControls( appState );
+	}
 	SetupPopupWindows( appState );
 }
 
@@ -855,11 +856,22 @@ void UIRenderer::SetupMenubar( AppState& appState )
 
 				ImGui::EndMenu();
 			}
+			ImGui::Separator();
+			const char* toggleUiLabel = m_showMainUI ? "Hide UI" : "Show UI";
+			if( ImGui::MenuItem( toggleUiLabel, "Ctrl+F12" ) )
+			{
+				ToggleUiVisibility();
+			}
 			ImGui::EndMenu();
 		}
 
 		ImGui::EndMainMenuBar();
 	}
+}
+
+void UIRenderer::ToggleUiVisibility()
+{
+	m_showMainUI = !m_showMainUI;
 }
 
 const char* UIRenderer::GetPlaybackButtonLabel() const
@@ -1015,8 +1027,9 @@ void UIRenderer::UpdateInputs( AppState& appState )
 		appState.mouseState.Reset();
 	}
 	// Handle ui keyboard shortcuts
-	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_O ) )
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_O ) )
 	{
+		// file open
 		auto filePath = FileOpenDialog();
 		if( filePath != nullptr )
 		{
@@ -1025,9 +1038,14 @@ void UIRenderer::UpdateInputs( AppState& appState )
 			appState.cmfPath.SetValue( std::string( filePath ) );
 		}
 	}
-	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_F ) )
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F ) )
 	{
+		// focus camera on model
 		appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+	}
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F12 ) )
+	{
+		ToggleUiVisibility();
 	}
 }
 
