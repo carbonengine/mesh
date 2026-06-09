@@ -9,7 +9,7 @@ constexpr float AXIS_LENGTH_MIN_SIZE = 0.001f;
 GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
 {
 	auto effectConfig = GraphicsEffect::Config();
-	PrimitiveEffects::AxisConfig axisConfig;
+	PrimitiveEffects::AxisConfig axisConfig{};
 
 	uint32_t stride = 0;
 	// find the position and normal elements in the vertex declaration,

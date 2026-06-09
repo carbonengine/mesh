@@ -500,6 +500,10 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextRow();
 		ImGui::EndDisabled();
 
+		bool hasNormals = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
+			return state.hasNormals;
+		} );
+		ImGui::BeginDisabled( !hasNormals );
 		ImGui::TableNextColumn();
 		ImGui::Text( "Normals" );
 		ImGui::SetItemTooltip( "Toggles the normals for all meshes" );
@@ -513,7 +517,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 				state.GetValue().showVertexNormals.SetValue( normals );
 			} );
 		} );
+		ImGui::EndDisabled();
 
+
+		bool hasTangents = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
+			return state.hasTangents;
+		} );
+		ImGui::BeginDisabled( !hasTangents );
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
 		ImGui::Text( "Tangents" );
@@ -528,7 +538,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 				state.GetValue().showVertexTangents.SetValue( tangents );
 			} );
 		} );
+		ImGui::EndDisabled();
 
+
+		bool hasBinormals = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
+			return state.hasBinormals;
+		} );
+		ImGui::BeginDisabled( !hasBinormals );
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
 		ImGui::Text( "Bitangents" );
@@ -543,6 +559,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 				state.GetValue().showVertexBinormals.SetValue( bitangents );
 			} );
 		} );
+		ImGui::EndDisabled();
 
 		ImGui::EndTable();
 	}
@@ -650,6 +667,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			} );
 			ImGui::EndDisabled();
 
+			ImGui::BeginDisabled( !mesh.hasNormals );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Normals" );
@@ -659,7 +677,9 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			OnChange( ImGui::Checkbox( "##vertexnormals", &normals ), [&appState, &mesh, &normals]() {
 				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexNormals.SetValue( normals );
 			} );
+			ImGui::EndDisabled();
 
+			ImGui::BeginDisabled( !mesh.hasTangents );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Tangents" );
@@ -670,6 +690,9 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexTangents.SetValue( tangents );
 			} );
 
+			ImGui::EndDisabled();
+
+			ImGui::BeginDisabled( !mesh.hasBinormals );
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
 			ImGui::Text( "Bitangents" );
@@ -679,6 +702,7 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 			OnChange( ImGui::Checkbox( "##vertexbitangents", &bitangents ), [&appState, &mesh, &bitangents]() {
 				appState.modelState.meshes[mesh.meshIndex].GetValue().showVertexBinormals.SetValue( bitangents );
 			} );
+			ImGui::EndDisabled();
 			ImGui::EndTable();
 
 			std::string header = "Morph Targets (" + std::to_string( mesh.morphTargets.size() ) + ")";
@@ -1202,6 +1226,15 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			meshState.showVertexNormals = meshAppState.showVertexNormals.GetValue();
 			meshState.showVertexBinormals = meshAppState.showVertexBinormals.GetValue();
 			meshState.showVertexTangents = meshAppState.showVertexTangents.GetValue();
+			meshState.hasNormals = std::any_of( mesh.decl.begin(), mesh.decl.end(), []( const cmf::VertexElement& element ) {
+				return element.usage == cmf::Usage::Normal || element.usage == cmf::Usage::PackedTangent || element.usage == cmf::Usage::PackedTangentLegacy;
+			} );
+			meshState.hasBinormals = std::any_of( mesh.decl.begin(), mesh.decl.end(), []( const cmf::VertexElement& element ) {
+				return element.usage == cmf::Usage::Binormal || element.usage == cmf::Usage::PackedTangent || element.usage == cmf::Usage::PackedTangentLegacy;
+			} );
+			meshState.hasTangents = std::any_of( mesh.decl.begin(), mesh.decl.end(), []( const cmf::VertexElement& element ) {
+				return element.usage == cmf::Usage::Tangent || element.usage == cmf::Usage::PackedTangent || element.usage == cmf::Usage::PackedTangentLegacy;
+			} );
 
 			maxLod = std::max( maxLod, mesh.lods.size() );
 			meshState.vertexCount = 0;

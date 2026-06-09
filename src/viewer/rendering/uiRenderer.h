@@ -71,6 +71,9 @@ private:
 		bool showVertexNormals{ false };
 		bool showVertexTangents{ false };
 		bool showVertexBinormals{ false };
+		bool hasNormals{ false };
+		bool hasTangents{ false };
+		bool hasBinormals{ false };
 	};
 
 	struct ModelUiState

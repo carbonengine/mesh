@@ -17,7 +17,6 @@ struct VertexUBO
 struct AxisConfig
 {
 	Vector3 color;
-	float _padding;
 	float scale;
 	uint32_t axisIndex; // 0 for normal, 1 for tangent, 2 for bitangent
 };
