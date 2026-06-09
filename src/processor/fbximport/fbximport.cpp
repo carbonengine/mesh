@@ -112,8 +112,8 @@ void ImportFBX( CLI::App& app, ImportFBXArguments& cliArgs )
 
 		const CoordinateSystem system =
 			scene->metadata.file_format == UFBX_FILE_FORMAT_OBJ ?
-			CoordinateSystem{} :
-			CoordinateSystem( scene->settings.axes, float( scene->settings.unit_meters ) );
+			CoordinateSystem{ options.unitsPerMeter > 0.f ? ( 1.0f / options.unitsPerMeter ) : 1.0f } :
+			CoordinateSystem( scene->settings.axes, options.unitsPerMeter > 0.f ? ( 1.0f / options.unitsPerMeter ) : float( scene->settings.unit_meters ) );
 
 		auto [skeletons, boneMap] = ImportSkeletons( *scene, options.skeletonOptions, allocator, system );
 		data.skeletons = skeletons;
