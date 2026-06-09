@@ -8,10 +8,27 @@
 namespace cmf
 {
 
-// Generates tangents and bitangents for the specified mesh. If the mesh already has tangents and bitangents, they will be reused unless forceRebuild is true.
-// The vertex declaration must contain position, normal and texcoord (with the corresponding usageIndex) attributes. The function will regenerate
-// index buffers for the mesh as some vertices may need to be duplicated to accommodate the new tangents.
-CARBON_MESH_EXPORT bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
+struct FlipTangentOptions
+{
+	bool flipTangent = false;
+	bool flipBinormal = false;
+};
+
+/**
+ * @brief Generates tangents and binormals for the specified mesh. If the mesh already has tangents and binormals for the specified usage index, they will be reused unless forceRebuild is true.
+ * The vertex declaration of the mesh must contain position, normal and texcoord attributes with the corresponding usage index. The function will regenerate
+ * index buffers for the mesh as some vertices may need to be duplicated to accommodate the new tangents. This function will also regenerate tangents for morph targets if they exist, 
+ * using the same usage index and applying the same flipping options as for the base mesh.
+ * 
+ * @param mesh The mesh to process.
+ * @param usageIndex The index of the tangent usage set to generate.
+ * @param flip Flags that control flipping of the resulting tangents and/or binormals. This may need to be used if the source UVs were flipped.
+ * @param forceRebuild Whether to force rebuilding tangents even if they already exist.
+ * @param allocator The memory allocator to use for memory operations.
+ * @param bufferManager The buffer manager to use for buffer operations.
+ * @return True if tangent generation succeeded, false otherwise.
+ */
+CARBON_MESH_EXPORT bool GenerateTangents( Mesh& mesh, uint32_t usageIndex, const FlipTangentOptions& flip, bool forceRebuild, MemoryAllocator& allocator, BufferManager& bufferManager );
 
 enum class TangentCompression
 {

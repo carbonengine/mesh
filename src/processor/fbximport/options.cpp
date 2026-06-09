@@ -437,6 +437,10 @@ void from_json( const nlohmann::json& j, MeshImportOptions& p )
 	{
 		j.at( "uvSets" ).get_to( p.uvSets );
 	}
+	if( j.contains( "flipV" ) )
+	{
+		j.at( "flipV" ).get_to( p.flipV );
+	}
 	if( j.contains( "uvType" ) )
 	{
 		j.at( "uvType" ).get_to( p.uvType );
@@ -472,6 +476,7 @@ void to_json( nlohmann::json& j, const MeshImportOptions& p )
 		{ "boneIndexType", p.boneIndexType },
 		{ "regenerateNormals", p.regenerateNormals },
 		{ "uvSets", p.uvSets },
+		{ "flipV", p.flipV },
 		{ "uvType", p.uvType },
 		{ "morphTargets", p.morphTargets },
 		{ "lods", p.lods }
@@ -570,11 +575,21 @@ void from_json( const nlohmann::json& j, ImportOptions& p )
 	{
 		j.at( "lowdetailSuffix" ).get_to( p.lowdetailSuffix );
 	}
+	if( j.contains( "unitsPerMeter" ) )
+	{
+		j.at( "unitsPerMeter" ).get_to( p.unitsPerMeter );
+	}
 }
 
 void to_json( nlohmann::json& j, const ImportOptions& p )
 {
-	j = nlohmann::json{ { "mesh", p.meshOptions }, { "skeleton", p.skeletonOptions }, { "animation", p.animationOptions }, { "lowdetailSuffix", p.lowdetailSuffix } };
+	j = nlohmann::json{
+		{ "mesh", p.meshOptions },
+		{ "skeleton", p.skeletonOptions },
+		{ "animation", p.animationOptions },
+		{ "lowdetailSuffix", p.lowdetailSuffix },
+		{ "unitsPerMeter", p.unitsPerMeter }
+	};
 }
 
 void ValidateOptions( const ImportOptions& options )

@@ -147,6 +147,8 @@ struct MeshImportOptions
 	bool regenerateNormals = false;
 	// Number of UV sets to import
 	uint32_t uvSets = 1;
+	// Flip V coordinate of UVs during import.
+	bool flipV = true;
 	// Element type to use for UV sets.
 	cmf::ElementType uvType = cmf::ElementType::Float16;
 
@@ -203,6 +205,9 @@ struct ImportOptions
 
 	// Filename suffix for low-detail file version
 	std::string lowdetailSuffix;
+
+	// Units per meter override. If greater than zero, it will override the units in the source file
+	float unitsPerMeter = 0.f;
 };
 
 void from_json( const nlohmann::json& j, ImportOptions& p );

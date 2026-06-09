@@ -232,14 +232,18 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 		Vector3 bitan = {};
 		if( options.normals )
 		{
-			norm = systemTransform.TransformVector( TransformNormal( ToVector3( normals[i] ), meshTransform ) );
+			norm = Normalize( systemTransform.TransformVector( TransformNormal( ToVector3( normals[i] ), meshTransform ) ) );
 		}
 		if( options.tangents > 0 )
 		{
 			if( tangents.exists && !options.alwaysComputeTangents )
 			{
-				tan = ToVector3( tangents[i] );
+				tan = Normalize( systemTransform.TransformVector( TransformNormal( ToVector3( tangents[i] ), meshTransform ) ) );
 				bitan = Normalize( Cross( norm, tan ) );
+				if( options.flipV )
+				{
+					bitan = -bitan;
+				}
 			}
 			else
 			{
@@ -279,8 +283,10 @@ cmf::BufferView FillVertexBuffer( const ufbx_mesh& geom, const cmf::Span<cmf::Ve
 			case cmf::Usage::TexCoord: {
 				auto& uvSet = geom.uv_sets[element.usageIndex].vertex_uv;
 				auto tex = ToVector2( uvSet[i] );
-				// Flip V coordinate to conform to the legacy importer
-				tex.y = 1.f - tex.y;
+				if( options.flipV )
+				{
+					tex.y = 1.f - tex.y;
+				}
 				AddToVertex( tex );
 				break;
 			}
@@ -1074,11 +1080,15 @@ cmf::Mesh ImportMesh( const ufbx_node& meshNode, const MeshImportOptions& option
 
 	if( options.tangents > 0 && ( options.alwaysComputeTangents || !geom.vertex_tangent.exists ) )
 	{
-		GenerateTangents( outMesh, 0, true, allocator, bufferAllocator );
+		cmf::FlipTangentOptions flipOptions{};
+		flipOptions.flipBinormal = options.flipV;
+		GenerateTangents( outMesh, 0, flipOptions, true, allocator, bufferAllocator );
 	}
 	for( uint32_t tangentIndex = 1; tangentIndex < options.tangents; ++tangentIndex )
 	{
-		GenerateTangents( outMesh, tangentIndex, true, allocator, bufferAllocator );
+		cmf::FlipTangentOptions flipOptions{};
+		flipOptions.flipBinormal = options.flipV;
+		GenerateTangents( outMesh, tangentIndex, flipOptions, true, allocator, bufferAllocator );
 	}
 	RemoveDuplicateVertices( outMesh.lods[0], bufferAllocator );
 
@@ -1185,9 +1195,6 @@ cmf::Span<cmf::Mesh> ImportMeshes( const ufbx_scene& scene, const MeshImportOpti
 			cmfMesh.skeleton = FindSkeleton( *mesh->mesh, boneMap );
 			cmf::Modify( meshes, allocator ).push_back( cmfMesh );
 		}
-
-		// To match the order of meshes in the legacy importer
-		std::reverse( meshes.begin(), meshes.end() );
 	}
 	return meshes;
 }
