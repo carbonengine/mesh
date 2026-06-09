@@ -99,12 +99,17 @@ void Camera::HandleMouseStateChanged( MouseState& mouseState )
 
 Matrix Camera::GetProjection() const
 {
-	float distToModel = Length( m_at - m_boundingSphere.center );
+	const float ABSOLUTE_MIN_NEAR_PLANE = 0.01f;
+	const float boundingDepth = m_boundingSphere.radius * 2.0f;
+	const float centerDepth = -TransformCoord( m_boundingSphere.center, GetView() ).z;
+	const float nearPlane = std::max( ABSOLUTE_MIN_NEAR_PLANE, centerDepth - boundingDepth );
+	const float farPlane = std::max( nearPlane + ABSOLUTE_MIN_NEAR_PLANE, centerDepth + boundingDepth );
+
 	return PerspectiveFovMatrix(
 		m_fov,
 		m_screenSize.x / m_screenSize.y,
-		std::max( 0.01f, std::max( m_boundingSphere.radius / 10000.0f, m_zoom - distToModel - m_boundingSphere.radius ) ),
-		distToModel + m_zoom + m_boundingSphere.radius );
+		nearPlane,
+		farPlane );
 }
 
 Matrix Camera::GetRotation() const
