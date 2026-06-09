@@ -68,6 +68,11 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 		}
 		const auto& animation = *animationIt;
 
+		for( auto& mesh : m_meshes )
+		{
+			mesh.SetAnimation( &animation );
+		}
+
 		for( auto& animationState : m_animationStates )
 		{
 			animationState.SetAnimation( &animation );

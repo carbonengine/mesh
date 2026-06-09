@@ -142,6 +142,28 @@ void MeshRenderable::Initialize( AppState& appState )
 	m_initialized = true;
 }
 
+void MeshRenderable::SetAnimation( const cmf::Animation* animation )
+{
+	m_morphCurveToTargetMapping.clear();
+
+	for( const auto& channel: animation->channels )
+	{
+		if( channel.targetType == cmf::AnimationChannelTargetType::MorphTarget )
+		{
+			uint32_t morphIndex = 0;
+			for( const auto& morphTarget : m_cmfMesh.morphTargets.targets )
+			{
+				if( cmf::ToStdString( morphTarget.name ) == cmf::ToStdString( channel.target ) )
+				{
+					m_morphCurveToTargetMapping.emplace_back( channel.curveIndex, morphIndex );
+					break;
+				}
+				++morphIndex;
+			}
+		}
+	}
+}
+
 void MeshRenderable::UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState )
 {
 	if( animation )
@@ -315,11 +337,6 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 
 void MeshRenderable::PrepareMesh( ComputeCommandBuffer& commandBuffer )
 {
-	if( !m_display )
-	{
-		return;
-	}
-
 	m_prepass.Process( commandBuffer );
 }
 
