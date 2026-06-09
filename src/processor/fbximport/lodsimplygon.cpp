@@ -527,12 +527,18 @@ std::pair<cmf::MeshLod, uint32_t> GenerateLod( const cmf::Mesh& mesh, uint32_t s
 
 	AssertSimplygonError( processor->RunProcessing(), "Failed to run Simplygon processing" );
 
+	if( geomData->GetVertexCount() == 0 || geomData->GetTriangleCount() == 0 )
+	{
+		// Simplygon reduced everything away
+		return { cmf::MeshLod(), 0 };
+	}
+
 	cmf::MeshLod newLod = ImportMeshLodFromSimplygon( geomData->NewPackedCopy(), mesh, allocator, bufferAllocator );
 
 	auto maxDeviation = scene->GetCustomFieldMaxDeviation()->GetItem( 0 );
 	auto diameter = scene->GetCustomFieldProcessedMeshesExtents()->GetBoundingSphereRadius() * 2.0f;
 
-	auto newScreenSize = uint32_t( diameter / maxDeviation );
+	auto newScreenSize = std::min( uint32_t( diameter / maxDeviation ), screenSize );
 	newLod.threshold = uint32_t( newScreenSize * options.screenSizeFactor );
 
 
@@ -623,6 +629,11 @@ void SimplygonGenerateLods( cmf::Mesh& mesh, const SimplygonLodOptions& options,
 	while( screenSize >= MIN_SCREEN_SIZE )
 	{
 		auto [lod, newScreenSize] = GenerateLod( mesh, screenSize, options, allocator, bufferAllocator );
+		if( lod.ib.size == 0 || lod.vb.size == 0 )
+		{
+			// Simplygon reduced everything away, no point in generating more LODs.
+			break;
+		}
 		cmf::Modify( mesh.lods, allocator ).push_back( lod );
 		if( newScreenSize <= MIN_SCREEN_SIZE )
 		{
