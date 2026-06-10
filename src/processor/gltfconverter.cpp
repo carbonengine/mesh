@@ -678,7 +678,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			// Write indices into glTF buffer
 			if( lod.ib.stride > 0 )
 			{
-				const uint32_t indexCount = lod.ib.size / lod.ib.stride;
+				const uint32_t indexCount = cmf::GetStreamElementCount( lod.ib );
 
 				AlignBuffer( gltfBuffer, lod.ib.stride );
 				const size_t indexByteOffset = gltfBuffer.data.size();
@@ -768,15 +768,13 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 						std::vector<double> minVals( elem.elementCount, DBL_MAX );
 						std::vector<double> maxVals( elem.elementCount, -DBL_MAX );
 
-						for( uint32_t i = 0; i < vertexCount; i++ )
+						const cmf::ConstBufferElementStream<Vector4> stream( elem, vb, bufferManager );
+						for( const auto& value : stream )
 						{
-							const uint32_t vertexRowOffset = i * vb.stride + elem.offset;
 							for( int j = 0; j < elem.elementCount; j++ )
 							{
-								float value = 0;
-								memcpy( &value, vbBytes + vertexRowOffset + j * sizeof( float ), sizeof( float ) );
-								minVals[j] = std::min( minVals[j], static_cast<double>( value ) );
-								maxVals[j] = std::max( maxVals[j], static_cast<double>( value ) );
+								minVals[j] = std::min( minVals[j], static_cast<double>( value[j] ) );
+								maxVals[j] = std::max( maxVals[j], static_cast<double>( value[j] ) );
 							}
 						}
 
