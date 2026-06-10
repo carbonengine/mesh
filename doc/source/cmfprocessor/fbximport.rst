@@ -46,6 +46,11 @@ and animation importing, respectively as well as other settings described below.
 
 General settings
 ^^^^^^^^^^^^^^^^
+
+``unitsPerMeter``
+  Type ``number``, default ``0``. When this setting is set to a positive value, it overrides the units in the source FBX file (and OBJ file's 1.0) and treats them as the specified number of units per meter. 
+  This allows importing FBX files with incorrect or missing unit information. When this setting is set to ``0``, the importer uses the units specified in the source FBX file, or 1.0 for OBJ files.
+
 ``lowdetailSuffix``
   Type ``string``, default ``""``. If this setting is not an empty string, the importer will create a "low-detail" version of the output file in the same directory as the
   main output CMF file, with the same name but with the specified suffix before the file extension. The low-detail version of the file will only contain the lowest LOD for each mesh
@@ -96,6 +101,10 @@ Mesh settings
 
 ``mesh.uvSets``
   Type ``number``, default ``1``. Number of UV sets to import from the source mesh. Source meshes are expected to have this many UV sets defined; the import fails if they don't.
+
+``mesh.flipV``
+  Type ``boolean``, default ``true``. Flip the V coordinate of texture UVs. This is needed when the source UVs are in a different convention than the one used in CMF, for example, 
+  when they are exported from DCC tools with the "OpenGL" UV convention.
 
 ``mesh.uvType``
   Type ``string``, default ``Float16``. Number format to use for UV coordinates in the output mesh. Possible supported values are ``Float32`` and ``Float16``. 

@@ -38,6 +38,11 @@ std::string ToString( ufbx_string str )
 }
 
 
+CoordinateSystem::CoordinateSystem( float scale ) :
+	m_scale( scale )
+{
+}
+
 CoordinateSystem::CoordinateSystem( const ufbx_coordinate_axes& axes, float scale ) :
 	m_scale( scale )
 {
@@ -60,29 +65,8 @@ CoordinateSystem::CoordinateSystem( const ufbx_coordinate_axes& axes, float scal
 	};
 
 	Vector3 up = ToVector( axes.up );
-	Vector3 forward = -ToVector( axes.front );
+	Vector3 forward = ToVector( axes.front );
 	Vector3 right = ToVector( axes.right );
-
-	// The transformation is somewhat different from a normal one: it matches the legacy transform.
-	switch( axes.up )
-	{
-	case UFBX_COORDINATE_AXIS_POSITIVE_X:
-	case UFBX_COORDINATE_AXIS_NEGATIVE_X:
-		right = Vector3( 0, 0, 1 );
-		up = Vector3( axes.up == UFBX_COORDINATE_AXIS_POSITIVE_X ? 1.f : -1.f, 0, 0 );
-		forward = Vector3( 0, 1, 0 );
-		break;
-	case UFBX_COORDINATE_AXIS_POSITIVE_Y:
-	case UFBX_COORDINATE_AXIS_NEGATIVE_Y:
-		right = Vector3( 1, 0, 0 );
-		up = Vector3( 0, axes.up == UFBX_COORDINATE_AXIS_POSITIVE_Y ? 1.f : -1.f, 0 );
-		forward = Vector3( 0, 0, 1 );
-		break;
-	default:
-		right = Vector3( 1, 0, 0 );
-		up = Vector3( 0, 0, axes.up == UFBX_COORDINATE_AXIS_POSITIVE_Z ? 1.f : -1.f );
-		forward = Vector3( 0, -1, 0 );
-	}
 
 	Matrix m;
 	m.GetX() = right;

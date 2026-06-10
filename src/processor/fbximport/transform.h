@@ -19,7 +19,7 @@ std::string ToString( ufbx_string str );
 */
 struct CoordinateSystem
 {
-	CoordinateSystem() = default;
+	explicit CoordinateSystem( float scale );
 	CoordinateSystem( const ufbx_coordinate_axes& axes, float scale );
 
 	/** @brief Transforms a point from the FBX coordinate system to the CMF coordinate system.
