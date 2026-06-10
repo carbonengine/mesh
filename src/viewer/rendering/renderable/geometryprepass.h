@@ -67,6 +67,7 @@ private:
 		uint32_t elementCount;
 		uint32_t offset;
 		uint32_t normalized;
+		uint32_t usage; // vertex attribute usage, for example position or normal
 	};
 
 	const cmf::Mesh m_cmfMesh;

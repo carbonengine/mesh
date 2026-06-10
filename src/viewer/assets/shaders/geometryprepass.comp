@@ -1,5 +1,7 @@
 #version 450
 
+#include "packed_tangent.inc"
+
 // mapping to CMF ElementType
 const uint FLOAT32_TYPE = 0;
 const uint FLOAT16_TYPE = 1;
@@ -11,6 +13,18 @@ const uint UINT8NORM_TYPE = 6;
 const uint UINT8_TYPE = 7;
 const uint INT8NORM_TYPE = 8;
 const uint INT8_TYPE = 9;
+
+// mapping to CMF UsageType
+const uint USAGE_POSITION = 0;
+const uint USAGE_NORMAL = 1;
+const uint USAGE_TANGENT = 2;
+const uint USAGE_BINORMAL = 3;
+const uint USAGE_TEXCOORD = 4;
+const uint USAGE_COLOR = 5;
+const uint USAGE_BONEINDICES = 6;
+const uint USAGE_BONEWEIGHTS = 7;
+const uint USAGE_PACKEDTANGENT = 8;
+const uint USAGE_PACKEDTANGENTLEGACY = 9;
 
 // The buffers are all 4 byte aligned
 // meaning we can safely cast things from float to the desired type and back to float
@@ -40,6 +54,7 @@ struct Element {
     uint count; // 1-4 , how many components does this element have
     uint offset; // the offset of this element in the vertex
     uint normalized; // 0 = not normalized, 1 = normalized
+	uint usage; // the element usage, see USAGE_*** constants
 };
 
 layout(std430, binding = 1) buffer VertexIn {
@@ -286,7 +301,48 @@ vec4 ApplyWeight( float weight, const Element sourceElement, const Element morph
 
     vec4 sourceValueAsFloat = GetSourceValue( sourceIndexStart, sourceElement );
     vec4 morphValueAsFloat = GetMorphValue( morphIndexStart, morphElement );
-    return weight * ( morphValueAsFloat - sourceValueAsFloat );
+	return weight * ( morphValueAsFloat - sourceValueAsFloat );
+}
+
+TangentSpace UnpackTangentValue( vec4 value, const Element element )
+{
+    if( element.usage == USAGE_PACKEDTANGENTLEGACY )
+    {
+        return unpackTangentSpaceLegacy( value );
+    }
+    return unpackTangentSpace( value );
+}
+
+vec4 PackTangentValue( TangentSpace space, const Element element )
+{
+    space = Orthonormalize( space );
+
+    if( element.usage == USAGE_PACKEDTANGENTLEGACY )
+    {
+        return packTangentSpaceLegacy( space );
+    }
+    return packTangentSpace( space );
+}
+
+TangentSpace ApplyPackedTangentWeight( float weight, const Element sourceElement, const Element morphElement, uint vertexIndex, uint morphBufferIndex )
+{
+    uint sourceIndexStart = vertexIndex * params.vertexStride + sourceElement.offset;
+    uint morphIndexStart = morphBufferIndex * params.morphBufferStride + vertexIndex * params.morphVertexStride + morphElement.offset;
+
+	// morph elements have a requirement to not introduce new usages, so if the source element has packed tangents then the morph element has the same
+    TangentSpace sourceSpace = UnpackTangentValue( GetSourceValue( sourceIndexStart, sourceElement ), sourceElement );
+    TangentSpace morphSpace = UnpackTangentValue( GetMorphValue( morphIndexStart, morphElement ), morphElement );
+
+    TangentSpace change;
+    change.tangent = weight * ( morphSpace.tangent - sourceSpace.tangent );
+    change.binormal = weight * ( morphSpace.binormal - sourceSpace.binormal );
+    change.normal = weight * ( morphSpace.normal - sourceSpace.normal );
+    return change;
+}
+
+bool IsPackedTangentElement( const Element element )
+{
+    return element.usage == USAGE_PACKEDTANGENT || element.usage == USAGE_PACKEDTANGENTLEGACY;
 }
 
 void WriteOut( vec4 modifiedValue, const Element element, uint vertexAttributeIndex )
@@ -343,6 +399,11 @@ void main()
         MorphJob morphJob = morphJobs[ morphJobIndex ];
         Element sourceElement = elements[ morphJob.sourceElementIndex ];
         Element morphElement = elements[ morphJob.morphElementIndex ];
+        bool isPackedTangentElement = IsPackedTangentElement( sourceElement );
+        TangentSpace tangentChange;
+        tangentChange.tangent = vec3( 0.0f );
+        tangentChange.binormal = vec3( 0.0f );
+        tangentChange.normal = vec3( 0.0f );
 
         // step 1. morphing
         for( uint morphIndex = 0; morphIndex < params.morphBufferCount; ++morphIndex ) 
@@ -353,16 +414,38 @@ void main()
                 continue;
             }
 
-            change += ApplyWeight( weight, sourceElement, morphElement, vertexIndex, morphIndex );
+            if( isPackedTangentElement )
+            {
+                TangentSpace weightedChange = ApplyPackedTangentWeight( weight, sourceElement, morphElement, vertexIndex, morphIndex );
+                tangentChange.tangent += weightedChange.tangent;
+                tangentChange.binormal += weightedChange.binormal;
+                tangentChange.normal += weightedChange.normal;
+            }
+            else
+            {
+                change += ApplyWeight( weight, sourceElement, morphElement, vertexIndex, morphIndex );
+            }
         }
         
         uint vertexAttributeIndex = vertexIndex * params.vertexStride + sourceElement.offset;
 
         // step 2. apply the morphing to the source value
-        vec4 modifiedValue = GetSourceValue( vertexAttributeIndex, sourceElement ) + change;
+        vec4 modifiedValue;
+        if( isPackedTangentElement )
+        {
+            TangentSpace sourceSpace = UnpackTangentValue( GetSourceValue( vertexAttributeIndex, sourceElement ), sourceElement );
+            sourceSpace.tangent += tangentChange.tangent;
+            sourceSpace.binormal += tangentChange.binormal;
+            sourceSpace.normal += tangentChange.normal;
+            modifiedValue = PackTangentValue( sourceSpace, sourceElement );
+        }
+        else
+        {
+            modifiedValue = GetSourceValue( vertexAttributeIndex, sourceElement ) + change;
+        }
         
         // step 3. normalization if needed
-        if( sourceElement.normalized == 1 ) 
+        if( sourceElement.normalized == 1 && !isPackedTangentElement ) 
         {
             modifiedValue = normalize( modifiedValue );
         }
