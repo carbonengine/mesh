@@ -906,25 +906,6 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
-	// update the current time
-	if( m_playback.playing )
-	{
-		m_playback.currentTime += ImGui::GetIO().DeltaTime;
-		appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
-		if( m_playback.currentTime >= m_playback.duration )
-		{
-			if( m_playback.repeat )
-			{
-				m_playback.currentTime = 0.0f;
-			}
-			else
-			{
-				m_playback.currentTime = m_playback.duration;
-				m_playback.playing = false;
-			}
-		}
-	}
-
 	// animation player
 	ImGui::SetNextWindowPos( ImVec2( 0, height - ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
 	ImGui::SetNextWindowSize( ImVec2( width, ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
@@ -1005,6 +986,33 @@ void UIRenderer::SetupPopupWindows( AppState& appState )
 	else
 	{
 		m_loadStatus = LoadStatus::NOTHING_LOADED;
+	}
+}
+
+void UIRenderer::Update( AppState& appstate )
+{
+	UpdatePlayback( appstate );
+	UpdateInputs( appstate );
+}
+
+void UIRenderer::UpdatePlayback( AppState& appState )
+{
+	if( m_playback.playing )
+	{
+		m_playback.currentTime += ImGui::GetIO().DeltaTime;
+		appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
+		if( m_playback.currentTime >= m_playback.duration )
+		{
+			if( m_playback.repeat )
+			{
+				m_playback.currentTime = 0.0f;
+			}
+			else
+			{
+				m_playback.currentTime = m_playback.duration;
+				m_playback.playing = false;
+			}
+		}
 	}
 }
 

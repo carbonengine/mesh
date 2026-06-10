@@ -24,9 +24,12 @@ public:
 	void CMFInfoWindow( AppState& appState );
 	void MeshDetailsWindow( AppState& appState );
 	void SetupMenubar( AppState& appState );
-	void UpdateInputs( AppState& state );
+	void Update( AppState& state );
 
 private:
+	void UpdateInputs( AppState& state );
+	void UpdatePlayback( AppState& appState );
+
 	template <typename T>
 	struct CmfUiComboBox
 	{
