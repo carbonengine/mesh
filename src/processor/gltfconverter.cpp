@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <cmf/bufferstreams.h>
 #include <cmf/bufferutils.h>
+#include <cmf/animation.h>
 
 namespace
 {
@@ -62,7 +63,7 @@ int GetGltfComponentType( cmf::ElementType element )
 	switch( element )
 	{
 	case cmf::ElementType::Float32:
-	// We convert float16 into float32 for gltf compatability
+	// We convert float16 into float32 for gltf compatibility
 	case cmf::ElementType::Float16:
 		return TINYGLTF_COMPONENT_TYPE_FLOAT;
 	case cmf::ElementType::UInt16Norm:
@@ -83,13 +84,13 @@ int GetGltfComponentType( cmf::ElementType element )
 
 std::string GenerateAttributeName( const std::map<std::string, int>& usedAttributeNames, const cmf::Usage usage, int usageIndex )
 {
-	// Continue for a reasonable amount of similarly named attributes.
-	// VK and GL guarantee at least 16 elements, so we will provide a worst case senario
+	// Continue for a reasonable number of similarly named attributes.
+	// VK and GL guarantee at least 16 elements, so we will provide a worst case scenario
 	const int minimumGLAttributes = 16;
-	std::string atributeName = GetGltfAttributeName( usage );
+	std::string attributeName = GetGltfAttributeName( usage );
 	for( int i = usageIndex; i < minimumGLAttributes; i++ )
 	{
-		std::string newName = atributeName;
+		std::string newName = attributeName;
 		if( i > 0 || ( usage == cmf::Usage::TexCoord || usage == cmf::Usage::Color || usage == cmf::Usage::BoneIndices || usage == cmf::Usage::BoneWeights ) )
 		{
 			newName += "_" + std::to_string( i );
@@ -99,7 +100,7 @@ std::string GenerateAttributeName( const std::map<std::string, int>& usedAttribu
 			return newName;
 		}
 	}
-	throw std::runtime_error( "Could not find a unique attribute name for '" + atributeName + "' starting at index " + std::to_string( usageIndex ) );
+	throw std::runtime_error( "Could not find a unique attribute name for '" + attributeName + "' starting at index " + std::to_string( usageIndex ) );
 }
 
 int GetGLTFTypeFromComponentCount( int componentCount )
@@ -117,12 +118,79 @@ int GetGLTFTypeFromComponentCount( int componentCount )
 	}
 }
 
+int ComponentsInType( int gltfType )
+{
+	switch( gltfType )
+	{
+	case TINYGLTF_TYPE_SCALAR:
+		return 1;
+	case TINYGLTF_TYPE_VEC2:
+		return 2;
+	case TINYGLTF_TYPE_VEC3:
+		return 3;
+	case TINYGLTF_TYPE_VEC4:
+		return 4;
+	case TINYGLTF_TYPE_MAT4:
+		return 16;
+	default:
+		return 1;
+	}
+}
+
 float GenerateBinormalSign( const Vector3& normal, const Vector3& tangent, const Vector3& bitangent )
 {
-	const float cx = normal.y * tangent.z - normal.z * tangent.y;
-	const float cy = normal.z * tangent.x - normal.x * tangent.z;
-	const float cz = normal.x * tangent.y - normal.y * tangent.x;
-	return ( cx * bitangent.x + cy * bitangent.y + cz * bitangent.z ) < 0.0f ? -1.0f : 1.0f;
+	return Dot( Cross( normal, tangent ), bitangent ) < 0.0f ? -1.0f : 1.0f;
+}
+
+template <class T>
+int AppendFloatAccessor( tinygltf::Buffer& buffer, tinygltf::Model& model, T& data, int gltfType, bool withMinMax )
+{
+	int components = ComponentsInType( gltfType );
+
+	AlignBuffer( buffer, sizeof( float ) );
+	size_t byteOffset = buffer.data.size();
+	size_t byteLength = data.size() * sizeof( float );
+	buffer.data.resize( byteOffset + byteLength );
+
+	for( uint32_t i = 0; i < (uint32_t)data.size(); i++ )
+	{
+		float value = data[i];
+		memcpy( buffer.data.data() + byteOffset + i * sizeof( float ), &value, sizeof( float ) );
+	}
+
+	int bufferViewIndex = static_cast<int>( model.bufferViews.size() );
+	{
+		tinygltf::BufferView bufferView;
+		bufferView.buffer = 0;
+		bufferView.byteOffset = byteOffset;
+		bufferView.byteLength = byteLength;
+		model.bufferViews.push_back( bufferView );
+	}
+
+	tinygltf::Accessor accessor;
+	accessor.bufferView = bufferViewIndex;
+	accessor.byteOffset = 0;
+	accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+	accessor.type = gltfType;
+	accessor.count = static_cast<int>( data.size() / components );
+
+	if( withMinMax && data.size() != 0 )
+	{
+		std::vector<double> min( components, DBL_MAX );
+		std::vector<double> max( components, -DBL_MAX );
+		for( uint32_t i = 0; i < (uint32_t)data.size(); ++i )
+		{
+			int c = static_cast<int>( i % components );
+			min[c] = std::min( min[c], static_cast<double>( data[i] ) );
+			max[c] = std::max( max[c], static_cast<double>( data[i] ) );
+		}
+		accessor.minValues = min;
+		accessor.maxValues = max;
+	}
+
+	int accessorIndex = static_cast<int>( model.accessors.size() );
+	model.accessors.push_back( accessor );
+	return accessorIndex;
 }
 
 void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene )
@@ -138,18 +206,15 @@ void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mod
 			continue;
 		}
 
-		const std::string skelName( skeleton.name.begin(), skeleton.name.end() );
-
 		const auto boneNodeOffset = model.nodes.size();
 
 		uint32_t i = 0;
 		for( const auto& bone : skeleton.bones )
 		{
-			const std::string boneName( bone.begin(), bone.end() );
 			const cmf::Transform& t = skeleton.restTransforms[i++];
 
 			tinygltf::Node node;
-			node.name = boneName;
+			node.name = cmf::ToStdString( bone );
 			node.translation = { t.position.x, t.position.y, t.position.z };
 			node.rotation = { t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w };
 			node.scale = { t.scale.x, t.scale.y, t.scale.z };
@@ -172,37 +237,12 @@ void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mod
 			}
 		}
 
-		// Write inverse bind matrices as column-major
-		AlignBuffer( gltfBuffer, sizeof( float ) );
-		const size_t bindTransformByteOffset = gltfBuffer.data.size();
-		gltfBuffer.data.resize( bindTransformByteOffset + boneCount * sizeof( Matrix ) );
-
-		uint8_t* dst = gltfBuffer.data.data() + bindTransformByteOffset;
-
-		memcpy( dst, skeleton.invBindTransforms.data(), sizeof( Matrix ) * boneCount );
-
-		const int bindTransformBVIdx = static_cast<int>( model.bufferViews.size() );
-		{
-			tinygltf::BufferView bv;
-			bv.buffer = 0;
-			bv.byteOffset = bindTransformByteOffset;
-			bv.byteLength = boneCount * sizeof( Matrix );
-			model.bufferViews.push_back( bv );
-		}
-
-		const int bindTransformIdx = static_cast<int>( model.accessors.size() );
-		{
-			tinygltf::Accessor acc;
-			acc.bufferView = bindTransformBVIdx;
-			acc.byteOffset = 0;
-			acc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-			acc.type = TINYGLTF_TYPE_MAT4;
-			acc.count = boneCount;
-			model.accessors.push_back( acc );
-		}
+		const float* ptr = reinterpret_cast<const float*>( skeleton.invBindTransforms.data() );
+		std::vector<float> ibm( ptr, ptr + 16 * skeleton.invBindTransforms.size() );
+		int bindTransformIdx = AppendFloatAccessor( gltfBuffer, model, ibm, TINYGLTF_TYPE_MAT4, false );
 
 		tinygltf::Skin skin;
-		skin.name = skelName;
+		skin.name = cmf::ToStdString( skeleton.name );
 		skin.skeleton = rootNodeIdx;
 		skin.inverseBindMatrices = bindTransformIdx;
 		for( uint32_t i = 0; i < boneCount; ++i )
@@ -218,7 +258,121 @@ void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mod
 	}
 }
 
-void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
+void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animation, const std::vector<std::vector<int>>& meshNodeIndices, 
+	tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Animation& gltfAnim )
+{
+	std::map<size_t, std::vector<const cmf::AnimationCurve*>> curvesGroupedByMesh;
+
+	for( const auto& channel : animation.channels )
+	{
+		if( channel.targetType != cmf::AnimationChannelTargetType::MorphTarget )
+		{
+			continue;
+		}
+		if( channel.curveIndex >= animation.curves.size() )
+		{
+			continue;
+		}
+		const cmf::AnimationCurve& curve = animation.curves[channel.curveIndex];
+
+		for( size_t meshIndex = 0; meshIndex < data.meshes.size(); meshIndex++ )
+		{
+			const auto& targets = data.meshes[meshIndex].morphTargets.targets;
+			for( size_t targetIndex = 0; targetIndex < targets.size(); targetIndex++ )
+			{
+				if( targets[targetIndex].name != channel.target )
+				{
+					continue;
+				}
+				auto it = curvesGroupedByMesh.find( meshIndex );
+				if( it == curvesGroupedByMesh.end() )
+				{
+					it = curvesGroupedByMesh.emplace( meshIndex, std::vector<const cmf::AnimationCurve*>( targets.size(), nullptr ) ).first;
+				}
+				it->second[targetIndex] = &curve;
+			}
+		}
+	}
+
+	for( auto& [meshIndex, columns] : curvesGroupedByMesh )
+	{
+		const size_t numTargets = columns.size();
+
+		if( meshNodeIndices[meshIndex].empty() )
+		{
+			continue;
+		}
+
+		std::set<float> timeSet;
+		bool allStep = true;
+		bool anyAnimated = false;
+		for( size_t target = 0; target < numTargets; target++ )
+		{
+			if( !columns[target] )
+			{
+				continue;
+			}
+			anyAnimated = true;
+
+			cmf::VertexElement knotElem{};
+			knotElem.type = columns[target]->knotType;
+			knotElem.elementCount = 1;
+			const uint32_t knotStride = cmf::GetVertexElementSize( knotElem );
+			const cmf::ConstBufferElementStream<float> knots{ knotElem, columns[target]->knots.data(), columns[target]->knotCount, knotStride };
+
+			for( float knot : knots )
+			{
+				timeSet.insert( knot );
+			}
+
+			if( columns[target]->interpolation != cmf::Interpolation::Step )
+			{
+				allStep = false;
+			}
+		}
+		if( !anyAnimated || timeSet.empty() )
+		{
+			continue;
+		}
+
+		const std::vector<float> times( timeSet.begin(), timeSet.end() );
+		const size_t numFrames = times.size();
+
+		std::vector<float> output( numFrames * numTargets, 0.0f );
+		for( size_t frame = 0; frame < numFrames; frame++ )
+		{
+			for( size_t target = 0; target < numTargets; ++target )
+			{
+				if( columns[target] )
+				{
+					output[frame * numTargets + target] = cmf::SampleScalarCurve( *columns[target], times[frame] );
+				}
+			}
+		}
+		const int inputAccessor = AppendFloatAccessor( gltfBuffer, model, times, TINYGLTF_TYPE_SCALAR, true );
+		const int outputAccessor = AppendFloatAccessor( gltfBuffer, model, output, TINYGLTF_TYPE_SCALAR, false );
+
+		const int samplerIndex = static_cast<int>( gltfAnim.samplers.size() );
+		{
+			tinygltf::AnimationSampler sampler;
+			sampler.input = inputAccessor;
+			sampler.output = outputAccessor;
+			sampler.interpolation = allStep ? "STEP" : "LINEAR";
+			gltfAnim.samplers.push_back( sampler );
+		}
+
+		for( int nodeIndex : meshNodeIndices[meshIndex] )
+		{
+			tinygltf::AnimationChannel channel;
+			channel.sampler = samplerIndex;
+			channel.target_node = nodeIndex;
+			channel.target_path = "weights";
+			gltfAnim.channels.push_back( channel );
+		}
+	}
+}
+
+void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, const std::vector<std::vector<int>>& meshNodeIndices )
 {
 	auto& data = cmfFile.GetData();
 
@@ -229,10 +383,8 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 			continue;
 		}
 
-		const std::string animName( animation.name.begin(), animation.name.end() );
-
 		tinygltf::Animation gltfAnim;
-		gltfAnim.name = animName;
+		gltfAnim.name = cmf::ToStdString( animation.name );
 
 		for( const auto& channel : animation.channels )
 		{
@@ -256,31 +408,21 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 				path = "scale";
 				break;
 			case cmf::AnimationChannelTargetType::MorphTarget:
-				path = "weights";
-				break;
+				// handled separately
+				continue;
 			case cmf::AnimationChannelTargetType::Other:
 				printf( "Unsupported AnimationChannelTargetType, continuing.\n" );
 				continue;
 			}
 
-			int gltfValueType;
-			switch( curve.valueDimension )
+			int gltfValueType = GetGLTFTypeFromComponentCount( curve.valueDimension );
+			if( gltfValueType != TINYGLTF_TYPE_VEC3 && gltfValueType != TINYGLTF_TYPE_VEC4 )
 			{
-			case 1:
-				gltfValueType = TINYGLTF_TYPE_SCALAR;
-				break;
-			case 3:
-				gltfValueType = TINYGLTF_TYPE_VEC3;
-				break;
-			case 4:
-				gltfValueType = TINYGLTF_TYPE_VEC4;
-				break;
-			default:
 				continue;
 			}
 
 			// Find the target bone node by name
-			const std::string targetName( channel.target.begin(), channel.target.end() );
+			const std::string targetName = cmf::ToStdString( channel.target );
 			int targetNodeIdx = -1;
 			for( int i = 0; i < static_cast<int>( model.nodes.size() ); ++i )
 			{
@@ -304,82 +446,15 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 			const auto knotStride = cmf::GetVertexElementSize( knotElement );
 			const cmf::ConstBufferElementStream<float> knotFloats{ knotElement, curve.knots.data(), curve.knotCount, knotStride };
 
-			AlignBuffer( gltfBuffer, sizeof( float ) );
-			const size_t knotsByteOffset = gltfBuffer.data.size();
-			const size_t knotsByteLength = curve.knotCount * sizeof( float );
-			gltfBuffer.data.resize( knotsByteOffset + knotsByteLength );
-
-			// gltf requires min/max on the time accessor
-			double knotMin = DBL_MAX;
-			double knotMax = -DBL_MAX;
-
-			for( uint32_t i = 0; i < curve.knotCount; i++ )
-			{
-				float value = knotFloats[i];
-				knotMin = std::min( knotMin, static_cast<double>( value ) );
-				knotMax = std::max( knotMax, static_cast<double>( value ) );
-				memcpy( gltfBuffer.data.data() + knotsByteOffset + i * sizeof( float ), &value, sizeof( float ) );
-			}
-
-			const int inputBVIdx = static_cast<int>( model.bufferViews.size() );
-			{
-				tinygltf::BufferView bv;
-				bv.buffer = 0;
-				bv.byteOffset = knotsByteOffset;
-				bv.byteLength = knotsByteLength;
-				model.bufferViews.push_back( bv );
-			}
-
-			const int inputAccIdx = static_cast<int>( model.accessors.size() );
-			{
-				tinygltf::Accessor acc;
-				acc.bufferView = inputBVIdx;
-				acc.byteOffset = 0;
-				acc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-				acc.type = TINYGLTF_TYPE_SCALAR;
-				acc.count = curve.knotCount;
-				acc.minValues = { knotMin };
-				acc.maxValues = { knotMax };
-				model.accessors.push_back( acc );
-			}
+			int inputAccIdx = AppendFloatAccessor( gltfBuffer, model, knotFloats, TINYGLTF_TYPE_SCALAR, true );
 
 			cmf::VertexElement valueElement = {};
 			valueElement.type = curve.valueType;
-			valueElement.elementCount = 1; //curve.valueDimension;
+			valueElement.elementCount = 1;
 			const auto valueStride = cmf::GetVertexElementSize( valueElement );
 			const cmf::ConstBufferElementStream<float> valueFloats{ valueElement, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
 
-			// Write animation values
-			AlignBuffer( gltfBuffer, sizeof( float ) );
-			size_t valuesByteOffset = gltfBuffer.data.size();
-			const size_t valuesByteLength = curve.knotCount * curve.valueDimension * sizeof( float );
-			gltfBuffer.data.resize( valuesByteOffset + valuesByteLength );
-
-			for( uint32_t i = 0; i < valueFloats.size(); i++ )
-			{
-				float value = valueFloats[i];
-				memcpy( gltfBuffer.data.data() + valuesByteOffset + i * sizeof( float ), &value, sizeof( float ) );
-			}
-
-			const int outputBVIdx = static_cast<int>( model.bufferViews.size() );
-			{
-				tinygltf::BufferView bv;
-				bv.buffer = 0;
-				bv.byteOffset = valuesByteOffset;
-				bv.byteLength = valuesByteLength;
-				model.bufferViews.push_back( bv );
-			}
-
-			const int outputAccIdx = static_cast<int>( model.accessors.size() );
-			{
-				tinygltf::Accessor acc;
-				acc.bufferView = outputBVIdx;
-				acc.byteOffset = 0;
-				acc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-				acc.type = gltfValueType;
-				acc.count = curve.knotCount;
-				model.accessors.push_back( acc );
-			}
+			int outputAccIdx = AppendFloatAccessor( gltfBuffer, model, valueFloats, gltfValueType, false );
 
 			const int samplerIdx = static_cast<int>( gltfAnim.samplers.size() );
 			{
@@ -399,6 +474,8 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 			}
 		}
 
+		AddMorphWeightChannels( cmfFile.GetData(), animation, meshNodeIndices, gltfBuffer, model, gltfAnim );
+
 		if( !gltfAnim.channels.empty() )
 		{
 			model.animations.push_back( gltfAnim );
@@ -412,7 +489,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	auto& bufferManager = cmfFile.GetBufferManager();
 	auto& allocator = cmfFile.GetAllocator();
 
-	// Pre process the cmf file and unpack the tangents into the t, b, n datasets
+	// Preprocess the cmf file and unpack the tangents into the t, b, n datasets
 	for( auto& mesh : data.meshes )
 	{
 		std::vector<uint32_t> packedTangents;
@@ -483,7 +560,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 				}
 				else if( elem.usage == cmf::Usage::Position || elem.usage == cmf::Usage::Normal || elem.type == cmf::ElementType::Float16 )
 				{
-					// glTF requires POSITION and NORMAL to be float, and we convert float16 into float32 for compatability
+					// glTF requires POSITION and NORMAL to be float, and we convert float16 into float32 for compatibility
 					auto newElem = elem;
 					newElem.type = cmf::ElementType::Float32;
 					cmf::Modify( newDecl, allocator ).push_back( newElem );
@@ -556,15 +633,19 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	}
 }
 
-void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene )
+void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, std::vector<std::vector<int>>& meshNodeIndices )
 {
 	auto& data = cmfFile.GetData();
 	auto& bufferManager = cmfFile.GetBufferManager();
 	auto& allocator = cmfFile.GetAllocator();
 
-	for( const auto& mesh : data.meshes )
+	meshNodeIndices.resize( data.meshes.size(), {} );
+
+	for( size_t meshIndex = 0; meshIndex < data.meshes.size(); meshIndex++ )
 	{
-		const std::string meshName( mesh.name.begin(), mesh.name.end() );
+		const auto& mesh = data.meshes[meshIndex];
+
+		const std::string meshName = cmf::ToStdString( mesh.name );
 
 		std::vector<int> lodNodeIndices;
 
@@ -653,7 +734,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 
 				uint8_t* dst = gltfBuffer.data.data() + byteOffset;
 
-				// Since Gltf supports interleaved data, just copy the whole buffer into the new gltf buffer
+				// Since glTF supports interleaved data, just copy the whole buffer into the new glTF buffer
 				memcpy( dst, vbBytes, vb.size );
 
 				// A single interleaved buffer view shared by all the vertex attribute accessors
@@ -740,6 +821,8 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			lodNodeIndices.push_back( nodeIdx );
 		}
 
+		meshNodeIndices[meshIndex] = lodNodeIndices;
+
 		if( lodNodeIndices.empty() )
 		{
 			continue;
@@ -782,11 +865,13 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 		tinygltf::Buffer gltfBuffer;
 		tinygltf::Scene scene;
 
+		std::vector<std::vector<int>> meshNodeIndices;
+
 		PreprocessCmfFile( cmfFile );
 
-		AddMeshes( cmfFile, gltfBuffer, model, scene );
+		AddMeshes( cmfFile, gltfBuffer, model, scene, meshNodeIndices );
 		AddSkeletons( cmfFile, gltfBuffer, model, scene );
-		AddAnimations( cmfFile, gltfBuffer, model );
+		AddAnimations( cmfFile, gltfBuffer, model, meshNodeIndices );
 
 		model.buffers.push_back( gltfBuffer );
 		model.scenes.push_back( scene );
