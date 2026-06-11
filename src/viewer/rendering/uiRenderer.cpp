@@ -264,7 +264,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 	ImGui::SetNextWindowPos( ImVec2( width, MENU_BAR_HEIGHT ), ImGuiCond_Always, ImVec2( 1.0f, 0.0f ) );
 	ImGui::SetNextWindowSizeConstraints( ImVec2( 0, ySize ), ImVec2( width, ySize ) );
 	ImGui::SetNextWindowSize( ImVec2( width / 4.0f, ySize ), ImGuiCond_FirstUseEver );
-	if( !ImGui::Begin( "Mesh Details", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings ) )
+	if( !ImGui::Begin( "Details", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings ) )
 	{
 		ImGui::End();
 		return;
@@ -278,113 +278,96 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		return;
 	}
 
-	const auto& meshes = cmfContent->m_cmfData->meshes;
-	if( meshes.empty() )
+	if( !ImGui::BeginChild( "Hierarchy", ImVec2( 0, 0 ), ImGuiChildFlags_ResizeY ) )
 	{
-		ImGui::Text( "No meshes" );
-		ImGui::End();
+		ImGui::EndChild();
 		return;
 	}
-
-	m_meshDetailsState.selectedMeshIndex = std::min( m_meshDetailsState.selectedMeshIndex, (int)meshes.size() - 1 );
-	const auto& mesh = meshes[m_meshDetailsState.selectedMeshIndex];
-
-	ImGui::Text( "Mesh" );
-	ImGui::SameLine();
-	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-	auto meshName = cmf::ToStdString( mesh.name );
-	if( ImGui::BeginCombo( "##meshselect", meshName.c_str() ) )
+	auto selection = RenderHierarchyTab( cmfContent );
+	ImGui::EndChild();
+	
+	if( selection.type != SelectedItem::None )
 	{
-		for( int i = 0; i < (int)meshes.size(); ++i )
+		m_selectedItem = selection;
+	}
+
+	switch( m_selectedItem.type )
+	{
+	case SelectedItem::VertexBuffer:
+		for( auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			auto name = cmf::ToStdString( meshes[i].name );
-			bool selected = ( i == m_meshDetailsState.selectedMeshIndex );
-			if( ImGui::Selectable( name.c_str(), selected ) )
+			for( auto& lod : mesh.lods )
 			{
-				m_meshDetailsState.selectedMeshIndex = i;
-				m_meshDetailsState.selectedLodIndex = 0;
-				m_meshDetailsState.selectedMorphTargetIndex = 0;
-				m_meshDetailsState.vertexAttributeFilter.clear();
-				m_meshDetailsState.morphAttributeFilter.clear();
-				m_meshDetailsState.boneColumnFilter.clear();
-				m_meshDetailsState.audioVertexColumnFilter.clear();
+				if( &lod.vb == m_selectedItem.context )
+				{
+					RenderVertexDataTab( cmfContent, mesh.decl, lod.vb );
+					break;
+				}
+				for( auto& morphTarget : lod.morphTargets )
+				{
+					if( &morphTarget.vb == m_selectedItem.context )
+					{
+						RenderVertexDataTab( cmfContent, mesh.morphTargets.decl, morphTarget.vb );
+						break;
+					}
+				}
 			}
-			if( selected )
-				ImGui::SetItemDefaultFocus();
 		}
-		ImGui::EndCombo();
-	}
-
-	if( mesh.lods.empty() )
-	{
-		ImGui::Text( "No LODs" );
-		ImGui::End();
-		return;
-	}
-
-	m_meshDetailsState.selectedLodIndex = std::min( m_meshDetailsState.selectedLodIndex, (int)mesh.lods.size() - 1 );
-
-	ImGui::Text( "LOD" );
-	ImGui::SameLine();
-	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-	std::string lodPreview = "LOD " + std::to_string( m_meshDetailsState.selectedLodIndex );
-	if( ImGui::BeginCombo( "##lodselect", lodPreview.c_str() ) )
-	{
-		for( int i = 0; i < (int)mesh.lods.size(); ++i )
+		break;
+	case SelectedItem::IndexBuffer:
+		for( auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			std::string label = "LOD " + std::to_string( i );
-			bool selected = ( i == m_meshDetailsState.selectedLodIndex );
-			if( ImGui::Selectable( label.c_str(), selected ) )
-				m_meshDetailsState.selectedLodIndex = i;
-			if( selected )
-				ImGui::SetItemDefaultFocus();
+			for( auto& lod : mesh.lods )
+			{
+				if( &lod.ib == m_selectedItem.context )
+				{
+					RenderIndexDataTab( cmfContent, mesh, lod );
+					break;
+				}
+			}
 		}
-		ImGui::EndCombo();
-	}
-
-	const auto& lod = mesh.lods[m_meshDetailsState.selectedLodIndex];
-
-	if( ImGui::BeginTabBar( "##viewtabs" ) )
-	{
-		if( ImGui::BeginTabItem( "Hierarchy" ) )
+		break;
+	case SelectedItem::SkeletonBones:
+		for( auto& skeleton : cmfContent->m_cmfData->skeletons )
 		{
-			RenderHierarchyTab( cmfContent );
-			ImGui::EndTabItem();
+			if( &skeleton == m_selectedItem.context )
+			{
+				RenderBonesTab( cmfContent, skeleton, appState );
+				break;
+			}
 		}
-		ImGuiTabItemFlags vtdFlags = m_meshDetailsState.scrollToLinkedVertex ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-		if( ImGui::BeginTabItem( "Vertex Data", nullptr, vtdFlags ) )
+		break;
+	case SelectedItem::BoneBindings:
+		for( auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			RenderVertexDataTab( cmfContent, mesh, lod );
-			ImGui::EndTabItem();
+			if( &mesh.boneBindings == m_selectedItem.context )
+			{
+				RenderBoneBindingTab( cmfContent, mesh, appState );
+				break;
+			}
 		}
-		if( ImGui::BeginTabItem( "Index Data" ) )
+		break;
+	case SelectedItem::Animation:
+		for( auto& animation : cmfContent->m_cmfData->animations )
 		{
-			RenderIndexDataTab( cmfContent, mesh, lod );
-			ImGui::EndTabItem();
+			if( &animation == m_selectedItem.context )
+			{
+				RenderAnimationsTab( cmfContent, animation );
+				break;
+			}
 		}
-		ImGuiTabItemFlags morphFlags = m_meshDetailsState.navigateToLinkedMorphTarget ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-		if( ImGui::BeginTabItem( "Morph Data", nullptr, morphFlags ) )
+		break;
+	case SelectedItem::AudioOcclusionMesh:
+		for( auto& mesh : cmfContent->m_cmfData->meshes )
 		{
-			RenderMorphDataTab( cmfContent, mesh, lod );
-			ImGui::EndTabItem();
+			if( &mesh.audioOcclusionMesh == m_selectedItem.context )
+			{
+				RenderAudioOccluderTab( mesh );
+				break;
+			}
 		}
-		ImGuiTabItemFlags bonesFlags = m_meshDetailsState.scrollToLinkedBone ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-		if( ImGui::BeginTabItem( "Bones", nullptr, bonesFlags ) )
-		{
-			RenderBonesTab( cmfContent, mesh, appState );
-			ImGui::EndTabItem();
-		}
-		if( ImGui::BeginTabItem( "Animations" ) )
-		{
-			RenderAnimationsTab( cmfContent );
-			ImGui::EndTabItem();
-		}
-		if( ImGui::BeginTabItem( "Audio Occluder" ) )
-		{
-			RenderAudioOccluderTab( mesh );
-			ImGui::EndTabItem();
-		}
-		ImGui::EndTabBar();
+	default:
+		break;
 	}
 
 	ImGui::End();
@@ -1300,7 +1283,7 @@ const char* UIRenderer::GetElementTypeName( cmf::ElementType type )
 	return idx >= 0 && idx < cmf::ElementTypeCount ? names[idx] : "Unknown";
 }
 
-void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex )
+void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes )
 {
 	if( attributes.empty() )
 	{
@@ -1319,9 +1302,9 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
 	if( ImGui::BeginTable( tableId, colCount, tableFlags, outerSize ) )
 	{
-		if( scrollToVertex >= 0 )
+		if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
 		{
-			float targetY = (float)scrollToVertex * ImGui::GetTextLineHeightWithSpacing();
+			float targetY = (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing();
 			ImGui::SetScrollY( targetY );
 		}
 
@@ -1340,9 +1323,10 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 				const uint8_t* vertexPtr = vbData + (size_t)vi * stride;
 
 				ImGui::TableNextRow();
-				if( vi == m_meshDetailsState.linkedVertexIndex )
+				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), uint32_t( vi ) ) != m_selectedItem.selectedIndices.end() )
+				{
 					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
-
+				}
 				ImGui::TableSetColumnIndex( 0 );
 				ImGui::Text( "%d", vi );
 
@@ -1399,23 +1383,28 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 
 void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
 {
-	if( mesh.decl.empty() )
+	RenderVertexDataTab( cmfContent, mesh.decl, lod.vb );
+}
+
+void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb )
+{
+	if( decl.empty() )
 	{
 		ImGui::Text( "No vertex declaration" );
 		return;
 	}
-	if( lod.vb.stride == 0 || lod.vb.size == 0 )
+	if( vb.stride == 0 || vb.size == 0 )
 	{
 		ImGui::Text( "Empty vertex buffer" );
 		return;
 	}
 
-	uint32_t vertexCount = lod.vb.size / lod.vb.stride;
-	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, lod.vb.stride );
-	const uint8_t* vbData = cmfContent->Index( lod.vb.index, 0 ) + lod.vb.offset;
+	uint32_t vertexCount = vb.size / vb.stride;
+	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, vb.stride );
+	const uint8_t* vbData = cmfContent->Index( vb.index, 0 ) + vb.offset;
 
 	// Get the labels for the vertex atributes
-	auto allAttributes = BuildAttributes( mesh.decl );
+	auto allAttributes = BuildAttributes( decl );
 
 	for( const auto& attr : allAttributes )
 	{
@@ -1446,236 +1435,271 @@ void UIRenderer::RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& m
 			filteredAttributes.push_back( attr );
 	}
 
-	int scrollTarget = -1;
-	if( m_meshDetailsState.scrollToLinkedVertex )
-	{
-		scrollTarget = m_meshDetailsState.linkedVertexIndex;
-		m_meshDetailsState.scrollToLinkedVertex = false;
-	}
-
-	RenderAttributeTable( "##vertexdata", vbData, vertexCount, lod.vb.stride, filteredAttributes, scrollTarget );
+	RenderAttributeTable( "##vertexdata", vbData, vertexCount, vb.stride, filteredAttributes );
+	m_selectedItem.scrollTo = false;
 }
 
 void UIRenderer::RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
 {
-	if( lod.ib.stride == 0 || lod.ib.size == 0 )
+	const auto& ib = lod.ib;
+	const auto& areas = mesh.areas;
+	const auto& lodAreas = lod.areas;
+
+	if( ib.stride == 0 || ib.size == 0 )
 	{
 		ImGui::Text( "Empty index buffer" );
 		return;
 	}
 
-	uint32_t indexCount = lod.ib.size / lod.ib.stride;
-	const uint8_t* ibData = cmfContent->Index( lod.ib.index, 0 ) + lod.ib.offset;
-	cmf::IndexConverter indexConv( lod.ib.stride );
-	bool isTriangleList = mesh.topology == cmf::MeshTopology::TriangleList;
-
-	if( isTriangleList )
-	{
-		ImGui::RadioButton( "Raw", &m_meshDetailsState.indexViewMode, 1 );
-		ImGui::SameLine();
-		ImGui::RadioButton( "Triangles", &m_meshDetailsState.indexViewMode, 0 );
-	}
+	uint32_t indexCount = ib.size / ib.stride;
+	const uint8_t* ibData = cmfContent->Index( ib.index, 0 ) + ib.offset;
+	cmf::IndexConverter indexConv( ib.stride );
 
 	auto indexSelectable = [&]( uint32_t vertexIdx, int uniqueId ) {
-		char buf[16];
-		snprintf( buf, sizeof( buf ), "%u", vertexIdx );
 		ImGui::PushID( uniqueId );
-		bool isSelected = ( (int)vertexIdx == m_meshDetailsState.selectedIndexValue );
-		ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.4f, 0.6f, 1.0f, 1.0f ) );
-		ImGui::Selectable( buf, isSelected, ImGuiSelectableFlags_None );
-		ImGui::PopStyleColor();
-		if( ImGui::IsItemClicked( ImGuiMouseButton_Left ) )
-			m_meshDetailsState.selectedIndexValue = (int)vertexIdx;
-		if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+		const bool isSelected = std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), vertexIdx ) != m_selectedItem.selectedIndices.end();
+		if( ImGui::Selectable( "", isSelected, ImGuiSelectableFlags_AllowOverlap ) )
 		{
-			m_meshDetailsState.linkedVertexIndex = (int)vertexIdx;
-			m_meshDetailsState.scrollToLinkedVertex = true;
+			m_selectedItem.selectedIndices = { vertexIdx };
+		}
+		ImGui::SameLine();
+		if( ImGui::TextLink( std::to_string( vertexIdx ).c_str() ) )
+		{
+			m_selectedItem = SelectedItem{ SelectedItem::Type::VertexBuffer, &lod.vb, { vertexIdx }, true };
 		}
 		ImGui::PopID();
 	};
 
-	if( isTriangleList && m_meshDetailsState.indexViewMode == 0 )
+	uint32_t triangleCount = indexCount / 3;
+	ImGui::Text( "Triangles: %u   Indices: %u", triangleCount, indexCount );
+
+	ImGuiTableFlags tableFlags =
+		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_ScrollY |
+		ImGuiTableFlags_SizingFixedFit;
+
+	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+	if( ImGui::BeginTable( "##indexdata", 5, tableFlags, outerSize ) )
 	{
-		uint32_t triangleCount = indexCount / 3;
-		ImGui::Text( "Triangles: %u   Indices: %u", triangleCount, indexCount );
-
-		ImGuiTableFlags tableFlags =
-			ImGuiTableFlags_Borders |
-			ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_ScrollY |
-			ImGuiTableFlags_SizingFixedFit;
-
-		ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
-		if( ImGui::BeginTable( "##indexdata", 4, tableFlags, outerSize ) )
+		ImGui::TableSetupScrollFreeze( 0, 1 );
+		ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 72.0f );
+		ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
+		if( !areas.empty() )
 		{
-			ImGui::TableSetupScrollFreeze( 0, 1 );
-			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 72.0f );
-			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableHeadersRow();
+			ImGui::TableSetupColumn( "Area", ImGuiTableColumnFlags_WidthStretch );
+		}
+		ImGui::TableHeadersRow();
 
-			ImGuiListClipper clipper;
-			clipper.Begin( (int)triangleCount );
-			while( clipper.Step() )
+		ImGuiListClipper clipper;
+		clipper.Begin( (int)triangleCount );
+		while( clipper.Step() )
+		{
+			for( int ti = clipper.DisplayStart; ti < clipper.DisplayEnd; ++ti )
 			{
-				for( int ti = clipper.DisplayStart; ti < clipper.DisplayEnd; ++ti )
-				{
-					const uint8_t* base = ibData + (size_t)ti * 3 * lod.ib.stride;
-					uint32_t v0 = indexConv( base );
-					uint32_t v1 = indexConv( base + lod.ib.stride );
-					uint32_t v2 = indexConv( base + 2 * lod.ib.stride );
+				const uint8_t* base = ibData + (size_t)ti * 3 * ib.stride;
+				const uint32_t v0 = indexConv( base );
+				const uint32_t v1 = indexConv( base + ib.stride );
+				const uint32_t v2 = indexConv( base + 2 * ib.stride );
 
-					ImGui::TableNextRow();
-					ImGui::TableSetColumnIndex( 0 );
-					ImGui::Text( "%d", ti );
-					ImGui::TableSetColumnIndex( 1 );
-					indexSelectable( v0, ti * 3 );
-					ImGui::TableSetColumnIndex( 2 );
-					indexSelectable( v1, ti * 3 + 1 );
-					ImGui::TableSetColumnIndex( 3 );
-					indexSelectable( v2, ti * 3 + 2 );
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex( 0 );
+				ImGui::Text( "%d", ti );
+				ImGui::TableSetColumnIndex( 1 );
+				indexSelectable( v0, ti * 3 );
+				ImGui::TableSetColumnIndex( 2 );
+				indexSelectable( v1, ti * 3 + 1 );
+				ImGui::TableSetColumnIndex( 3 );
+				indexSelectable( v2, ti * 3 + 2 );
+				if( !areas.empty() )
+				{
+					ImGui::TableSetColumnIndex( 4 );
+					for( const auto& area : lodAreas )
+					{
+						if( ti >= int( area.firstElement ) && ti < int( area.firstElement + area.elementCount ) )
+						{
+							auto areaIdx = std::distance( lodAreas.begin(), &area );
+							ImGui::Text( "[%i] %s", int( areaIdx ), areas[areaIdx].name.empty() ? "Unnamed Area" : ToStdString( areas[areaIdx].name ).c_str() );
+							break;
+						}
+					}
 				}
 			}
-			clipper.End();
-			ImGui::EndTable();
 		}
-	}
-	else
-	{
-		ImGui::Text( "Indices: %u", indexCount );
-
-		ImGuiTableFlags tableFlags =
-			ImGuiTableFlags_Borders |
-			ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_ScrollY |
-			ImGuiTableFlags_SizingFixedFit;
-
-		ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
-		if( ImGui::BeginTable( "##indexdataraw", 2, tableFlags, outerSize ) )
-		{
-			ImGui::TableSetupScrollFreeze( 0, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 72.0f );
-			ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableHeadersRow();
-
-			ImGuiListClipper clipper;
-			clipper.Begin( (int)indexCount );
-			while( clipper.Step() )
-			{
-				for( int ii = clipper.DisplayStart; ii < clipper.DisplayEnd; ++ii )
-				{
-					uint32_t v = indexConv( ibData + (size_t)ii * lod.ib.stride );
-
-					ImGui::TableNextRow();
-					if( (int)v == m_meshDetailsState.selectedIndexValue )
-						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg1, ImGui::GetColorU32( ImGuiCol_Header ) );
-
-					ImGui::TableSetColumnIndex( 0 );
-					ImGui::Text( "%d", ii );
-					ImGui::TableSetColumnIndex( 1 );
-					indexSelectable( v, ii );
-				}
-			}
-			clipper.End();
-			ImGui::EndTable();
-		}
+		clipper.End();
+		ImGui::EndTable();
 	}
 }
 
-void UIRenderer::RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
+void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Skeleton& skeleton, AppState& appState )
 {
-	const auto& morphTargets = mesh.morphTargets;
-	if( morphTargets.targets.empty() )
-	{
-		ImGui::Text( "No morph targets" );
-		return;
-	}
-	if( morphTargets.decl.empty() )
-	{
-		ImGui::Text( "No morph target vertex declaration" );
-		return;
-	}
+	const auto& skeletons = cmfContent->m_cmfData->skeletons;
 
-	if( m_meshDetailsState.navigateToLinkedMorphTarget )
+	//if( hasSkeleton )
 	{
-		m_meshDetailsState.selectedMorphTargetIndex = m_meshDetailsState.linkedMorphTargetIndex;
-		m_meshDetailsState.navigateToLinkedMorphTarget = false;
-	}
+		std::string skelName = cmf::ToStdString( skeleton.name );
+		ImGui::Text( "Skeleton: %s  Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
 
-	m_meshDetailsState.selectedMorphTargetIndex = std::min(
-		m_meshDetailsState.selectedMorphTargetIndex,
-		(int)morphTargets.targets.size() - 1 );
-
-	auto morphName = cmf::ToStdString( morphTargets.targets[m_meshDetailsState.selectedMorphTargetIndex].name );
-	ImGui::Text( "Morph Target" );
-	ImGui::SameLine();
-	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-	if( ImGui::BeginCombo( "##morphselect", morphName.c_str() ) )
-	{
-		for( int i = 0; i < (int)morphTargets.targets.size(); ++i )
+		static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
+		for( const auto& col : allBoneCols )
 		{
-			auto name = cmf::ToStdString( morphTargets.targets[i].name );
-			bool selected = ( i == m_meshDetailsState.selectedMorphTargetIndex );
-			if( ImGui::Selectable( name.c_str(), selected ) )
-				m_meshDetailsState.selectedMorphTargetIndex = i;
-			if( selected )
-				ImGui::SetItemDefaultFocus();
+			if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
+				m_meshDetailsState.boneColumnFilter[col] = true;
 		}
-		ImGui::EndCombo();
-	}
 
-	if( m_meshDetailsState.selectedMorphTargetIndex >= (int)lod.morphTargets.size() )
-	{
-		ImGui::Text( "No LOD morph data for this morph target" );
-		return;
-	}
-
-	const auto& morphLod = lod.morphTargets[m_meshDetailsState.selectedMorphTargetIndex];
-	if( morphLod.vb.stride == 0 || morphLod.vb.size == 0 )
-	{
-		ImGui::Text( "Empty morph target buffer" );
-		return;
-	}
-
-	uint32_t vertexCount = morphLod.vb.size / morphLod.vb.stride;
-	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, morphLod.vb.stride );
-	const uint8_t* vbData = cmfContent->Index( morphLod.vb.index, 0 ) + morphLod.vb.offset;
-
-	auto allAttributes = BuildAttributes( morphTargets.decl );
-
-	for( const auto& attr : allAttributes )
-	{
-		if( m_meshDetailsState.morphAttributeFilter.find( attr.name ) == m_meshDetailsState.morphAttributeFilter.end() )
-			m_meshDetailsState.morphAttributeFilter[attr.name] = true;
-	}
-
-	if( ImGui::CollapsingHeader( "Filters" ) )
-	{
-		if( ImGui::Button( "Reset##mf" ) )
+		if( ImGui::CollapsingHeader( "Filters" ) )
 		{
-			for( auto& [name, enabled] : m_meshDetailsState.morphAttributeFilter )
-				enabled = true;
+			if( ImGui::Button( "Reset##bf" ) )
+			{
+				for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
+					enabled = true;
+			}
+			for( const auto& col : allBoneCols )
+			{
+				bool enabled = m_meshDetailsState.boneColumnFilter[col];
+				if( ImGui::Checkbox( col, &enabled ) )
+					m_meshDetailsState.boneColumnFilter[col] = enabled;
+			}
 		}
-		for( const auto& attr : allAttributes )
+
+		std::vector<int> activeColIndices;
+		for( int i = 0; i < 5; ++i )
 		{
-			bool enabled = m_meshDetailsState.morphAttributeFilter[attr.name];
-			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
-				m_meshDetailsState.morphAttributeFilter[attr.name] = enabled;
+			if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
+				activeColIndices.push_back( i );
+		}
+
+		ImGuiTableFlags tableFlags =
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollX |
+			ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingFixedFit;
+
+		int colCount = (int)activeColIndices.size() + 1;
+		if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+		{
+			if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
+			{
+				ImGui::SetScrollY( (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing() );
+				m_selectedItem.scrollTo = false;
+			}
+
+			ImGui::TableSetupScrollFreeze( 1, 1 );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			for( int ci : activeColIndices )
+				ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableHeadersRow();
+
+			ImGuiListClipper clipper;
+			clipper.Begin( (int)skeleton.bones.size() );
+			while( clipper.Step() )
+			{
+				for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
+				{
+					ImGui::PushID( bi );
+					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
+					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
+
+					ImGui::TableNextRow();
+
+					if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), (uint32_t)bi ) != m_selectedItem.selectedIndices.end() )
+					{
+						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+					}
+
+					char buf[128];
+					for( int col = 0; col < (int)activeColIndices.size(); ++col )
+					{
+						ImGui::TableSetColumnIndex( col + 1 );
+						switch( activeColIndices[col] )
+						{
+						case 0: // Name
+							ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[bi] ).c_str() );
+							break;
+						case 1: // Parent
+							if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
+							{
+								ImGui::TextUnformatted( "-" );
+							}
+							else
+							{
+								std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
+								ImGui::PushID( bi );
+								if( ImGui::TextLink( parentName.c_str() ) )
+								{
+									m_selectedItem.selectedIndices = { parentIdx };
+									m_selectedItem.scrollTo = true;
+								}
+								ImGui::PopID();
+							}
+							break;
+						case 2: // Position
+							if( hasTransform )
+							{
+								const auto& p = skeleton.restTransforms[bi].position;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
+						case 3: // Rotation
+							if( hasTransform )
+							{
+								const auto& r = skeleton.restTransforms[bi].rotation;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
+						case 4: // Scale
+							if( hasTransform )
+							{
+								const auto& s = skeleton.restTransforms[bi].scale;
+								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
+								ImGui::TextUnformatted( buf );
+							}
+							break;
+						}
+					}
+
+					ImGui::TableSetColumnIndex( 0 );
+
+					auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
+						return selected.GetValue() == (uint32_t)bi;
+					} );
+
+					bool itemIsSelected = index != appState.modelState.selectedBones.end();
+					if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
+					{
+						if( ImGui::GetIO().KeyCtrl )
+						{
+							if( itemIsSelected )
+							{
+								appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
+							}
+							else
+							{
+								appState.modelState.selectedBones.AddState( (uint32_t)bi );
+							}
+						}
+						else
+						{
+							appState.modelState.selectedBones.Clear();
+							appState.modelState.selectedBones.AddState( (uint32_t)bi );
+						}
+					}
+
+					ImGui::PopID();
+				}
+			}
+			clipper.End();
+			ImGui::EndTable();
 		}
 	}
-
-	std::vector<AttributeInfo> filteredAttributes;
-	for( const auto& attr : allAttributes )
-	{
-		if( m_meshDetailsState.morphAttributeFilter[attr.name] )
-			filteredAttributes.push_back( attr );
-	}
-
-	RenderAttributeTable( "##morphdata", vbData, vertexCount, morphLod.vb.stride, filteredAttributes, -1 );
 }
 
-void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState )
+void UIRenderer::RenderBoneBindingTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState )
 {
 	const auto& skeletons = cmfContent->m_cmfData->skeletons;
 	bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
@@ -1715,181 +1739,36 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, 
 			clipper.Begin( (int)mesh.boneBindings.size() );
 			while( clipper.Step() )
 			{
+				const cmf::Skeleton* skeleton = nullptr;
+				if( mesh.skeleton != 0xff )
+				{
+					skeleton = &cmfContent->m_cmfData->skeletons[mesh.skeleton];
+				}
 				for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
 				{
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex( 0 );
 					ImGui::Text( "%d", i );
 					ImGui::TableSetColumnIndex( 1 );
-					ImGui::TextUnformatted( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() );
-				}
-			}
-			clipper.End();
-			ImGui::EndTable();
-		}
-	}
 
-	if( hasSkeleton )
-	{
-		const auto& skeleton = skeletons[mesh.skeleton];
-		std::string skelName = cmf::ToStdString( skeleton.name );
-		ImGui::Text( "Skeleton: %s  Index: %u  Bones: %u", skelName.c_str(), (uint32_t)mesh.skeleton, (uint32_t)skeleton.bones.size() );
-
-		static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
-		for( const auto& col : allBoneCols )
-		{
-			if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
-				m_meshDetailsState.boneColumnFilter[col] = true;
-		}
-
-		if( ImGui::CollapsingHeader( "Filters" ) )
-		{
-			if( ImGui::Button( "Reset##bf" ) )
-			{
-				for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
-					enabled = true;
-			}
-			for( const auto& col : allBoneCols )
-			{
-				bool enabled = m_meshDetailsState.boneColumnFilter[col];
-				if( ImGui::Checkbox( col, &enabled ) )
-					m_meshDetailsState.boneColumnFilter[col] = enabled;
-			}
-		}
-
-		std::vector<int> activeColIndices;
-		for( int i = 0; i < 5; ++i )
-		{
-			if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
-				activeColIndices.push_back( i );
-		}
-
-		ImGuiTableFlags tableFlags =
-			ImGuiTableFlags_Borders |
-			ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_ScrollX |
-			ImGuiTableFlags_ScrollY |
-			ImGuiTableFlags_SizingFixedFit;
-
-		int scrollToBone = -1;
-		if( m_meshDetailsState.scrollToLinkedBone )
-		{
-			scrollToBone = m_meshDetailsState.linkedBoneIndex;
-			m_meshDetailsState.scrollToLinkedBone = false;
-		}
-
-		int colCount = (int)activeColIndices.size() + 1;
-		if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
-		{
-			if( scrollToBone >= 0 )
-				ImGui::SetScrollY( (float)scrollToBone * ImGui::GetTextLineHeightWithSpacing() );
-
-			ImGui::TableSetupScrollFreeze( 1, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-			for( int ci : activeColIndices )
-				ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableHeadersRow();
-
-			ImGuiListClipper clipper;
-			clipper.Begin( (int)skeleton.bones.size() );
-			while( clipper.Step() )
-			{
-				for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
-				{
-					ImGui::PushID( bi );
-					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
-					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
-
-					ImGui::TableNextRow();
-
-					if( bi == m_meshDetailsState.linkedBoneIndex )
+					if( skeleton )
 					{
-						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
-					}
-
-					ImGui::TableSetColumnIndex( 0 );
-
-					auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
-						return selected.GetValue() == (uint32_t)bi;
-					} );
-
-					bool itemIsSelected = index != appState.modelState.selectedBones.end();
-					if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
-					{
-						if( ImGui::GetIO().KeyCtrl )
+						if( ImGui::TextLink( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() ) )
 						{
-							if( itemIsSelected )
+							uint32_t boneIndex = 0xffffffff;
+							auto found = std::find( skeleton->bones.begin(), skeleton->bones.end(), mesh.boneBindings[i].name );
+							if( found != skeleton->bones.end() )
 							{
-								appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
+								boneIndex = static_cast<uint32_t>( std::distance( skeleton->bones.begin(), found ) );
 							}
-							else
-							{
-								appState.modelState.selectedBones.AddState( (uint32_t)bi );
-							}
-						}
-						else
-						{
-							appState.modelState.selectedBones.Clear();
-							appState.modelState.selectedBones.AddState( (uint32_t)bi );
+							m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, skeleton, { boneIndex }, true };
 						}
 					}
-
-					char buf[128];
-					for( int col = 0; col < (int)activeColIndices.size(); ++col )
+					else
 					{
-						ImGui::TableSetColumnIndex( col + 1 );
-						switch( activeColIndices[col] )
-						{
-						case 0: // Name
-							ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[bi] ).c_str() );
-							break;
-						case 1: // Parent
-							if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
-							{
-								ImGui::TextUnformatted( "-" );
-							}
-							else
-							{
-								std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
-								ImGui::PushID( bi );
-								ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.4f, 0.6f, 1.0f, 1.0f ) );
-								ImGui::Selectable( parentName.c_str(), false );
-								ImGui::PopStyleColor();
-								if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
-								{
-									m_meshDetailsState.linkedBoneIndex = (int)parentIdx;
-									m_meshDetailsState.scrollToLinkedBone = true;
-								}
-								ImGui::PopID();
-							}
-							break;
-						case 2: // Position
-							if( hasTransform )
-							{
-								const auto& p = skeleton.restTransforms[bi].position;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						case 3: // Rotation
-							if( hasTransform )
-							{
-								const auto& r = skeleton.restTransforms[bi].rotation;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						case 4: // Scale
-							if( hasTransform )
-							{
-								const auto& s = skeleton.restTransforms[bi].scale;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						}
+						ImGui::TextUnformatted( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() );
 					}
-					ImGui::PopID();
+
 				}
 			}
 			clipper.End();
@@ -1897,94 +1776,125 @@ void UIRenderer::RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, 
 		}
 	}
 }
-
-void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
+UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 {
-	if( !ImGui::BeginChild( "##hierarchyscroll", ImVec2( 0.0f, 0.0f ) ) )
-	{
-		ImGui::EndChild();
-		return;
-	}
+	UIRenderer::SelectedItem selectedItem = {};
 
+	const auto& cmfData = *cmfContent->m_cmfData;
 	const auto& meshes = cmfContent->m_cmfData->meshes;
 	const auto& skeletons = cmfContent->m_cmfData->skeletons;
 
-	std::function<void( int, const cmf::Skeleton&, const std::vector<std::vector<int>>& )> renderBone = [&]( int bi, const cmf::Skeleton& skeleton, const std::vector<std::vector<int>>& children ) {
-		std::string boneName = cmf::ToStdString( skeleton.bones[bi] );
-		bool isLeaf = children[bi].empty();
-		ImGuiTreeNodeFlags flags = isLeaf ? ( ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen ) : ImGuiTreeNodeFlags_None;
-
-		ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
-		bool open = ImGui::TreeNodeEx( (void*)(intptr_t)bi, flags, "%s", boneName.c_str() );
-		ImGui::PopStyleColor();
-		if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
+	auto clickableNode = [&]( SelectedItem::Type type, const auto& context, const char* label ) {
+		if( ImGui::TextLink( label ) )
 		{
-			m_meshDetailsState.linkedBoneIndex = bi;
-			m_meshDetailsState.scrollToLinkedBone = true;
-		}
-		if( open && !isLeaf )
-		{
-			for( int child : children[bi] )
-				renderBone( child, skeleton, children );
-			ImGui::TreePop();
+			selectedItem = SelectedItem{ type, &context };
 		}
 	};
 
-	std::function<void( const cmf::Skeleton& )> renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
-		int boneCount = (int)skeleton.bones.size();
-		std::vector<std::vector<int>> children( boneCount );
-		std::vector<int> roots;
-
-		for( int i = 0; i < boneCount; ++i )
-		{
-			uint32_t parent = ( (size_t)i < skeleton.parents.size() ) ? skeleton.parents[i] : 0xffffffff;
-			if( parent == (uint32_t)i || parent >= (uint32_t)boneCount )
-				roots.push_back( i );
-			else
-				children[parent].push_back( i );
-		}
-
-		for( int root : roots )
-		{
-			renderBone( root, skeleton, children );
-		}
+	auto renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
+		clickableNode( SelectedItem::Type::SkeletonBones, skeleton, "Bones" );
 	};
 
-	if( !skeletons.empty() )
+	if( ImGui::TreeNodeEx( &cmfData.meshes, ImGuiTreeNodeFlags_DefaultOpen, "Meshes (%zu)", meshes.size() ) )
 	{
-		std::string skelSectionHeader = "Skeletons (" + std::to_string( skeletons.size() ) + ")";
-		if( ImGui::TreeNodeEx( skelSectionHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
+		for( const auto& mesh : meshes )
 		{
-			for( int si = 0; si < (int)skeletons.size(); ++si )
+			if( ImGui::TreeNode( &mesh, "Mesh: %s", cmf::ToStdString( mesh.name ).c_str() ) )
 			{
-				ImGui::PushID( si );
-				const auto& skeleton = skeletons[si];
-				std::string skelHeader = "[" + std::to_string( si ) + "] " + cmf::ToStdString( skeleton.name ) +
-					" (" + std::to_string( skeleton.bones.size() ) + " bones)";
-
-				if( ImGui::TreeNodeEx( skelHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
+				if( !mesh.lods.empty() )
 				{
-					renderSkeleton( skeleton );
-					ImGui::TreePop();
-				}
-				ImGui::PopID();
-			}
-			ImGui::TreePop();
-		}
-	}
+					if( ImGui::TreeNode( &mesh.lods, "LODs (%zu)", mesh.lods.size() ) )
+					{
+						for( const auto& lod : mesh.lods )
+						{
+							std::string lodLabel = "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) );
+							if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
+							{
+								lodLabel += " (base)";
+							}
+							else
+							{
+								lodLabel += " (threshold: " + std::to_string( lod.threshold ) + "px)";
+							}
+							if( ImGui::TreeNode( &lod, "%s", lodLabel.c_str() ) )
+							{
+								const uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
+								const uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
 
-	std::string meshesSectionHeader = "Meshes (" + std::to_string( meshes.size() ) + ")";
-	if( ImGui::TreeNodeEx( meshesSectionHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
-	{
-		for( int mi = 0; mi < (int)meshes.size(); ++mi )
-		{
-			ImGui::PushID( mi );
-			const auto& mesh = meshes[mi];
-			bool isCurrentMesh = ( mi == m_meshDetailsState.selectedMeshIndex );
-			ImGuiTreeNodeFlags meshFlags = isCurrentMesh ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None;
-			std::string meshHeader = "Mesh: " + cmf::ToStdString( mesh.name );
-			if( ImGui::TreeNodeEx( "##meshnode", meshFlags, "%s", meshHeader.c_str() ) )
-			{
+								clickableNode( SelectedItem::Type::VertexBuffer, lod.vb, std::string( "Vertices: " + std::to_string( vertexCount ) ).c_str() );
+								clickableNode( SelectedItem::Type::IndexBuffer, lod.ib, std::string( "Indices: " + std::to_string( indexCount ) ).c_str() );
+								ImGui::TreePop();
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
+				if( !mesh.areas.empty() )
+				{
+					if( ImGui::TreeNode( &mesh.areas, "Mesh Areas (%zu)", mesh.areas.size() ) )
+					{
+						for( const auto& area : mesh.areas )
+						{
+							if( ImGui::TreeNode( &area, "%s", area.name.empty() ? "Unnamed Area" : cmf::ToStdString( area.name ).c_str() ) )
+							{
+								ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
+								ImGui::Text( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
+								if( !area.bones.empty() )
+								{
+									if( ImGui::TreeNode( &area.bones, "Bones" ) )
+									{
+										for( const auto& boneIndex : area.bones )
+										{
+											const auto& binding = mesh.boneBindings[boneIndex];
+											clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, ToStdString( binding.name ).c_str() );
+											ImGui::Text(
+												"Bounds: [%.4f, %.4f, %.4f] - [%.4f, %.4f, %.4f]",
+												binding.bounds.m_min.x,
+												binding.bounds.m_min.y,
+												binding.bounds.m_min.z,
+												binding.bounds.m_max.x,
+												binding.bounds.m_max.y,
+												binding.bounds.m_max.z );
+										}
+										ImGui::TreePop();
+									}
+								}
+								ImGui::TreePop();
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
+				if( !mesh.boneBindings.empty() )
+				{
+					clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, "Bone Bindings" );
+				}
+				if( !mesh.morphTargets.targets.empty() )
+				{
+					if( ImGui::TreeNode( &mesh.morphTargets.targets, "Morph Targets (%zu)", mesh.morphTargets.targets.size() ) )
+					{
+						for( size_t ti = 0; ti < mesh.morphTargets.targets.size(); ++ti )
+						{
+							const auto& target = mesh.morphTargets.targets[ti];
+							if( ImGui::TreeNode( &target, "%s", cmf::ToStdString( target.name ).c_str() ) )
+							{
+								ImGui::Text( "Max Displacement: %.4f", target.maxDisplacement );
+								for( int li = 0; li < (int)mesh.lods.size(); ++li )
+								{
+									const auto& lod = mesh.lods[li];
+									if( ti < lod.morphTargets.size() )
+									{
+										const auto& morphLod = lod.morphTargets[ti];
+										const uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
+										clickableNode( SelectedItem::VertexBuffer, morphLod.vb, std::string( "LOD " + std::to_string( li ) + ": " + std::to_string( vtxCount ) + " vertices" ).c_str() );
+									}
+								}
+								ImGui::TreePop();
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
 				{
 					const auto& b = mesh.bounds;
 					auto sz = b.Size();
@@ -1996,181 +1906,57 @@ void UIRenderer::RenderHierarchyTab( CmfContent* cmfContent )
 				if( hasSkeleton )
 				{
 					const auto& skeleton = skeletons[mesh.skeleton];
-					std::string skelHeader = "Skeleton[" + std::to_string( mesh.skeleton ) + "]: " + cmf::ToStdString( skeleton.name ) +
-						" (" + std::to_string( skeleton.bones.size() ) + " bones)";
-					if( ImGui::TreeNodeEx( skelHeader.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) )
+					if( ImGui::TreeNodeEx( &mesh.skeleton, ImGuiTreeNodeFlags_DefaultOpen, "Skeleton[%u]: %s (%zu bones)", mesh.skeleton, cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() ) )
 					{
 						renderSkeleton( skeleton );
 						ImGui::TreePop();
 					}
 				}
-				if( !mesh.morphTargets.targets.empty() )
-				{
-					std::string morphHeader = "Morph Targets (" + std::to_string( mesh.morphTargets.targets.size() ) + ")";
-					if( ImGui::TreeNode( morphHeader.c_str() ) )
-					{
-						if( !mesh.morphTargets.decl.empty() && ImGui::TreeNode( "Declaration" ) )
-						{
-							for( const auto& elem : mesh.morphTargets.decl )
-							{
-								std::string attrName = GetUsageFlagLabel( elem.usage, elem.usageIndex );
-								const char* typeName = GetElementTypeName( elem.type );
-								ImGui::TreeNodeEx( attrName.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen );
-								ImGui::SameLine();
-								ImGui::TextDisabled( "(%s x%u)", typeName, (uint32_t)elem.elementCount );
-							}
-							ImGui::TreePop();
-						}
-						for( int ti = 0; ti < (int)mesh.morphTargets.targets.size(); ++ti )
-						{
-							const auto& target = mesh.morphTargets.targets[ti];
-							std::string name = cmf::ToStdString( target.name );
-							ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
-							bool morphOpen = ImGui::TreeNode( name.c_str() );
-							ImGui::PopStyleColor();
-							if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
-							{
-								m_meshDetailsState.linkedMorphTargetIndex = ti;
-								m_meshDetailsState.navigateToLinkedMorphTarget = true;
-							}
-							if( morphOpen )
-							{
-								ImGui::Text( "Max Displacement: %.4f", target.maxDisplacement );
-								for( int li = 0; li < (int)mesh.lods.size(); ++li )
-								{
-									const auto& lod = mesh.lods[li];
-									if( ti < (int)lod.morphTargets.size() )
-									{
-										const auto& morphLod = lod.morphTargets[ti];
-										uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
-										ImGui::Text( "LOD %d: %u vertices", li, vtxCount );
-									}
-								}
-								ImGui::TreePop();
-							}
-						}
-						ImGui::TreePop();
-					}
-				}
-				if( !mesh.areas.empty() )
-				{
-					std::string areasHeader = "Mesh Areas (" + std::to_string( mesh.areas.size() ) + ")";
-					if( ImGui::TreeNode( areasHeader.c_str() ) )
-					{
-						for( const auto& area : mesh.areas )
-						{
-							ImGui::PushID( &area );
-							std::string areaName = cmf::ToStdString( area.name );
-							if( areaName.empty() )
-							{
-								areaName = "Unnamed Area";
-							}
-							if( ImGui::TreeNode( areaName.c_str() ) )
-							{
-								ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
-								ImGui::Text( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
-								if( !area.bones.empty() )
-								{
-									std::string boneList = "Bones:";
-									for( uint16_t bi : area.bones )
-										boneList += " " + std::to_string( bi );
-									ImGui::TextUnformatted( boneList.c_str() );
-								}
-								ImGui::TreePop();
-							}
-							ImGui::PopID();
-						}
-						ImGui::TreePop();
-					}
-				}
-				if( !mesh.lods.empty() )
-				{
-					std::string lodsHeader = "LODs (" + std::to_string( mesh.lods.size() ) + ")";
-					if( ImGui::TreeNode( lodsHeader.c_str() ) )
-					{
-						for( int i = 0; i < (int)mesh.lods.size(); ++i )
-						{
-							const auto& lod = mesh.lods[i];
-							std::string lodLabel;
-							if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
-								lodLabel = "LOD " + std::to_string( i ) + " (base)";
-							else
-								lodLabel = "LOD " + std::to_string( i ) + " (threshold: " + std::to_string( lod.threshold ) + "px)";
-
-							ImGui::PushStyleColor( ImGuiCol_Text, LINK_COLOR );
-							bool lodOpen = ImGui::TreeNode( lodLabel.c_str() );
-							ImGui::PopStyleColor();
-							if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
-							{
-								m_meshDetailsState.selectedLodIndex = i;
-								m_meshDetailsState.scrollToLinkedVertex = true;
-							}
-							if( lodOpen )
-							{
-								uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
-								uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
-								ImGui::Text( "Vertices: %u", vertexCount );
-								ImGui::Text( "Indices: %u", indexCount );
-								if( !lod.areas.empty() )
-									ImGui::Text( "Areas: %u", (uint32_t)lod.areas.size() );
-								if( !lod.morphTargets.empty() )
-									ImGui::Text( "Morph Targets: %u", (uint32_t)lod.morphTargets.size() );
-								ImGui::TreePop();
-							}
-						}
-						ImGui::TreePop();
-					}
-				}
 				if( !mesh.audioOcclusionMesh.vertices.empty() )
 				{
-					if( ImGui::TreeNode( "Audio Occlusion Mesh" ) )
-					{
-						ImGui::Text( "Vertices: %u", (uint32_t)mesh.audioOcclusionMesh.vertices.size() );
-						ImGui::Text( "Indices: %u", (uint32_t)mesh.audioOcclusionMesh.indices.size() );
-						ImGui::TreePop();
-					}
+					clickableNode( SelectedItem::Type::AudioOcclusionMesh, mesh.audioOcclusionMesh, "Audio Occlusion Mesh" );
 				}
 				ImGui::TreePop();
 			}
-			ImGui::PopID();
 		}
 		ImGui::TreePop(); // Meshes
 	}
-	ImGui::EndChild();
+
+	if( !skeletons.empty() )
+	{
+		if( ImGui::TreeNodeEx( &skeletons, ImGuiTreeNodeFlags_DefaultOpen, "Skeletons (%zu)", skeletons.size() ) )
+		{
+			for( int si = 0; si < (int)skeletons.size(); ++si )
+			{
+				const auto& skeleton = skeletons[si];
+				if( ImGui::TreeNodeEx( &skeleton, ImGuiTreeNodeFlags_DefaultOpen, "[%u] %s (%zu bones)", std::distance( skeletons.begin(), &skeleton ), cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() ) )
+				{
+					renderSkeleton( skeleton );
+					ImGui::TreePop();
+				}
+			}
+			ImGui::TreePop();
+		}
+	}
+
+	if( !cmfContent->m_cmfData->animations.empty() )
+	{
+		if( ImGui::TreeNode( &cmfContent->m_cmfData->animations, "Animations" ) )
+		{
+			for( auto& anim : cmfContent->m_cmfData->animations )
+			{
+				clickableNode( SelectedItem::Animation, anim, ToStdString( anim.name ).c_str() );
+			}
+			ImGui::TreePop();
+		}
+	}
+	return selectedItem;
 }
 
-void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent )
+void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent, const cmf::Animation& animation )
 {
-	const auto& animations = cmfContent->m_cmfData->animations;
-	if( animations.empty() )
-	{
-		ImGui::Text( "No animations" );
-		return;
-	}
-
-	m_meshDetailsState.selectedAnimationIndex = std::min(
-		m_meshDetailsState.selectedAnimationIndex,
-		(int)animations.size() - 1 );
-
-	auto animName = cmf::ToStdString( animations[m_meshDetailsState.selectedAnimationIndex].name );
-	ImGui::Text( "Animation" );
-	ImGui::SameLine();
-	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-	if( ImGui::BeginCombo( "##animselect", animName.c_str() ) )
-	{
-		for( int i = 0; i < (int)animations.size(); ++i )
-		{
-			auto name = cmf::ToStdString( animations[i].name );
-			bool selected = ( i == m_meshDetailsState.selectedAnimationIndex );
-			if( ImGui::Selectable( name.c_str(), selected ) )
-				m_meshDetailsState.selectedAnimationIndex = i;
-			if( selected )
-				ImGui::SetItemDefaultFocus();
-		}
-		ImGui::EndCombo();
-	}
-
-	const auto& anim = animations[m_meshDetailsState.selectedAnimationIndex];
+	const auto& anim = animation;
+	ImGui::Text( "Name: %s", ToStdString( anim.name ).c_str() );
 	ImGui::Text( "Duration: %.4f s", anim.duration );
 	ImGui::Text( "Channels: %u   Curves: %u", (uint32_t)anim.channels.size(), (uint32_t)anim.curves.size() );
 
