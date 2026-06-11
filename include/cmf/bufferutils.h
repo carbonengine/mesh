@@ -34,9 +34,10 @@ CARBON_MESH_EXPORT BufferView MakeIdentityIndexBuffer( uint32_t indexCount, Memo
  * @param newDecl The new vertex declaration describing the desired layout of the buffer.
  * @param allocator The memory allocator used to allocate memory for the new buffer.
  * @param bufferManager The buffer manager responsible for managing the new buffer.
+ * @param alignment The alignment of the elements of the new vertex declaration.
  * @return A BufferView representing the buffer with the layout matching the new vertex declaration.
  */
-CARBON_MESH_EXPORT BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager );
+CARBON_MESH_EXPORT BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager, uint32_t alignment = 1 );
 
 /**
  * @brief Removes duplicate vertices from the given LOD vertex buffer and morph targets.

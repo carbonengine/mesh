@@ -574,6 +574,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 			uint32_t offset = 0;
 			for( auto& elem : newDecl )
 			{
+				offset = ( offset + 3u ) & ~3u;
 				elem.offset = offset;
 				offset += cmf::GetVertexElementSize( elem );
 			}
@@ -586,7 +587,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 		
 		for( auto& lod : mesh.lods )
 		{
-			auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferManager );
+			auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferManager, 4 );
 			for( const auto& elem : newDecl )
 			{
 				if( elem.usage == cmf::Usage::Tangent )
@@ -624,7 +625,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 
 			for( auto& morphTarget : lod.morphTargets )
 			{
-				morphTarget.vb = cmf::ChangeBufferVertexDeclaration( morphTarget.vb, mesh.morphTargets.decl, newMorphTargetsDecl, allocator, bufferManager );
+				morphTarget.vb = cmf::ChangeBufferVertexDeclaration( morphTarget.vb, mesh.morphTargets.decl, newMorphTargetsDecl, allocator, bufferManager, 4 );
 			}
 		}
 
