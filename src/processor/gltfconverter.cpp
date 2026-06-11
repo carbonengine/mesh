@@ -18,8 +18,15 @@ namespace
 struct GLTFOptions
 {
 	std::string srcPath;
+	std::string srcPath2;
 	std::string dstPath;
 	bool combinedFile = false;
+};
+
+struct MorphMeshNode
+{
+	int nodeIndex;
+	cmf::Span<cmf::MorphTarget> targets;
 };
 
 const char* GetGltfAttributeName( cmf::Usage usage )
@@ -178,7 +185,7 @@ int AppendFloatAccessor( tinygltf::Buffer& buffer, tinygltf::Model& model, T& da
 	{
 		std::vector<double> min( components, DBL_MAX );
 		std::vector<double> max( components, -DBL_MAX );
-		for( uint32_t i = 0; i < (uint32_t)data.size(); ++i )
+		for( uint32_t i = 0; i < (uint32_t)data.size(); i++ )
 		{
 			int c = static_cast<int>( i % components );
 			min[c] = std::min( min[c], static_cast<double>( data[i] ) );
@@ -258,10 +265,9 @@ void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mod
 	}
 }
 
-void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animation, const std::vector<std::vector<int>>& meshNodeIndices, 
-	tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Animation& gltfAnim )
+void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<MorphMeshNode>& morphMeshNodes, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Animation& gltfAnim )
 {
-	std::map<size_t, std::vector<const cmf::AnimationCurve*>> curvesGroupedByMesh;
+	std::map<int, std::vector<const cmf::AnimationCurve*>> curvesGroupedByNode;
 
 	for( const auto& channel : animation.channels )
 	{
@@ -269,39 +275,28 @@ void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animat
 		{
 			continue;
 		}
-		if( channel.curveIndex >= animation.curves.size() )
-		{
-			continue;
-		}
-		const cmf::AnimationCurve& curve = animation.curves[channel.curveIndex];
 
-		for( size_t meshIndex = 0; meshIndex < data.meshes.size(); meshIndex++ )
+		for( const auto& node : morphMeshNodes )
 		{
-			const auto& targets = data.meshes[meshIndex].morphTargets.targets;
-			for( size_t targetIndex = 0; targetIndex < targets.size(); targetIndex++ )
+			for( size_t target = 0; target < node.targets.size(); target++ )
 			{
-				if( targets[targetIndex].name != channel.target )
+				if( node.targets[target].name != channel.target )
 				{
 					continue;
 				}
-				auto it = curvesGroupedByMesh.find( meshIndex );
-				if( it == curvesGroupedByMesh.end() )
+				auto it = curvesGroupedByNode.find( node.nodeIndex );
+				if( it == curvesGroupedByNode.end() )
 				{
-					it = curvesGroupedByMesh.emplace( meshIndex, std::vector<const cmf::AnimationCurve*>( targets.size(), nullptr ) ).first;
+					it = curvesGroupedByNode.emplace( node.nodeIndex, std::vector<const cmf::AnimationCurve*>( node.targets.size(), nullptr ) ).first;
 				}
-				it->second[targetIndex] = &curve;
+				it->second[target] = &animation.curves[channel.curveIndex];
 			}
 		}
 	}
 
-	for( auto& [meshIndex, columns] : curvesGroupedByMesh )
+	for( auto& [nodeIndex, columns] : curvesGroupedByNode )
 	{
-		const size_t numTargets = columns.size();
-
-		if( meshNodeIndices[meshIndex].empty() )
-		{
-			continue;
-		}
+		size_t numTargets = columns.size();
 
 		std::set<float> timeSet;
 		bool allStep = true;
@@ -313,18 +308,15 @@ void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animat
 				continue;
 			}
 			anyAnimated = true;
-
-			cmf::VertexElement knotElem{};
-			knotElem.type = columns[target]->knotType;
-			knotElem.elementCount = 1;
-			const uint32_t knotStride = cmf::GetVertexElementSize( knotElem );
-			const cmf::ConstBufferElementStream<float> knots{ knotElem, columns[target]->knots.data(), columns[target]->knotCount, knotStride };
-
+			cmf::VertexElement knotElement{};
+			knotElement.type = columns[target]->knotType;
+			knotElement.elementCount = 1;
+			uint32_t knotStride = cmf::GetVertexElementSize( knotElement );
+			cmf::ConstBufferElementStream<float> knots{ knotElement, columns[target]->knots.data(), columns[target]->knotCount, knotStride };
 			for( float knot : knots )
 			{
 				timeSet.insert( knot );
 			}
-
 			if( columns[target]->interpolation != cmf::Interpolation::Step )
 			{
 				allStep = false;
@@ -335,13 +327,13 @@ void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animat
 			continue;
 		}
 
-		const std::vector<float> times( timeSet.begin(), timeSet.end() );
-		const size_t numFrames = times.size();
+		std::vector<float> times( timeSet.begin(), timeSet.end() );
+		size_t numFrames = times.size();
 
 		std::vector<float> output( numFrames * numTargets, 0.0f );
 		for( size_t frame = 0; frame < numFrames; frame++ )
 		{
-			for( size_t target = 0; target < numTargets; ++target )
+			for( size_t target = 0; target < numTargets; target++ )
 			{
 				if( columns[target] )
 				{
@@ -349,30 +341,25 @@ void AddMorphWeightChannels( const cmf::Data& data, const cmf::Animation& animat
 				}
 			}
 		}
-		const int inputAccessor = AppendFloatAccessor( gltfBuffer, model, times, TINYGLTF_TYPE_SCALAR, true );
-		const int outputAccessor = AppendFloatAccessor( gltfBuffer, model, output, TINYGLTF_TYPE_SCALAR, false );
+		int inputAccessor = AppendFloatAccessor( gltfBuffer, model, times, TINYGLTF_TYPE_SCALAR, true );
+		int outputAccessor = AppendFloatAccessor( gltfBuffer, model, output, TINYGLTF_TYPE_SCALAR, false );
 
-		const int samplerIndex = static_cast<int>( gltfAnim.samplers.size() );
-		{
-			tinygltf::AnimationSampler sampler;
-			sampler.input = inputAccessor;
-			sampler.output = outputAccessor;
-			sampler.interpolation = allStep ? "STEP" : "LINEAR";
-			gltfAnim.samplers.push_back( sampler );
-		}
+		int samplerIndex = static_cast<int>( gltfAnim.samplers.size() );
+		tinygltf::AnimationSampler sampler;
+		sampler.input = inputAccessor;
+		sampler.output = outputAccessor;
+		sampler.interpolation = allStep ? "STEP" : "LINEAR";
+		gltfAnim.samplers.push_back( sampler );
 
-		for( int nodeIndex : meshNodeIndices[meshIndex] )
-		{
-			tinygltf::AnimationChannel channel;
-			channel.sampler = samplerIndex;
-			channel.target_node = nodeIndex;
-			channel.target_path = "weights";
-			gltfAnim.channels.push_back( channel );
-		}
+		tinygltf::AnimationChannel channel;
+		channel.sampler = samplerIndex;
+		channel.target_node = nodeIndex;
+		channel.target_path = "weights";
+		gltfAnim.channels.push_back( channel );
 	}
 }
 
-void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, const std::vector<std::vector<int>>& meshNodeIndices )
+void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, const std::vector<MorphMeshNode>& morphMeshNodes )
 {
 	auto& data = cmfFile.GetData();
 
@@ -474,7 +461,7 @@ void AddAnimations( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Mo
 			}
 		}
 
-		AddMorphWeightChannels( cmfFile.GetData(), animation, meshNodeIndices, gltfBuffer, model, gltfAnim );
+		AddMorphWeightChannels( animation, morphMeshNodes, gltfBuffer, model, gltfAnim );
 
 		if( !gltfAnim.channels.empty() )
 		{
@@ -634,13 +621,11 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	}
 }
 
-void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, std::vector<std::vector<int>>& meshNodeIndices )
+void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, std::vector<MorphMeshNode>& morphMeshNodes )
 {
 	auto& data = cmfFile.GetData();
 	auto& bufferManager = cmfFile.GetBufferManager();
 	auto& allocator = cmfFile.GetAllocator();
-
-	meshNodeIndices.resize( data.meshes.size(), {} );
 
 	for( size_t meshIndex = 0; meshIndex < data.meshes.size(); meshIndex++ )
 	{
@@ -812,15 +797,18 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 				node.mesh = meshIdx;
 				if( mesh.skeleton != 0xFF )
 				{
-					node.skin = mesh.skeleton;
+					node.skin = mesh.skeleton + (int)model.skins.size();
 				}
 				model.nodes.push_back( node );
 			}
 
+			if( !mesh.morphTargets.targets.empty() )
+			{
+				morphMeshNodes.push_back( { nodeIdx, mesh.morphTargets.targets } );
+			}
+
 			lodNodeIndices.push_back( nodeIdx );
 		}
-
-		meshNodeIndices[meshIndex] = lodNodeIndices;
 
 		if( lodNodeIndices.empty() )
 		{
@@ -855,8 +843,14 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 	app.add_option( "src", options.srcPath, "Path to the source CMF file" )->required()->check( CLI::ExistingFile );
 	app.add_option( "dst", options.dstPath, "Path to the output glTF" )->required();
 	app.add_flag( "--combinedfile", options.combinedFile, "Should we store the .bin data inside the gltf file as base64" );
+	app.add_option( "--src2", options.srcPath2, "Secondary file" )->check( CLI::ExistingFile );
 	app.final_callback( [&options]() {
 		CmfFile cmfFile( options.srcPath );
+		std::optional<CmfFile> cmfFile2;
+		if( !options.srcPath2.empty() )
+		{
+			cmfFile2.emplace( options.srcPath2 );
+		}
 
 		tinygltf::Model model;
 		tinygltf::TinyGLTF writer;
@@ -864,13 +858,27 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 		tinygltf::Buffer gltfBuffer;
 		tinygltf::Scene scene;
 
-		std::vector<std::vector<int>> meshNodeIndices;
+		std::vector<MorphMeshNode> morphMeshNodes;
 
 		PreprocessCmfFile( cmfFile );
+		if( cmfFile2 )
+		{
+			PreprocessCmfFile( cmfFile2.value() );
+		}
 
-		AddMeshes( cmfFile, gltfBuffer, model, scene, meshNodeIndices );
+		AddMeshes( cmfFile, gltfBuffer, model, scene, morphMeshNodes );
 		AddSkeletons( cmfFile, gltfBuffer, model, scene );
-		AddAnimations( cmfFile, gltfBuffer, model, meshNodeIndices );
+		if( cmfFile2 )
+		{
+			AddMeshes( cmfFile2.value(), gltfBuffer, model, scene, morphMeshNodes );
+			AddSkeletons( cmfFile2.value(), gltfBuffer, model, scene );
+		}
+
+		AddAnimations( cmfFile, gltfBuffer, model, morphMeshNodes );
+		if( cmfFile2 )
+		{
+			AddAnimations( cmfFile2.value(), gltfBuffer, model, morphMeshNodes );
+		}
 
 		model.buffers.push_back( gltfBuffer );
 		model.scenes.push_back( scene );
