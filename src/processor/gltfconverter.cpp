@@ -280,10 +280,21 @@ void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<
 		{
 			for( size_t target = 0; target < node.targets.size(); target++ )
 			{
-				if( node.targets[target].name != channel.target )
+				cmf::String morphTargetName = node.targets[target].name;
+
+				// TODO: intern, this "Shape" suffix will likely be gone later
+				// By convention (due to the exporter), the morph target name ends with "Shape". Assert that it does, and also that it is not an empty string!
+				std::string_view tmp = cmf::ToStdStringView( morphTargetName );
+				if( tmp.size() > 5 && tmp.compare( tmp.size() - 5, 5, "Shape" ) == 0 )
+				{
+					morphTargetName.byteSize -= 5 * sizeof( char );
+				}
+				
+				if( morphTargetName != channel.target )
 				{
 					continue;
 				}
+
 				auto it = curvesGroupedByNode.find( node.nodeIndex );
 				if( it == curvesGroupedByNode.end() )
 				{
@@ -799,12 +810,14 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 				{
 					node.skin = mesh.skeleton + (int)model.skins.size();
 				}
-				model.nodes.push_back( node );
-			}
 
-			if( !mesh.morphTargets.targets.empty() )
-			{
-				morphMeshNodes.push_back( { nodeIdx, mesh.morphTargets.targets } );
+				if( !mesh.morphTargets.targets.empty() )
+				{
+					node.weights.resize( mesh.morphTargets.targets.size(), 0.f );
+					morphMeshNodes.push_back( { nodeIdx, mesh.morphTargets.targets } );
+				}
+
+				model.nodes.push_back( node );
 			}
 
 			lodNodeIndices.push_back( nodeIdx );
