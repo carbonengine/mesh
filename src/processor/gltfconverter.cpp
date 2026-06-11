@@ -187,9 +187,9 @@ int AppendFloatAccessor( tinygltf::Buffer& buffer, tinygltf::Model& model, T& da
 		std::vector<double> max( components, -DBL_MAX );
 		for( uint32_t i = 0; i < (uint32_t)data.size(); i++ )
 		{
-			int c = static_cast<int>( i % components );
-			min[c] = std::min( min[c], static_cast<double>( data[i] ) );
-			max[c] = std::max( max[c], static_cast<double>( data[i] ) );
+			int j = static_cast<int>( i % components );
+			min[j] = std::min( min[j], static_cast<double>( data[i] ) );
+			max[j] = std::max( max[j], static_cast<double>( data[i] ) );
 		}
 		accessor.minValues = min;
 		accessor.maxValues = max;
@@ -200,69 +200,111 @@ int AppendFloatAccessor( tinygltf::Buffer& buffer, tinygltf::Model& model, T& da
 	return accessorIndex;
 }
 
-void AddSkeletons( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene )
+std::vector<int32_t> CreateMapping( const cmf::Skeleton& skeleton, cmf::Span<cmf::BoneBinding> boneBindings )
 {
-	auto& data = cmfFile.GetData();
-
-	for( const auto& skeleton : data.skeletons )
+	std::vector<int32_t> mapping( boneBindings.size(), -1 );
+	for( uint32_t meshBoneIndex = 0; meshBoneIndex < boneBindings.size(); meshBoneIndex++ )
 	{
-		const auto boneCount = static_cast<uint32_t>( skeleton.bones.size() );
+		const auto boundBoneName = boneBindings[meshBoneIndex].name;
 
-		if( boneCount == 0 )
+		auto foundBone = std::find_if( skeleton.bones.begin(), skeleton.bones.end(), [boundBoneName]( cmf::String boneName ) {
+			return boundBoneName == boneName;
+		} );
+		if( foundBone != skeleton.bones.end() )
+		{
+			mapping[meshBoneIndex] = (int32_t)std::distance( skeleton.bones.begin(), foundBone );
+		}
+	}
+	return mapping;
+}
+
+struct SkeletonNodes
+{
+	int boneNodeOffset = -1;
+	int rootNodeIndex = -1;
+};
+
+std::vector<SkeletonNodes> AddSkeletons( CmfFile& cmfFile, tinygltf::Model& model, tinygltf::Scene& scene )
+{
+	const auto& data = cmfFile.GetData();
+	std::vector<SkeletonNodes> result( data.skeletons.size() );
+
+	for( size_t skeletonIndex = 0; skeletonIndex < data.skeletons.size(); skeletonIndex++ )
+	{
+		const auto& skeleton = data.skeletons[skeletonIndex];
+		
+		if( skeleton.bones.size() == 0 )
 		{
 			continue;
 		}
 
-		const auto boneNodeOffset = model.nodes.size();
+		int boneNodeOffset = (int)model.nodes.size();
 
-		uint32_t i = 0;
-		for( const auto& bone : skeleton.bones )
+		for( size_t boneIndex = 0; boneIndex < skeleton.bones.size(); boneIndex++ )
 		{
-			const cmf::Transform& t = skeleton.restTransforms[i++];
-
+			const auto& boneName = skeleton.bones[boneIndex];
+			const cmf::Transform& transform = skeleton.restTransforms[boneIndex];
 			tinygltf::Node node;
-			node.name = cmf::ToStdString( bone );
-			node.translation = { t.position.x, t.position.y, t.position.z };
-			node.rotation = { t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w };
-			node.scale = { t.scale.x, t.scale.y, t.scale.z };
-
+			node.name = cmf::ToStdString( boneName );
+			node.translation = { transform.position.x, transform.position.y, transform.position.z };
+			node.rotation = { transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w };
+			node.scale = { transform.scale.x, transform.scale.y, transform.scale.z };
 			model.nodes.push_back( node );
 		}
 
-		// Connect the bone parent-child hierarchy. root bones are stored with parent == UINT32_MAX
-		int rootNodeIdx = -1;
-		for( uint32_t i = 0; i < boneCount; ++i )
+		int rootNodeIndex = -1;
+		for( size_t boneIndex = 0; boneIndex < skeleton.bones.size(); boneIndex++ )
 		{
-			const uint32_t parentIdx = skeleton.parents[i];
-			if( parentIdx >= boneCount )
+			uint32_t parentIndex = skeleton.parents[boneIndex];
+			int nodeIndex = boneNodeOffset + (int)boneIndex;
+			if( parentIndex >= skeleton.bones.size() )
 			{
-				rootNodeIdx = static_cast<int>( boneNodeOffset + i );
+				rootNodeIndex = nodeIndex;
 			}
 			else
 			{
-				model.nodes[static_cast<int>( boneNodeOffset + parentIdx )].children.push_back( static_cast<int>( boneNodeOffset + i ) );
+				model.nodes[boneNodeOffset + parentIndex].children.push_back( nodeIndex );
 			}
 		}
 
-		const float* ptr = reinterpret_cast<const float*>( skeleton.invBindTransforms.data() );
-		std::vector<float> ibm( ptr, ptr + 16 * skeleton.invBindTransforms.size() );
-		int bindTransformIdx = AppendFloatAccessor( gltfBuffer, model, ibm, TINYGLTF_TYPE_MAT4, false );
-
-		tinygltf::Skin skin;
-		skin.name = cmf::ToStdString( skeleton.name );
-		skin.skeleton = rootNodeIdx;
-		skin.inverseBindMatrices = bindTransformIdx;
-		for( uint32_t i = 0; i < boneCount; ++i )
+		result[skeletonIndex] = { boneNodeOffset, rootNodeIndex };
+		if( rootNodeIndex >= 0 )
 		{
-			skin.joints.push_back( static_cast<int>( boneNodeOffset + i ) );
-		}
-		model.skins.push_back( skin );
-
-		if( rootNodeIdx >= 0 )
-		{
-			scene.nodes.push_back( rootNodeIdx );
+			scene.nodes.push_back( rootNodeIndex );
 		}
 	}
+	return result;
+}
+
+int BuildMeshSkin( const cmf::Mesh& mesh, const cmf::Skeleton& skeleton, const SkeletonNodes& skeletonNodes, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model )
+{
+	const std::vector<int32_t> mapping = CreateMapping( skeleton, mesh.boneBindings );
+
+	tinygltf::Skin skin;
+	skin.name = cmf::ToStdString( skeleton.name );
+	skin.skeleton = skeletonNodes.rootNodeIndex;
+
+	std::vector<float> inverseBoneMatrices;
+	inverseBoneMatrices.reserve( mesh.boneBindings.size() * 16 );
+
+	for( size_t boneIndex = 0; boneIndex < mesh.boneBindings.size(); boneIndex++ )
+	{
+		int32_t bone = mapping[boneIndex];
+		if( bone < 0 )
+		{
+			bone = 0;
+		}
+
+		skin.joints.push_back( skeletonNodes.boneNodeOffset + bone );
+
+		auto matrix = (const float*)( &skeleton.invBindTransforms[bone] );
+		inverseBoneMatrices.insert( inverseBoneMatrices.end(), matrix, matrix + 16 );
+	}
+
+	skin.inverseBindMatrices = AppendFloatAccessor( gltfBuffer, model, inverseBoneMatrices, TINYGLTF_TYPE_MAT4, false );
+
+	model.skins.push_back( skin );
+	return (int)model.skins.size() - 1;
 }
 
 void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<MorphMeshNode>& morphMeshNodes, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Animation& gltfAnim )
@@ -283,7 +325,7 @@ void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<
 				cmf::String morphTargetName = node.targets[target].name;
 
 				// TODO: intern, this "Shape" suffix will likely be gone later
-				// By convention (due to the exporter), the morph target name ends with "Shape". Assert that it does, and also that it is not an empty string!
+				// By convention (due to the exporter), the morph target name ends with "Shape".
 				std::string_view tmp = cmf::ToStdStringView( morphTargetName );
 				if( tmp.size() > 5 && tmp.compare( tmp.size() - 5, 5, "Shape" ) == 0 )
 				{
@@ -591,7 +633,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 				if( elem.usage == cmf::Usage::Tangent )
 				{
 					const auto* binormalElem = cmf::FindElement( mesh.decl, cmf::Usage::Binormal, elem.usageIndex );
-					auto* normalElem = cmf::FindElement( mesh.decl, cmf::Usage::Normal, elem.usageIndex );
+					const auto* normalElem = cmf::FindElement( mesh.decl, cmf::Usage::Normal, elem.usageIndex );
 					if( !normalElem )
 					{
 						normalElem = cmf::FindElement( mesh.decl, cmf::Usage::Normal );
@@ -619,6 +661,28 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 					}
 				}
 			}
+
+			const auto* boneIndicesElem = cmf::FindElement( newDecl, cmf::Usage::BoneIndices );
+			const auto* boneWeightsElem = cmf::FindElement( newDecl, cmf::Usage::BoneWeights );
+			if( boneIndicesElem && boneWeightsElem )
+			{
+				const cmf::BufferElementStream<std::array<uint32_t, 4>> boneIndices( *boneIndicesElem, vb, bufferManager );
+				const cmf::ConstBufferElementStream<Vector4> boneWeights( *boneWeightsElem, vb, bufferManager );
+				for( uint32_t i = 0; i < boneIndices.size(); i++ )
+				{
+					std::array<uint32_t, 4> indices = boneIndices[i];
+					Vector4 weight = boneWeights[i];
+					for( int j = 0; j < 4; j++ )
+					{
+						if( weight[j] == 0.0f && indices[j] != 0 )
+						{
+							indices[j] = 0;
+						}
+					}
+					boneIndices.set( i, indices );
+				}
+			}
+
 			lod.vb = vb;
 
 			for( auto& morphTarget : lod.morphTargets )
@@ -632,7 +696,8 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	}
 }
 
-void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, std::vector<MorphMeshNode>& morphMeshNodes )
+void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, 
+	std::vector<MorphMeshNode>& morphMeshNodes, const std::vector<SkeletonNodes>& skeletonNodes )
 {
 	auto& data = cmfFile.GetData();
 	auto& bufferManager = cmfFile.GetBufferManager();
@@ -643,6 +708,12 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 		const auto& mesh = data.meshes[meshIndex];
 
 		const std::string meshName = cmf::ToStdString( mesh.name );
+
+		int skinIndex = -1;
+		if( mesh.skeleton != 0xFF && !mesh.boneBindings.empty() )
+		{
+			skinIndex = BuildMeshSkin( mesh, data.skeletons[mesh.skeleton], skeletonNodes[mesh.skeleton], gltfBuffer, model );
+		}
 
 		std::vector<int> lodNodeIndices;
 
@@ -808,7 +879,10 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 				node.mesh = meshIdx;
 				if( mesh.skeleton != 0xFF )
 				{
-					node.skin = mesh.skeleton + (int)model.skins.size();
+					if( skinIndex >= 0 )
+					{
+						node.skin = skinIndex;
+					}
 				}
 
 				if( !mesh.morphTargets.targets.empty() )
@@ -879,12 +953,12 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 			PreprocessCmfFile( cmfFile2.value() );
 		}
 
-		AddMeshes( cmfFile, gltfBuffer, model, scene, morphMeshNodes );
-		AddSkeletons( cmfFile, gltfBuffer, model, scene );
+		auto skeletonNodes1 = AddSkeletons( cmfFile, model, scene );
+		AddMeshes( cmfFile, gltfBuffer, model, scene, morphMeshNodes, skeletonNodes1 );
 		if( cmfFile2 )
 		{
-			AddMeshes( cmfFile2.value(), gltfBuffer, model, scene, morphMeshNodes );
-			AddSkeletons( cmfFile2.value(), gltfBuffer, model, scene );
+			auto skeletonNodes2 = AddSkeletons( cmfFile2.value(), model, scene );
+			AddMeshes( cmfFile2.value(), gltfBuffer, model, scene, morphMeshNodes, skeletonNodes2 );
 		}
 
 		AddAnimations( cmfFile, gltfBuffer, model, morphMeshNodes );
