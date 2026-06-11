@@ -2,12 +2,15 @@
 
 #include <cmf/converters.h>
 #include <cmf/bufferstreams.h>
+#include <cmf/declutils.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <tinyfiledialogs/tinyfiledialogs.h>
 
 #include "appState.h"
 #include "vulkan/vulkanerrors.h"
+
+#include <numeric>
 
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
@@ -351,8 +354,21 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		{
 			if( &animation == m_selectedItem.context )
 			{
-				RenderAnimationsTab( cmfContent, animation );
+				RenderAnimationChannelsSubTab( animation, *cmfContent->m_cmfData );
 				break;
+			}
+		}
+		break;
+	case SelectedItem::AnimationCurve:
+		for( auto& animation : cmfContent->m_cmfData->animations )
+		{
+			for( auto& curve : animation.curves )
+			{
+				if( &curve == m_selectedItem.context )
+				{
+					RenderAnimationCurvesSubTab( curve, animation );
+					break;
+				}
 			}
 		}
 		break;
@@ -1927,67 +1943,19 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( CmfContent* cmfContent 
 	return selectedItem;
 }
 
-void UIRenderer::RenderAnimationsTab( CmfContent* cmfContent, const cmf::Animation& animation )
+void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, const cmf::Data& data )
 {
-	const auto& anim = animation;
 	ImGui::Text( "Name: %s", ToStdString( anim.name ).c_str() );
 	ImGui::Text( "Duration: %.4f s", anim.duration );
 	ImGui::Text( "Channels: %u   Curves: %u", (uint32_t)anim.channels.size(), (uint32_t)anim.curves.size() );
 
 	ImGui::Separator();
 
-	if( ImGui::BeginTabBar( "##animsubtabs" ) )
-	{
-		if( ImGui::BeginTabItem( "Channels" ) )
-		{
-			RenderAnimationChannelsSubTab( anim );
-			ImGui::EndTabItem();
-		}
-
-		ImGuiTabItemFlags curvesTabFlags = m_meshDetailsState.navigateToLinkedCurve ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-		if( ImGui::BeginTabItem( "Curves", nullptr, curvesTabFlags ) )
-		{
-			RenderAnimationCurvesSubTab( anim );
-			ImGui::EndTabItem();
-		}
-
-		ImGui::EndTabBar();
-	}
-}
-
-void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
-{
 	if( anim.channels.empty() )
 	{
 		ImGui::Text( "No channels" );
 		return;
 	}
-
-	static const char* allChannelCols[] = { "Target", "Type", "Curve" };
-	for( const auto& col : allChannelCols )
-		if( m_meshDetailsState.channelColumnFilter.find( col ) == m_meshDetailsState.channelColumnFilter.end() )
-			m_meshDetailsState.channelColumnFilter[col] = true;
-
-	if( ImGui::CollapsingHeader( "Filters" ) )
-	{
-		if( ImGui::Button( "Reset##chf" ) )
-			for( auto& [name, enabled] : m_meshDetailsState.channelColumnFilter )
-				enabled = true;
-		for( const auto& col : allChannelCols )
-		{
-			bool enabled = m_meshDetailsState.channelColumnFilter[col];
-			if( ImGui::Checkbox( col, &enabled ) )
-				m_meshDetailsState.channelColumnFilter[col] = enabled;
-		}
-	}
-
-	std::vector<ChannelColumn> activeChannelCols;
-	for( int i = 0; i < 3; ++i )
-		if( m_meshDetailsState.channelColumnFilter[allChannelCols[i]] )
-			activeChannelCols.push_back( static_cast<ChannelColumn>( i ) );
-
-	if( activeChannelCols.empty() )
-		return;
 
 	ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
@@ -1996,16 +1964,13 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	if( ImGui::BeginTable( "##channelstable", (int)activeChannelCols.size(), tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+	if( ImGui::BeginTable( "##channelstable", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 	{
 		ImGui::TableSetupScrollFreeze( 0, 1 );
-		for( ChannelColumn ci : activeChannelCols )
-		{
-			if( ci == ChannelColumn::Target )
-				ImGui::TableSetupColumn( allChannelCols[(int)ci], ImGuiTableColumnFlags_WidthStretch );
-			else
-				ImGui::TableSetupColumn( allChannelCols[(int)ci], ImGuiTableColumnFlags_WidthFixed, ci == ChannelColumn::Curve ? 48.0f : 120.0f );
-		}
+		ImGui::TableSetupColumn( "Target", ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableSetupColumn( "Type", ImGuiTableColumnFlags_WidthFixed );
+		ImGui::TableSetupColumn( "Curve", ImGuiTableColumnFlags_WidthFixed );
+
 		ImGui::TableHeadersRow();
 
 		ImGuiListClipper clipper;
@@ -2037,34 +2002,73 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 				}
 
 				ImGui::TableNextRow();
-				for( int col = 0; col < (int)activeChannelCols.size(); ++col )
+				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), uint32_t( i ) ) != m_selectedItem.selectedIndices.end() )
 				{
-					ImGui::TableSetColumnIndex( col );
-					switch( activeChannelCols[col] )
-					{
-					case ChannelColumn::Target:
-						ImGui::TextUnformatted( cmf::ToStdString( channel.target ).c_str() );
-						break;
-					case ChannelColumn::Type:
-						ImGui::TextUnformatted( typeName );
-						break;
-					case ChannelColumn::Curve: {
-						char curveBuf[16];
-						snprintf( curveBuf, sizeof( curveBuf ), "%u", channel.curveIndex );
-						ImGui::PushID( i );
-						ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.4f, 0.6f, 1.0f, 1.0f ) );
-						ImGui::Selectable( curveBuf, false );
-						ImGui::PopStyleColor();
-						if( ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) )
-						{
-							m_meshDetailsState.linkedCurveIndex = (int)channel.curveIndex;
-							m_meshDetailsState.navigateToLinkedCurve = true;
-						}
-						ImGui::PopID();
-						break;
-					}
-					}
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
 				}
+
+				ImGui::TableSetColumnIndex( 0 );
+				ImGui::PushID( i );
+				bool foundTarget = false;
+				switch( channel.targetType )
+				{
+				case cmf::AnimationChannelTargetType::BonePosition:
+				case cmf::AnimationChannelTargetType::BoneRotation:
+				case cmf::AnimationChannelTargetType::BoneScale:
+					for( auto& skeleton : data.skeletons )
+					{
+						auto bone = std::find( skeleton.bones.begin(), skeleton.bones.end(), channel.target );
+						if( bone != skeleton.bones.end() )
+						{
+							if( ImGui::TextLink( cmf::ToStdString( *bone ).c_str() ) )
+							{
+								m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, &skeleton, { (uint32_t)std::distance( skeleton.bones.begin(), bone ) }, true };
+							}
+							foundTarget = true;
+							break;
+						}
+					}
+					break;
+				case cmf::AnimationChannelTargetType::MorphTarget:
+					for( auto& mesh : data.meshes )
+					{
+						for( auto& target : mesh.morphTargets.targets )
+						{
+							if( target.name == channel.target )
+							{
+								if( ImGui::TextLink( cmf::ToStdString( target.name ).c_str() ) )
+								{
+									m_selectedItem = SelectedItem{ SelectedItem::Type::VertexBuffer, &mesh.lods[0].morphTargets[std::distance( mesh.morphTargets.targets.begin(), &target )].vb };
+								}
+								foundTarget = true;
+								break;
+							}
+						}
+						if( foundTarget )
+						{
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+				if( !foundTarget )
+				{
+					ImGui::TextUnformatted( cmf::ToStdString( channel.target ).c_str() );
+				}
+				ImGui::PopID();
+
+				ImGui::TableSetColumnIndex( 1 );
+				ImGui::TextUnformatted( typeName );
+
+				ImGui::TableSetColumnIndex( 2 );
+				ImGui::PushID( i );
+				if( ImGui::TextLink( std::to_string( channel.curveIndex ).c_str() ) )
+				{
+					m_selectedItem = SelectedItem{ SelectedItem::Type::AnimationCurve, &anim.curves[channel.curveIndex] };
+				}
+				ImGui::PopID();
 			}
 		}
 		clipper.End();
@@ -2072,106 +2076,95 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim )
 	}
 }
 
-void UIRenderer::RenderAnimationCurvesSubTab( const cmf::Animation& anim )
+void UIRenderer::RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, const cmf::Animation& anim )
 {
-	int scrollToCurve = -1;
-	if( m_meshDetailsState.navigateToLinkedCurve )
-	{
-		scrollToCurve = m_meshDetailsState.linkedCurveIndex;
-		m_meshDetailsState.navigateToLinkedCurve = false;
-	}
+	const uint32_t curveIndex = uint32_t( std::distance( anim.curves.begin(), &curve ) );
+	ImGui::Text( "Index: %u", curveIndex );
+	ImGui::Text( "Knots: %u", curve.knotCount );
+	ImGui::Text( "Knot Type: %s", GetElementTypeName( curve.knotType ) );
+	ImGui::Text( "Value Type: %s%s", 
+		GetElementTypeName( curve.valueType ), 
+		curve.valueDimension > 1 ? ( " x" + std::to_string( curve.valueDimension ) ).c_str() : "" );
+	ImGui::Text( "Interpolation: %s", curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step" );
 
-	if( anim.curves.empty() )
+	const uint32_t targetCount = std::accumulate( anim.channels.begin(), anim.channels.end(), 0u, [&]( uint32_t sum, const cmf::AnimationChannel& channel ) {
+		return sum + ( channel.curveIndex == curveIndex ? 1 : 0 );
+	} );
+	ImGui::Text( "Targets: " );
+	ImGui::SameLine();
+	if( targetCount )
 	{
-		ImGui::Text( "No curves" );
-		return;
-	}
-
-	static const char* allCurveCols[] = { "Interpolation", "Knot Type", "Value Type", "Dimensions", "Knots" };
-	for( const auto& col : allCurveCols )
-		if( m_meshDetailsState.curveColumnFilter.find( col ) == m_meshDetailsState.curveColumnFilter.end() )
-			m_meshDetailsState.curveColumnFilter[col] = true;
-
-	if( ImGui::CollapsingHeader( "Filters" ) )
-	{
-		if( ImGui::Button( "Reset##cvf" ) )
-			for( auto& [name, enabled] : m_meshDetailsState.curveColumnFilter )
-				enabled = true;
-		for( const auto& col : allCurveCols )
+		if( ImGui::TextLink( std::to_string( targetCount ).c_str() ) )
 		{
-			bool enabled = m_meshDetailsState.curveColumnFilter[col];
-			if( ImGui::Checkbox( col, &enabled ) )
-				m_meshDetailsState.curveColumnFilter[col] = enabled;
+			std::vector<uint32_t> linkedChannels;
+			for( uint32_t ci = 0; ci < (uint32_t)anim.channels.size(); ++ci )
+			{
+				if( anim.channels[ci].curveIndex == curveIndex )
+				{
+					linkedChannels.push_back( ci );
+				}
+			}
+			m_selectedItem = SelectedItem{ SelectedItem::Type::Animation, &anim, linkedChannels };
 		}
 	}
+	else
+	{
+		ImGui::Text( "%u", targetCount );
+	}
 
-	std::vector<CurveColumn> activeCurveCols;
-	for( int i = 0; i < 5; ++i )
-		if( m_meshDetailsState.curveColumnFilter[allCurveCols[i]] )
-			activeCurveCols.push_back( static_cast<CurveColumn>( i ) );
-
-	ImGuiTableFlags tableFlags =
+	const ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
 		ImGuiTableFlags_RowBg |
 		ImGuiTableFlags_ScrollX |
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	int colCount = (int)activeCurveCols.size() + 1;
-	if( ImGui::BeginTable( "##curvestable", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+	if( ImGui::BeginTable( "##curvestable", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 	{
-		if( scrollToCurve >= 0 )
-			ImGui::SetScrollY( (float)scrollToCurve * ImGui::GetTextLineHeightWithSpacing() );
-
 		ImGui::TableSetupScrollFreeze( 1, 1 );
-		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-		for( CurveColumn ci : activeCurveCols )
-		{
-			bool isLast = ( ci == activeCurveCols.back() );
-			ImGui::TableSetupColumn( allCurveCols[(int)ci], isLast ? ImGuiTableColumnFlags_WidthStretch : ImGuiTableColumnFlags_WidthFixed, 80.0f );
-		}
+		ImGui::TableSetupColumn( "Knot", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+		ImGui::TableSetupColumn( "Time", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+		ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthFixed );
 		ImGui::TableHeadersRow();
 
+		cmf::VertexElement element = {};
+		element.type = curve.knotType;
+		element.elementCount = 1;
+		const auto stride = cmf::GetVertexElementSize( element );
+		cmf::ConstBufferElementStream<float>  knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
+
+		element.type = curve.valueType;
+		const auto valueStride = cmf::GetVertexElementSize( element );
+		cmf::ConstBufferElementStream<float> values{ element, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
+
 		ImGuiListClipper clipper;
-		clipper.Begin( (int)anim.curves.size() );
+		clipper.Begin( int( curve.knotCount ) );
 		while( clipper.Step() )
 		{
 			for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
 			{
-				const auto& curve = anim.curves[i];
-
-				const char* interp = curve.interpolation == cmf::Interpolation::Linear ? "Linear" : "Step";
-				const char* knotTypeName = GetElementTypeName( curve.knotType );
-				const char* valueTypeName = GetElementTypeName( curve.valueType );
-
 				ImGui::TableNextRow();
-				if( i == m_meshDetailsState.linkedCurveIndex )
-					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
-
 				ImGui::TableSetColumnIndex( 0 );
 				ImGui::Text( "%d", i );
-
-				for( int col = 0; col < (int)activeCurveCols.size(); ++col )
+				ImGui::TableSetColumnIndex( 1 );
+				ImGui::Text( "%.2f", knots[i] );
+				ImGui::TableSetColumnIndex( 2 );
+				switch( curve.valueDimension )
 				{
-					ImGui::TableSetColumnIndex( col + 1 );
-					switch( activeCurveCols[col] )
-					{
-					case CurveColumn::Interpolation:
-						ImGui::TextUnformatted( interp );
-						break;
-					case CurveColumn::KnotType:
-						ImGui::TextUnformatted( knotTypeName );
-						break;
-					case CurveColumn::ValueType:
-						ImGui::TextUnformatted( valueTypeName );
-						break;
-					case CurveColumn::Dimensions:
-						ImGui::Text( "%u", (uint32_t)curve.valueDimension );
-						break;
-					case CurveColumn::Knots:
-						ImGui::Text( "%u", curve.knotCount );
-						break;
-					}
+				case 1:
+					ImGui::Text( "%.4f", values[i * curve.valueDimension] );
+					break;
+				case 2:
+					ImGui::Text( "%.4f  %.4f", values[i * curve.valueDimension], values[i * curve.valueDimension + 1] );
+					break;
+				case 3:
+					ImGui::Text( "%.4f  %.4f  %.4f", values[i * curve.valueDimension], values[i * curve.valueDimension + 1], values[i * curve.valueDimension + 2] );
+					break;
+				case 4:
+					ImGui::Text( "%.4f  %.4f  %.4f  %.4f", values[i * curve.valueDimension], values[i * curve.valueDimension + 1], values[i * curve.valueDimension + 2], values[i * curve.valueDimension + 3] );
+					break;
+				default:
+					break;
 				}
 			}
 		}
