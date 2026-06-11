@@ -2208,9 +2208,8 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 		return;
 	}
 
-	uint32_t vertexCount = (uint32_t)audioOcclusionMesh.vertices.size();
-	uint32_t indexCount = (uint32_t)audioOcclusionMesh.indices.size();
-	uint32_t triCount = indexCount / 3;
+	const uint32_t vertexCount = uint32_t( audioOcclusionMesh.vertices.size() );
+	const uint32_t triCount = uint32_t( audioOcclusionMesh.indices.size() / 3 );
 
 	ImGui::Text( "Vertices: %u  Triangles: %u", vertexCount, triCount );
 	const auto& b = audioOcclusionMesh.bounds;
@@ -2223,47 +2222,21 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 
 	if( ImGui::CollapsingHeader( "Vertices", ImGuiTreeNodeFlags_DefaultOpen ) )
 	{
-		static const char* allVertCols[] = { "X", "Y", "Z" };
-		for( const auto& col : allVertCols )
-			if( m_meshDetailsState.audioVertexColumnFilter.find( col ) == m_meshDetailsState.audioVertexColumnFilter.end() )
-				m_meshDetailsState.audioVertexColumnFilter[col] = true;
-
-		if( ImGui::CollapsingHeader( "Filters##avf" ) )
-		{
-			if( ImGui::Button( "Reset##avr" ) )
-				for( auto& [name, enabled] : m_meshDetailsState.audioVertexColumnFilter )
-					enabled = true;
-			for( const auto& col : allVertCols )
-			{
-				bool enabled = m_meshDetailsState.audioVertexColumnFilter[col];
-				if( ImGui::Checkbox( col, &enabled ) )
-					m_meshDetailsState.audioVertexColumnFilter[col] = enabled;
-			}
-		}
-
-		std::vector<AudioVertexColumn> activeVertCols;
-		for( int i = 0; i < 3; ++i )
-			if( m_meshDetailsState.audioVertexColumnFilter[allVertCols[i]] )
-				activeVertCols.push_back( static_cast<AudioVertexColumn>( i ) );
-
-		ImGuiTableFlags tableFlags =
+		const ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
 			ImGuiTableFlags_RowBg |
 			ImGuiTableFlags_ScrollX |
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		int colCount = (int)activeVertCols.size() + 1;
-		float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
-		if( ImGui::BeginTable( "##aomverts", colCount, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
+		const float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		if( ImGui::BeginTable( "##aomverts", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-			for( AudioVertexColumn ci : activeVertCols )
-			{
-				bool isLast = ( ci == activeVertCols.back() );
-				ImGui::TableSetupColumn( allVertCols[(int)ci], isLast ? ImGuiTableColumnFlags_WidthStretch : ImGuiTableColumnFlags_WidthFixed, 80.0f );
-			}
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 60.0f );
+			ImGui::TableSetupColumn( "X", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "Y", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "Z", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
 			ImGuiListClipper clipper;
@@ -2276,22 +2249,12 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex( 0 );
 					ImGui::Text( "%d", i );
-					for( int col = 0; col < (int)activeVertCols.size(); ++col )
-					{
-						ImGui::TableSetColumnIndex( col + 1 );
-						switch( activeVertCols[col] )
-						{
-						case AudioVertexColumn::X:
-							ImGui::Text( "%.4f", v.x );
-							break;
-						case AudioVertexColumn::Y:
-							ImGui::Text( "%.4f", v.y );
-							break;
-						case AudioVertexColumn::Z:
-							ImGui::Text( "%.4f", v.z );
-							break;
-						}
-					}
+					ImGui::TableSetColumnIndex( 1 );
+					ImGui::Text( "%.4f", v.x );
+					ImGui::TableSetColumnIndex( 2 );
+					ImGui::Text( "%.4f", v.y );
+					ImGui::TableSetColumnIndex( 3 );
+					ImGui::Text( "%.4f", v.z );
 				}
 			}
 			clipper.End();
@@ -2303,20 +2266,20 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::Mesh& mesh )
 
 	if( triCount > 0 && ImGui::CollapsingHeader( "Triangles", ImGuiTreeNodeFlags_DefaultOpen ) )
 	{
-		ImGuiTableFlags tableFlags =
+		const ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
 			ImGuiTableFlags_RowBg |
 			ImGuiTableFlags_ScrollX |
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		const float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
 		if( ImGui::BeginTable( "##aomtris", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
 			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 60.0f );
-			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthFixed, 80.0f );
 			ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
