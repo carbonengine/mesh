@@ -122,11 +122,6 @@ private:
 		std::unordered_map<std::string, bool> vertexAttributeFilter;
 		std::unordered_map<std::string, bool> morphAttributeFilter;
 		std::unordered_map<std::string, bool> boneColumnFilter;
-		int selectedAnimationIndex{ 0 };
-		int linkedCurveIndex{ -1 };
-		bool navigateToLinkedCurve{ false };
-		std::unordered_map<std::string, bool> channelColumnFilter;
-		std::unordered_map<std::string, bool> curveColumnFilter;
 		std::unordered_map<std::string, bool> audioVertexColumnFilter;
 	};
 	void RegisterModelCallbacks( AppState& appState );
@@ -178,6 +173,7 @@ private:
 			IndexBuffer,
 			AudioOcclusionMesh,
 			Animation,
+			AnimationCurve
 		};
 		Type type = None;
 		const void* context = nullptr;
@@ -195,9 +191,8 @@ private:
 	SelectedItem m_selectedItem{};
 
 	SelectedItem RenderHierarchyTab( CmfContent* cmfContent );
-	void RenderAnimationsTab( CmfContent* cmfContent, const cmf::Animation& animation );
-	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
-	void RenderAnimationCurvesSubTab( const cmf::Animation& anim );
+	void RenderAnimationChannelsSubTab( const cmf::Animation& anim, const cmf::Data& data );
+	void RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, const cmf::Animation& anim );
 	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
