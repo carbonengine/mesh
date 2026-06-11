@@ -116,20 +116,9 @@ private:
 
 	struct MeshDetailsState
 	{
-		int selectedMeshIndex{ 0 };
-		int selectedLodIndex{ 0 };
-		int selectedMorphTargetIndex{ 0 };
-		int indexViewMode{ 1 }; // 0 = triangles, 1 = raw
 		std::unordered_map<std::string, bool> vertexAttributeFilter;
 		std::unordered_map<std::string, bool> morphAttributeFilter;
 		std::unordered_map<std::string, bool> boneColumnFilter;
-		int linkedVertexIndex{ 0 };
-		bool scrollToLinkedVertex{ true };
-		int selectedIndexValue{ -1 };
-		int linkedBoneIndex{ -1 };
-		bool scrollToLinkedBone{ false };
-		int linkedMorphTargetIndex{ -1 };
-		bool navigateToLinkedMorphTarget{ false };
 		int selectedAnimationIndex{ 0 };
 		int linkedCurveIndex{ -1 };
 		bool navigateToLinkedCurve{ false };
@@ -174,13 +163,35 @@ private:
 	template <typename Decl>
 	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
 
-	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex );
+	struct SelectedItem
+	{
+		enum Type
+		{
+			None,
+			SkeletonBones,
+			BoneBindings,
+			VertexBuffer,
+			IndexBuffer,
+			AudioOcclusionMesh,
+			Animation,
+		};
+		Type type = None;
+		const void* context = nullptr;
+		std::vector<uint32_t> selectedIndices;
+		bool scrollTo = false;
+	};
+
+	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes );
 	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
 	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
-	void RenderHierarchyTab( CmfContent* cmfContent );
-	void RenderAnimationsTab( CmfContent* cmfContent );
+	void RenderBonesTab( CmfContent* cmfContent, const cmf::Skeleton& skeleton, AppState& appState );
+	void RenderBoneBindingTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
+
+	SelectedItem m_selectedItem{};
+
+	SelectedItem RenderHierarchyTab( CmfContent* cmfContent );
+	void RenderAnimationsTab( CmfContent* cmfContent, const cmf::Animation& animation );
 	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
 	void RenderAnimationCurvesSubTab( const cmf::Animation& anim );
 	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
