@@ -13,6 +13,9 @@
 #include <numeric>
 #include <filesystem>
 
+// ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
+// NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
+
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 const float BUTTON_SIZE = 18.0f;
@@ -1818,22 +1821,38 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 	UIRenderer::SelectedItem selectedItem = {};
 
 	auto clickableNode = [&]( SelectedItem::Type type, const auto& context, const char* label ) {
+		ImGui::PushID( &context );
+		ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImVec4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+		ImGui::Indent( ImGui::GetStyle().IndentSpacing );
+		ImGui::PushStyleVarX( ImGuiStyleVar_ItemSpacing, 0.0f );
+		ImGui::Selectable( "", m_selectedItem.type == type && m_selectedItem.context == &context, ImGuiSelectableFlags_AllowOverlap );
+		ImGui::SameLine();
 		if( ImGui::TextLink( label ) )
 		{
 			selectedItem = SelectedItem{ type, &context };
 		}
+		ImGui::Unindent( ImGui::GetStyle().IndentSpacing );
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor();
+		ImGui::PopID();
+	};
+	auto textNode = [&]( const char* label, auto... vars ) {
+		ImGui::Indent( ImGui::GetStyle().IndentSpacing );
+		ImGui::Text( label, vars... );
+		ImGui::Unindent( ImGui::GetStyle().IndentSpacing );
 	};
 
-	auto renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
-		clickableNode( SelectedItem::Type::SkeletonBones, skeleton, "Bones" );
-	};
-
-	std::filesystem::path filePath( cmfContent.m_filePath );
+	const std::filesystem::path filePath( cmfContent.m_filePath );
 	if( ImGui::TreeNodeEx( &cmfContent, ImGuiTreeNodeFlags_DefaultOpen, "%s", filePath.filename().string().c_str() ) )
 	{
 		const auto& cmfData = *cmfContent.m_cmfData;
 		const auto& meshes = cmfContent.m_cmfData->meshes;
 		const auto& skeletons = cmfContent.m_cmfData->skeletons;
+
+		auto renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
+			const auto name = "Skeleton[" + std::to_string( std::distance( skeletons.begin(), &skeleton ) ) + "]: " + cmf::ToStdString( skeleton.name ) + " (" + std::to_string( skeleton.bones.size() ) + " bones)";
+			clickableNode( SelectedItem::Type::SkeletonBones, skeleton, name.c_str() );
+		};
 
 		if( !meshes.empty() && ImGui::TreeNodeEx( &cmfData.meshes, ImGuiTreeNodeFlags_DefaultOpen, "Meshes (%zu)", meshes.size() ) )
 		{
@@ -1877,8 +1896,8 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 							{
 								if( ImGui::TreeNode( &area, "%s", area.name.empty() ? "Unnamed Area" : cmf::ToStdString( area.name ).c_str() ) )
 								{
-									ImGui::Text( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
-									ImGui::Text( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
+									textNode( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
+									textNode( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
 									if( !area.bones.empty() )
 									{
 										if( ImGui::TreeNode( &area.bones, "Bones" ) )
@@ -1887,7 +1906,7 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 											{
 												const auto& binding = mesh.boneBindings[boneIndex];
 												clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, ToStdString( binding.name ).c_str() );
-												ImGui::Text(
+												textNode(
 													"Bounds: [%.4f, %.4f, %.4f] - [%.4f, %.4f, %.4f]",
 													binding.bounds.m_min.x,
 													binding.bounds.m_min.y,
@@ -1918,7 +1937,7 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 								const auto& target = mesh.morphTargets.targets[ti];
 								if( ImGui::TreeNode( &target, "%s", cmf::ToStdString( target.name ).c_str() ) )
 								{
-									ImGui::Text( "Max Displacement: %.4f", target.maxDisplacement );
+									textNode( "Max Displacement: %.4f", target.maxDisplacement );
 									for( int li = 0; li < (int)mesh.lods.size(); ++li )
 									{
 										const auto& lod = mesh.lods[li];
@@ -1935,22 +1954,14 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 							ImGui::TreePop();
 						}
 					}
-					{
-						const auto& b = mesh.bounds;
-						auto sz = b.Size();
-						ImGui::Text( "Bounds Min:  %.4f  %.4f  %.4f", b.m_min.x, b.m_min.y, b.m_min.z );
-						ImGui::Text( "Bounds Max:  %.4f  %.4f  %.4f", b.m_max.x, b.m_max.y, b.m_max.z );
-						ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
-					}
-					bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
-					if( hasSkeleton )
+					textNode( "Bounds Min:  %.4f  %.4f  %.4f", mesh.bounds.m_min.x, mesh.bounds.m_min.y, mesh.bounds.m_min.z );
+					textNode( "Bounds Max:  %.4f  %.4f  %.4f", mesh.bounds.m_max.x, mesh.bounds.m_max.y, mesh.bounds.m_max.z );
+					textNode( "Bounds Size: %.4f  %.4f  %.4f", mesh.bounds.Size().x, mesh.bounds.Size().y, mesh.bounds.Size().z );
+
+					if( mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size() )
 					{
 						const auto& skeleton = skeletons[mesh.skeleton];
-						if( ImGui::TreeNodeEx( &mesh.skeleton, ImGuiTreeNodeFlags_DefaultOpen, "Skeleton[%u]: %s (%zu bones)", mesh.skeleton, cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() ) )
-						{
-							renderSkeleton( skeleton );
-							ImGui::TreePop();
-						}
+						renderSkeleton( skeleton );
 					}
 					if( !mesh.audioOcclusionMesh.vertices.empty() )
 					{
@@ -1967,11 +1978,7 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 			for( int si = 0; si < (int)skeletons.size(); ++si )
 			{
 				const auto& skeleton = skeletons[si];
-				if( ImGui::TreeNodeEx( &skeleton, ImGuiTreeNodeFlags_DefaultOpen, "[%u] %s (%zu bones)", std::distance( skeletons.begin(), &skeleton ), cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() ) )
-				{
-					renderSkeleton( skeleton );
-					ImGui::TreePop();
-				}
+				renderSkeleton( skeleton );
 			}
 			ImGui::TreePop();
 		}
@@ -2326,3 +2333,5 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcc
 		}
 	}
 }
+
+// NOLINTEND(cppcoreguidelines-pro-type-vararg)
