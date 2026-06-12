@@ -617,6 +617,11 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 				}
 			}
 
+			if( cmf::FindElement( oldDecl, cmf::Usage::BoneIndices ) && !cmf::FindElement( oldDecl, cmf::Usage::BoneWeights ) )
+			{
+				cmf::Modify( newDecl, allocator ).push_back( cmf::VertexElement{ cmf::Usage::BoneWeights, 0, cmf::ElementType::Float32, 4 } );
+			}
+
 			uint32_t offset = 0;
 			for( auto& elem : newDecl )
 			{
@@ -631,6 +636,8 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4 );
 		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3 );
 		
+		bool synthesizeWeights = cmf::FindElement( mesh.decl, cmf::Usage::BoneIndices ) && !cmf::FindElement( mesh.decl, cmf::Usage::BoneWeights );
+
 		for( auto& lod : mesh.lods )
 		{
 			auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferManager, 4 );
@@ -665,6 +672,16 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 							tangents.set( i, Vector4{ tangents[i].GetXYZ(), 1.0f } );
 						}
 					}
+				}
+			}
+
+			if( synthesizeWeights )
+			{
+				const auto* weightsElem = cmf::FindElement( newDecl, cmf::Usage::BoneWeights );
+				const cmf::BufferElementStream<Vector4> weights( *weightsElem, vb, bufferManager );
+				for( uint32_t i = 0; i < weights.size(); ++i )
+				{
+					weights.set( i, Vector4{ 1.0f, 0.0f, 0.0f, 0.0f } );
 				}
 			}
 
