@@ -29,7 +29,7 @@
 
 namespace
 {
-constexpr uint32_t MAX_SCREEN_SIZE = 2048;	// same as lodsimplygon.cpp
+constexpr uint32_t MAX_SCREEN_SIZE = 2048; // same as lodsimplygon.cpp
 
 struct GLTFOptions
 {
