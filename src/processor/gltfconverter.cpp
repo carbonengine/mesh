@@ -350,7 +350,6 @@ void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<
 				{
 					morphTargetName.byteSize -= 5 * sizeof( char );
 				}
-				
 				if( morphTargetName != channel.target )
 				{
 					continue;
