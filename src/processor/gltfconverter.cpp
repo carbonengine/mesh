@@ -647,7 +647,6 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 
 			return newDecl;
 		};
-		
 		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4 );
 		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3 );
 		
