@@ -1,27 +1,52 @@
 #include "primitiveEffects.h"
 #include <cmf/declutils.h>
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <Matrix.h>
+#include <Sphere.h>
+#include <Vector3.h>
+#include <Vector4.h>
+#include <vulkan/vulkan_core.h>
+#include <cmf/v1.h>
+#include <rendering/renderer.h>
+#include <rendering/vulkan/graphicseffect.h>
+#include <rendering/vulkan/graphicseffecttypes.h>
 
 namespace
 {
 constexpr float AXIS_LENGTH_SCALE = 0.005f;
 constexpr float AXIS_LENGTH_MIN_SIZE = 0.001f;
 
-GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
+GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh )
 {
-	auto effectConfig = GraphicsEffect::Config();
+	auto effectConfig = GraphicsEffectTypes::Config();
 	PrimitiveEffects::AxisConfig axisConfig{};
+	auto inputDeclaration = GraphicsEffectTypes::ShaderInputDeclaration();
+	inputDeclaration.vertexInputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-	uint32_t stride = 0;
-	// find the position and normal elements in the vertex declaration,
 	for( const auto& element : mesh.decl )
 	{
-		stride += cmf::GetVertexElementSize( element );
-		effectConfig.availableVertexElements.push_back( element );
+		inputDeclaration.stride += cmf::GetVertexElementSize( element );
+		if( element.usage == usage || element.usage == cmf::Usage::PackedTangent || element.usage == cmf::Usage::PackedTangentLegacy )
+		{
+			if( element.usageIndex == usageIndex )
+			{
+				inputDeclaration.vertexDeclarations.push_back( element );
+			}
+		}
+		else
+		{
+			inputDeclaration.vertexDeclarations.push_back( element );	
+		}
 	}
+	effectConfig.inputDeclaration = inputDeclaration;
 	effectConfig.lineWidth = 2.0f;
 	effectConfig.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	effectConfig.stride = stride;
-	effectConfig.vertexInputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
 	assert( usage == cmf::Usage::Normal || usage == cmf::Usage::Tangent || usage == cmf::Usage::Binormal );
 	switch( usage )
@@ -53,16 +78,13 @@ GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer, const
 }
 }
 
-GraphicsEffect PrimitiveEffects::CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffect::Config config, std::vector<uint32_t> vertexToBoneMapping )
+GraphicsEffect PrimitiveEffects::CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffectTypes::Config config, std::vector<uint32_t> vertexToBoneMapping )
 {
-	config.availableVertexElements = {
-		{ cmf::Usage::Position,
-		  0,
-		  cmf::ElementType::Float32,
-		  4,
-		  0 }
+	config.inputDeclaration.stride = sizeof( Vector4 );
+	config.inputDeclaration.vertexDeclarations = {
+		cmf::VertexElement{ cmf::Usage::Position, 0, cmf::ElementType::Float32, 4, 0 }
 	};
-	config.stride = sizeof( Vector4 );
+
 	auto effect = GraphicsEffect( renderer );
 	effect.RegisterUniformData<PrimitiveEffects::VertexUBO>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 	effect.RegisterStorageBuffer<Matrix>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 1, 0xFF ); // bone transforms
@@ -76,8 +98,8 @@ GraphicsEffect PrimitiveEffects::CreateFlatColorEffect( std::shared_ptr<const Re
 
 GraphicsEffect PrimitiveEffects::CreateOrientationEffect( std::shared_ptr<const Renderer> renderer )
 {
-	auto config = GraphicsEffect::Config();
-	config.availableVertexElements = {
+	auto config = GraphicsEffectTypes::Config();
+	config.inputDeclaration.vertexDeclarations = {
 		{ cmf::Usage::Position,
 		  0,
 		  cmf::ElementType::Float32,
@@ -89,9 +111,10 @@ GraphicsEffect PrimitiveEffects::CreateOrientationEffect( std::shared_ptr<const 
 		  3,
 		  sizeof( Vector3 ) },
 	};
+	config.inputDeclaration.stride = sizeof( Vector3 ) * 2;
 	config.lineWidth = 2.0f;
 	config.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	config.stride = sizeof( Vector3 ) * 2;
+
 	auto effect = GraphicsEffect( renderer );
 	effect.RegisterUniformData<PrimitiveEffects::VertexUBO>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 	effect.RegisterStorageBuffer<Matrix>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 1, 0xFF );
@@ -100,7 +123,7 @@ GraphicsEffect PrimitiveEffects::CreateOrientationEffect( std::shared_ptr<const 
 	return effect;
 }
 
-GraphicsEffect PrimitiveEffects::CreateUnpackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
+GraphicsEffect PrimitiveEffects::CreateUnpackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh )
 {
 	std::string shaderName;
 	switch( usage )
@@ -117,21 +140,21 @@ GraphicsEffect PrimitiveEffects::CreateUnpackedAxisEffect( std::shared_ptr<const
 	default:
 		throw std::runtime_error( "Unsupported usage for CreateUnpackedAxisEffect" );
 	}
-	auto effect = CreateAxisEffect( renderer, usage, mesh );
+	auto effect = CreateAxisEffect( renderer, usage, usageIndex, mesh );
 	effect.SetShaderName( shaderName );
 	return effect;
 }
 
-GraphicsEffect PrimitiveEffects::CreatePackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
+GraphicsEffect PrimitiveEffects::CreatePackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh )
 {
-	auto effect = CreateAxisEffect( renderer, usage, mesh );
+	auto effect = CreateAxisEffect( renderer, usage, usageIndex, mesh );
 	effect.SetShaderName( "packedtangentaxis" );
 	return effect;
 }
 
-GraphicsEffect PrimitiveEffects::CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh )
+GraphicsEffect PrimitiveEffects::CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh )
 {
-	auto effect = CreateAxisEffect( renderer, usage, mesh );
+	auto effect = CreateAxisEffect( renderer, usage, usageIndex, mesh );
 	effect.SetShaderName( "packedtangentlegacyaxis" );
 	return effect;
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../vulkan/graphicseffect.h"
-#include <cmf/v1.h>
+#include "cmf/cmf.h"
 
 namespace PrimitiveEffects
 {
@@ -27,10 +27,10 @@ struct ColorInfo
 	Vector4 selected;
 };
 
-GraphicsEffect CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffect::Config config, std::vector<uint32_t> vertexToBoneMapping );
+GraphicsEffect CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffectTypes::Config config, std::vector<uint32_t> vertexToBoneMapping );
 GraphicsEffect CreateOrientationEffect( std::shared_ptr<const Renderer> renderer );
-GraphicsEffect CreateUnpackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
-GraphicsEffect CreatePackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
-GraphicsEffect CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, const cmf::Mesh& mesh );
+GraphicsEffect CreateUnpackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh );
+GraphicsEffect CreatePackedAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh );
+GraphicsEffect CreatePackedLegacyAxisEffect( std::shared_ptr<const Renderer> renderer, const cmf::Usage usage, uint32_t usageIndex, const cmf::Mesh& mesh );
 
 };

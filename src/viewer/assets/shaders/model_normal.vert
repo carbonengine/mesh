@@ -9,8 +9,9 @@ layout( binding = 0 ) uniform PerFrame
 
 
 // Inputs
+// inputs are per instance, not per vertex
 layout( location = 0 ) in vec3 inPosition;
-layout( location = 1 ) in vec3 inNormal;
+layout( location = 1 ) in vec3 inNormal; // shadercachecreator_multi_usage_index
 
 // Outputs
 layout( location = 0 ) out vec3 viewPosition;

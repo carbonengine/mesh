@@ -20,7 +20,7 @@ public:
 	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
-	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
+	VkResult SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode );
 
 	void UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState );
 	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
@@ -73,9 +73,9 @@ private:
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
 
-	std::unique_ptr<PrimitiveRenderable> m_normalAxisRenderable;
-	std::unique_ptr<PrimitiveRenderable> m_tangentAxisRenderable;
-	std::unique_ptr<PrimitiveRenderable> m_binormalAxisRenderable;
+	std::vector<PrimitiveRenderable> m_normalAxisRenderables;
+	std::vector<PrimitiveRenderable> m_tangentAxisRenderables;
+	std::vector<PrimitiveRenderable> m_binormalAxisRenderables;
 
 	// audio occlusion
 	PrimitiveRenderable m_audioOcclusionRenderable;

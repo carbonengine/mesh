@@ -6,9 +6,9 @@ namespace Bones
 
 PrimitiveRenderable CreateJoint( std::shared_ptr<const Renderer> renderer, const cmf::Skeleton& skeleton, Vector3 color, Vector3 selectedColor )
 {
-	GraphicsEffect::Config config{};
+	GraphicsEffectTypes::Config config{};
 	config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	config.stride = sizeof( Vector4 );
+
 
 	auto colorInfo = PrimitiveEffects::ColorInfo{
 		Vector4( color, 1.0f ),
@@ -30,17 +30,9 @@ PrimitiveRenderable CreateJoint( std::shared_ptr<const Renderer> renderer, const
 
 PrimitiveRenderable CreateBone( std::shared_ptr<const Renderer> renderer, const cmf::Skeleton& skeleton, Vector3 color, Vector3 selectedColor )
 {
-	GraphicsEffect::Config config{};
-	config.availableVertexElements = {
-		{ cmf::Usage::Position,
-		  0,
-		  cmf::ElementType::Float32,
-		  4,
-		  0 }
-	};
+	GraphicsEffectTypes::Config config{};
 
 	config.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	config.stride = sizeof( Vector4 );
 	config.lineWidth = 1.5f;
 
 	auto colorInfo = PrimitiveEffects::ColorInfo{

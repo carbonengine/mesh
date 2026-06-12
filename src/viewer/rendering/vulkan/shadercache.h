@@ -31,7 +31,9 @@ struct ShaderInputLayout
 {
 	uint8_t location;
 	cmf::Usage usage;
-	uint8_t usageIndex;
+	// Used if we can support mapping of multiple vertex elements that have the same usage.
+	// e.g multiple UV sets, multiple color sets, etc.
+	bool multiUsageIndex;
 };
 
 struct ShaderContainer
@@ -50,11 +52,9 @@ public:
 	static VkResult InitializeShaders( const Renderer* renderer );
 	static void ReleaseShaders( const Renderer* renderer );
 
-	static VkResult CreateGraphicsPipeline( const Renderer* renderer, std::string shaderName, GraphicsEffect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline );
+	static VkResult CreateGraphicsPipeline( const Renderer* renderer, std::string shaderName, GraphicsEffectTypes::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline );
 	static VkResult CreateComputePipeline( const Renderer* renderer, std::string shaderName, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline );
-	static std::vector<std::string> GetAvailableShaderNames( const std::vector<cmf::VertexElement>& availableVertexElements );
-
-	static std::vector<cmf::Usage> GetShaderUsage( std::string shaderName );
+	static std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> GetAvailableShaders( const std::vector<cmf::VertexElement>& availableVertexElements );
 
 private:
 	static void GenerateVertexDescriptions( std::string shaderName, const std::vector<cmf::VertexElement>& availableVertexElements, std::vector<VkVertexInputAttributeDescription>* outAttributeDescriptions );

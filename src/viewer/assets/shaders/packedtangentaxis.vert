@@ -1,4 +1,6 @@
 #version 450
+#pragma multi_usage inPackedTangents
+
 #include "packed_tangent.inc"
 
 // Constants
@@ -16,8 +18,9 @@ layout( binding = 1 ) uniform AxisConfig
 } axisConfig;
 
 // Inputs
+// inputs are per instance, not per vertex
 layout( location = 0 ) in vec3 inPosition;
-layout( location = 1 ) in vec4 inPackedTangents;
+layout( location = 1 ) in vec4 inPackedTangents; 
 
 // output 
 layout ( location = 0 ) out vec3 outColor;

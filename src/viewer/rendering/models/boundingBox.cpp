@@ -19,7 +19,7 @@ const std::array<uint32_t, 24> BOX_INDICES = { 0, 1, 0, 2, 0, 4, 3, 1, 3, 2, 3, 
 
 PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer, Vector3 color )
 {
-	GraphicsEffect::Config config{};
+	GraphicsEffectTypes::Config config{};
 	config.lineWidth = 2.0f;
 	config.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 

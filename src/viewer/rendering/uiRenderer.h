@@ -68,12 +68,9 @@ private:
 		bool wireframeOverlay{ false };
 		bool audioOcclusionMesh{ false };
 		bool hasAudioOcclusionMesh{ false };
-		bool showVertexNormals{ false };
-		bool showVertexTangents{ false };
-		bool showVertexBinormals{ false };
-		bool hasNormals{ false };
-		bool hasTangents{ false };
-		bool hasBinormals{ false };
+		std::vector<std::pair< uint32_t, bool>> showVertexNormals{ };
+		std::vector<std::pair< uint32_t, bool>> showVertexTangents{ };
+		std::vector<std::pair< uint32_t, bool>> showVertexBinormals{ };
 	};
 
 	struct ModelUiState
@@ -105,7 +102,7 @@ private:
 		ModelUiState modelStates{};
 		std::vector<SkeletonOwnerUiState> skeletonOwners{};
 		CmfUiComboBox<VkPolygonMode> polygonModeComboBox;
-		CmfUiComboBox<std::string> visualizationShaderComboBox;
+		CmfUiComboBox<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> visualizationShaderComboBox;
 		bool boneDebug{ false };
 		bool jointDebug{ false };
 		bool jointAxisDebug{ false };
@@ -148,6 +145,8 @@ private:
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
+	void SetupVertexAxisRows( MeshState& meshAppState );
+	void SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>& vertexAxisStates, const char* label, int columnCount );
 	void SetupMorphTarget( const MorphTargetUiState& morphTarget, size_t meshIndex, AppState& appState );
 	void SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& skeletonOwners, AppState& appState );
 	void SetupSkeletons( const std::vector<SkeletonUiState>& skeletonStates, AppState& appState );

@@ -1,4 +1,5 @@
 #version 450
+#pragma multi_usage inBinormal
 
 // Constants
 layout( binding = 0 ) uniform PerFrame 
@@ -16,8 +17,9 @@ layout( binding = 1 ) uniform AxisConfig
 } axisConfig;
 
 // Inputs
-layout( location = 0 ) in vec3 inPosition; // per instance
-layout( location = 1 ) in vec3 inBinormal; // per instance
+// inputs are per instance, not per vertex
+layout( location = 0 ) in vec3 inPosition; 
+layout( location = 1 ) in vec3 inBinormal;
 
 // Output
 layout ( location = 0 ) out vec3 outColor;

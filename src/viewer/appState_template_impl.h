@@ -115,7 +115,8 @@ size_t StateCollection<T>::AddState( T initialValue )
 }
 
 template <typename T>
-size_t StateCollection<T>::AddState( std::function<void( T& )> configurator )
+template <typename Callable>
+size_t StateCollection<T>::AddState( Callable configurator )
 {
 	State<T> state( m_initialValue );
 	m_states.push_back( state );
@@ -125,7 +126,8 @@ size_t StateCollection<T>::AddState( std::function<void( T& )> configurator )
 }
 
 template <typename T>
-size_t StateCollection<T>::AddState( T initialValue, std::function<void( T& )> configurator )
+template <typename Callable>
+size_t StateCollection<T>::AddState( T initialValue, Callable configurator )
 {
 	State<T> state( initialValue );
 	m_states.push_back( state );
@@ -186,6 +188,12 @@ template <typename T>
 size_t StateCollection<T>::size() const
 {
 	return m_states.size();
+}
+
+template <typename T>
+bool StateCollection<T>::empty() const
+{
+	return m_states.empty();
 }
 
 // Non-const iterators

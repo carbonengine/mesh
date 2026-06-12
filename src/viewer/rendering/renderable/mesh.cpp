@@ -16,35 +16,6 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 	m_audioOcclusionRenderable( renderer, GetAudioOcclusionEffect( renderer, cmfMesh ) ),
 	m_boundingBox( BoundingBox::Create( renderer, Vector3( 0.5, 0.5, 0.0 ) ) )
 {
-	for( const auto& vertexElement : m_cmfMesh.decl )
-	{
-		m_availableVertexElements.push_back( vertexElement );
-		if( vertexElement.usage == cmf::Usage::Normal )
-		{
-			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateNormal( renderer, m_cmfMesh ) );
-		}
-		else if( vertexElement.usage == cmf::Usage::Tangent )
-		{
-			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateTangent( renderer, m_cmfMesh ) );
-		}
-		else if( vertexElement.usage == cmf::Usage::Binormal )
-		{
-			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreateBinormal( renderer, m_cmfMesh ) );
-		}
-		else if( vertexElement.usage == cmf::Usage::PackedTangent )
-		{
-			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedNormal( renderer, m_cmfMesh ) );
-			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedTangent( renderer, m_cmfMesh ) );
-			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedBinormal( renderer, m_cmfMesh ) );
-		}
-		else if( vertexElement.usage == cmf::Usage::PackedTangentLegacy )
-		{
-			m_normalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyNormal( renderer, m_cmfMesh ) );
-			m_tangentAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyTangent( renderer, m_cmfMesh ) );
-			m_binormalAxisRenderable = std::make_unique<PrimitiveRenderable>( Axis::CreatePackedLegacyBinormal( renderer, m_cmfMesh ) );
-		}
-	}
-
 	m_boundingSphere = CcpMath::Sphere( m_cmfMesh.bounds );
 
 	m_boundingBoxTransform = ScalingMatrix( m_cmfMesh.bounds.Size() ) * TranslationMatrix( m_cmfMesh.bounds.Center() );
@@ -72,11 +43,14 @@ void MeshRenderable::Initialize( AppState& appState )
 	m_prepass.Initialize( appState );
 
 	appState.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
-		SetRenderingMode( appState.modelState.visualizationShader.GetValue(), mode );
+		auto [name, declaration] = appState.modelState.activeShader.GetValue();
+		SetRenderingMode( name, declaration, mode );
 	} );
 
-	appState.modelState.visualizationShader.RegisterCallback( [this]( std::string shaderName, AppState& appState ) {
-		SetRenderingMode( shaderName, appState.modelState.polygonMode.GetValue() );
+	appState.modelState.activeShader.RegisterCallback( [this]( std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration> shaderInputDeclaration, AppState& appState ) {
+		auto [name, declaration] = shaderInputDeclaration;
+
+		SetRenderingMode( name, declaration, appState.modelState.polygonMode.GetValue() );
 	} );
 
 	m_meshIndex = appState.modelState.meshes.AddState( [this]( MeshState& meshState ) {
@@ -103,6 +77,45 @@ void MeshRenderable::Initialize( AppState& appState )
 				m_prepass.SetMorphWeight( static_cast<uint32_t>( i ), morph.second ? morph.first : 0.0f );
 			} );
 		}
+		for( const auto& vertexElement : m_cmfMesh.decl )
+		{
+			m_availableVertexElements.push_back( vertexElement );
+			if( vertexElement.usage == cmf::Usage::Normal )
+			{
+				meshState.showVertexNormals.AddState( { vertexElement.usageIndex, false } );
+				m_normalAxisRenderables.push_back( Axis::CreateNormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+			}
+			else if( vertexElement.usage == cmf::Usage::Tangent )
+			{
+				meshState.showVertexTangents.AddState( { vertexElement.usageIndex, false } );
+				m_tangentAxisRenderables.push_back( Axis::CreateTangent( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+			}
+			else if( vertexElement.usage == cmf::Usage::Binormal )
+			{
+				meshState.showVertexBinormals.AddState( { vertexElement.usageIndex, false } );
+				m_binormalAxisRenderables.push_back( Axis::CreateBinormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+			}
+			else if( vertexElement.usage == cmf::Usage::PackedTangent )
+			{
+				meshState.showVertexNormals.AddState( { vertexElement.usageIndex, false } );
+				meshState.showVertexTangents.AddState( { vertexElement.usageIndex, false } );
+				meshState.showVertexBinormals.AddState( { vertexElement.usageIndex, false } );
+
+				m_normalAxisRenderables.push_back( Axis::CreatePackedNormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+				m_tangentAxisRenderables.push_back( Axis::CreatePackedTangent( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+				m_binormalAxisRenderables.push_back( Axis::CreatePackedBinormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+			}
+			else if( vertexElement.usage == cmf::Usage::PackedTangentLegacy )
+			{
+				meshState.showVertexNormals.AddState( { vertexElement.usageIndex, false } );
+				meshState.showVertexTangents.AddState( { vertexElement.usageIndex, false } );
+				meshState.showVertexBinormals.AddState( { vertexElement.usageIndex, false } );
+
+				m_normalAxisRenderables.push_back( Axis::CreatePackedLegacyNormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+				m_tangentAxisRenderables.push_back( Axis::CreatePackedLegacyTangent( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+				m_binormalAxisRenderables.push_back( Axis::CreatePackedLegacyBinormal( m_renderer, m_cmfMesh, vertexElement.usageIndex ) );
+			}
+		}
 	} );
 
 	appState.modelState.selectedLod.RegisterCallback( [this]( int32_t lodIndex, AppState& appState ) {
@@ -127,17 +140,17 @@ void MeshRenderable::Initialize( AppState& appState )
 		m_audioOcclusionRenderable.Initialize();
 	}
 
-	if( m_normalAxisRenderable )
+	for( auto& normalAxisRenderable : m_normalAxisRenderables )
 	{
-		m_normalAxisRenderable->Initialize();
+		normalAxisRenderable.Initialize();
 	}
-	if( m_tangentAxisRenderable )
+	for( auto& tangentAxisRenderable : m_tangentAxisRenderables )
 	{
-		m_tangentAxisRenderable->Initialize();
+		tangentAxisRenderable.Initialize();
 	}
-	if( m_binormalAxisRenderable )
+	for( auto& binormalAxisRenderable : m_binormalAxisRenderables )
 	{
-		m_binormalAxisRenderable->Initialize();
+		binormalAxisRenderable.Initialize();
 	}
 	m_initialized = true;
 }
@@ -296,21 +309,42 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 	}
 	const auto& meshState = appState.modelState.meshes[m_meshIndex].GetValue();
 
-	if( m_tangentAxisRenderable && meshState.showVertexTangents.GetValue() )
+	auto streamElementCount = cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb );
+	const auto* buffer = &( m_prepass.GetVertexBuffer() );
+	uint32_t index = 0;
+	for( const auto& normalState : meshState.showVertexNormals )
 	{
-		m_tangentAxisRenderable->SetUniformData( 0, viewProj );
-		m_tangentAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
+		if( normalState.GetValue().second )
+		{
+			// since the state and renderables are created in the same order based on the vertex elements, 
+			// we can use the index to get the corresponding renderable for the normal/tangent/binormal we want to render
+			m_normalAxisRenderables[index].SetUniformData( 0, viewProj );
+			m_normalAxisRenderables[index].Render( commandBuffer, buffer, nullptr, 2, streamElementCount );
+		}
+		++index;
 	}
-	if( m_normalAxisRenderable && meshState.showVertexNormals.GetValue() )
+	index = 0;
+	for( const auto& tangentState : meshState.showVertexTangents )
 	{
-		m_normalAxisRenderable->SetUniformData( 0, viewProj );
-		m_normalAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
+		if( tangentState.GetValue().second )
+		{
+			m_tangentAxisRenderables[index].SetUniformData( 0, viewProj );
+			m_tangentAxisRenderables[index].Render( commandBuffer, buffer, nullptr, 2, streamElementCount );
+		}
+		++index;
 	}
-	if( m_binormalAxisRenderable && meshState.showVertexBinormals.GetValue() )
+
+	index = 0;
+	for( const auto& binormalState : meshState.showVertexBinormals )
 	{
-		m_binormalAxisRenderable->SetUniformData( 0, viewProj );
-		m_binormalAxisRenderable->Render( commandBuffer, &( m_prepass.GetVertexBuffer() ), nullptr, 2, cmf::GetStreamElementCount( m_cmfMesh.lods[m_currentLod].vb ) );
+		if( binormalState.GetValue().second )
+		{
+			m_binormalAxisRenderables[index].SetUniformData( 0, viewProj );
+			m_binormalAxisRenderables[index].Render( commandBuffer, buffer, nullptr, 2, streamElementCount );
+		}
+		++index;
 	}
+
 }
 
 void MeshRenderable::PrepareMesh( ComputeCommandBuffer& commandBuffer )
@@ -341,7 +375,7 @@ void MeshRenderable::DrawIndexed( GraphicsCommandBuffer& commandBuffer )
 	}
 }
 
-VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode )
+VkResult MeshRenderable::SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode )
 {
 	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
 
@@ -350,12 +384,12 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 
 	CR_RETURN( vkDeviceWaitIdle( logicalDevice ) );
 
-	auto config = GraphicsEffect::Config();
+	auto config = GraphicsEffectTypes::Config();
 	config.topology = m_topology;
 	config.polygonMode = polygonMode;
 	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
-	config.availableVertexElements = m_availableVertexElements;
-	config.stride = m_stride;
+	config.inputDeclaration.vertexDeclarations = shaderInputDeclaration.vertexDeclarations;
+	config.inputDeclaration.stride = m_stride;
 
 	m_modelEffect.SetShaderName( m_shaderName );
 	m_modelEffect.SetConfig( config );
@@ -367,7 +401,7 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 
 	if( !m_wireframeEffect.IsInitialized() )
 	{
-		auto wireframeConfig = GraphicsEffect::Config();
+		auto wireframeConfig = GraphicsEffectTypes::Config();
 		wireframeConfig.topology = m_topology;
 		// use fill mode even though we are rendering wireframe
 		// The reason is when we rasterize the lines we will get issues with the depth buffer where some lines
@@ -377,8 +411,12 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 		wireframeConfig.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 		wireframeConfig.cullMode = VK_CULL_MODE_NONE;
 		wireframeConfig.blend = true;
-		wireframeConfig.availableVertexElements = m_availableVertexElements;
-		wireframeConfig.stride = m_stride;
+		wireframeConfig.inputDeclaration.stride = m_stride;
+		wireframeConfig.inputDeclaration.vertexDeclarations = { { cmf::Usage::Position,
+																  0,
+																  cmf::ElementType::Float32,
+																  3,
+																  0 } };
 
 		m_wireframeEffect.SetShaderName( "wireframeoverlay" );
 		m_wireframeEffect.SetConfig( wireframeConfig );
@@ -390,13 +428,13 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, VkPolygonMode
 
 GraphicsEffect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh )
 {
-	auto config = GraphicsEffect::Config();
+	auto config = GraphicsEffectTypes::Config();
 	config.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	config.polygonMode = VK_POLYGON_MODE_FILL;
 	config.cullMode = VK_CULL_MODE_NONE;
 	config.blend = false;
-	config.stride = sizeof( Vector3 );
-	config.availableVertexElements = {
+	config.inputDeclaration.stride = sizeof( Vector3 );
+	config.inputDeclaration.vertexDeclarations = {
 		cmf::VertexElement{
 			cmf::Usage::Position,
 			0,

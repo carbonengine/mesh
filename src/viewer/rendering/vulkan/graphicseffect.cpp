@@ -9,7 +9,7 @@ GraphicsEffect::GraphicsEffect( std::shared_ptr<const Renderer> renderer ) :
 {
 }
 
-void GraphicsEffect::SetConfig( GraphicsEffect::Config config )
+void GraphicsEffect::SetConfig( GraphicsEffectTypes::Config config )
 {
 	m_config = config;
 
@@ -37,5 +37,5 @@ void GraphicsEffect::Bind( VkCommandBuffer commandBuffer, uint32_t currentFrameI
 
 size_t GraphicsEffect::GetStride() const
 {
-	return m_config.stride;
+	return m_config.inputDeclaration.stride;
 }

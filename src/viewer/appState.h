@@ -3,6 +3,7 @@
 #include <functional>
 
 #include "data/cmfcontent.h"
+#include "rendering/vulkan/graphicseffecttypes.h"
 
 //forwards declaration
 struct AppState;
@@ -56,8 +57,12 @@ public:
 	StateCollection( T initialValue );
 	size_t AddState();
 	size_t AddState( T initialValue );
-	size_t AddState( std::function<void( T& )> configurator );
-	size_t AddState( T initialValue, std::function<void( T& )> configurator );
+
+	template <typename Callable>
+	size_t AddState( Callable configurator );
+
+	template <typename Callable>
+	size_t AddState( T initialValue, Callable configurator );
 
 	void Clear();
 	void CallCallbacks( AppState& appState );
@@ -67,6 +72,7 @@ public:
 	void RemoveAt( size_t index );
 
 	size_t size() const;
+	bool empty() const;
 
 	// Non-const iterators
 	iterator begin();
@@ -104,13 +110,14 @@ enum class CameraTrigger
 struct MeshState
 {
 	State<bool> display{ true };
+	/// the pair is <weight, enabled>
 	StateCollection<std::pair<float, bool>> morphs{ { 0.0f, true } };
 	State<bool> wireframeOverlay{ false };
 	State<bool> audioOcclusionMesh{ false };
 	State<bool> renderBoundingBox{ false };
-	State<bool> showVertexNormals{ false };
-	State<bool> showVertexTangents{ false };
-	State<bool> showVertexBinormals{ false };
+	StateCollection<std::pair<uint32_t, bool>> showVertexNormals{ { 0, false } };
+	StateCollection<std::pair<uint32_t, bool>> showVertexTangents{ { 0, false } };
+	StateCollection<std::pair<uint32_t, bool>> showVertexBinormals{ { 0, false } };
 	State<uint32_t> activeLod{ 0 };
 	State<float> meshScreenSize{ 0.0f };
 
@@ -136,8 +143,8 @@ struct ModelState
 
 	StateCollection<MeshState> meshes{ {} };
 
-	State<std::string> visualizationShader{ "" };
-	State<std::vector<std::string>> availableShaders{ {} };
+	State<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> activeShader{ {} };
+	State<std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>>> availableShaders{ {} };
 
 	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
 	State<std::string> currentAnimation{ "" };
@@ -155,7 +162,7 @@ struct ModelState
 	{
 		selectedLod.CallCallbacks( appState );
 		meshes.CallCallbacks( appState );
-		visualizationShader.CallCallbacks( appState );
+		activeShader.CallCallbacks( appState );
 		availableShaders.CallCallbacks( appState );
 		polygonMode.CallCallbacks( appState );
 		currentAnimation.CallCallbacks( appState );
