@@ -15,6 +15,8 @@
 
 namespace
 {
+constexpr uint32_t MAX_SCREEN_SIZE = 2048;	// same as lodsimplygon.cpp
+
 struct GLTFOptions
 {
 	std::string srcPath;
@@ -725,6 +727,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 		}
 
 		std::vector<int> lodNodeIndices;
+		std::vector<uint32_t> lodThresholds;
 
 		for( const auto& lod : mesh.lods )
 		{
@@ -904,6 +907,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			}
 
 			lodNodeIndices.push_back( nodeIdx );
+			lodThresholds.push_back( lod.threshold );
 		}
 
 		if( lodNodeIndices.empty() )
@@ -928,6 +932,17 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			{
 				model.extensionsUsed.push_back( "MSFT_lod" );
 			}
+
+			lodThresholds.push_back( 0 );
+			tinygltf::Value::Array coverage;
+			for( size_t i = 1; i < lodThresholds.size(); i++ )
+			{
+				double lowerBound = std::min( 1.0, double( lodThresholds[i] ) / MAX_SCREEN_SIZE );
+				coverage.push_back( tinygltf::Value( lowerBound ) );
+			}
+			tinygltf::Value::Object extras;
+			extras["MSFT_screencoverage"] = tinygltf::Value( coverage );
+			model.nodes[lodNodeIndices[0]].extras = tinygltf::Value( extras );
 		}
 
 		scene.nodes.push_back( lodNodeIndices[0] );
@@ -939,7 +954,7 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 	app.add_option( "src", options.srcPath, "Path to the source CMF file" )->required()->check( CLI::ExistingFile );
 	app.add_option( "dst", options.dstPath, "Path to the output glTF" )->required();
 	app.add_flag( "--combinedfile", options.combinedFile, "Should we store the .bin data inside the gltf file as base64" );
-	app.add_option( "--src2", options.srcPath2, "Secondary file" )->check( CLI::ExistingFile );
+	app.add_option( "--src2", options.srcPath2, "Secondary source file (i.e. containing animations)" )->check( CLI::ExistingFile );
 	app.final_callback( [&options]() {
 		CmfFile cmfFile( options.srcPath );
 		std::optional<CmfFile> cmfFile2;
