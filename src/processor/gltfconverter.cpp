@@ -832,8 +832,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 
 			// Process vertex data
 			auto processVertexData = [&gltfBuffer, &model, &vertexCount, &bufferManager](
-										 std::map<std::string,
-												  int>& attributes,
+										 std::map<std::string, int>& attributes,
 										 const cmf::BufferView& vb,
 										 const cmf::Span<cmf::VertexElement>& decl ) {
 				const auto* vbBytes = static_cast<const uint8_t*>( bufferManager.GetData( vb ) );
