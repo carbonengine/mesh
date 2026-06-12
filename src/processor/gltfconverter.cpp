@@ -686,6 +686,23 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 						}
 					}
 				}
+				if( const auto* normalElem = cmf::FindElement( newDecl, cmf::Usage::Normal ) )
+				{
+					const cmf::BufferElementStream<Vector3> normals( *normalElem, vb, bufferManager );
+					for( uint32_t i = 0; i < normals.size(); i++ )
+					{
+						const Vector3 normal = normals[i];
+						const float squaredLength = Dot( normal, normal );
+						if( squaredLength < FLT_EPSILON )
+						{
+							normals.set( i, Vector3( 0.0f, 1.0f, 0.0f ) );
+						}
+						else if( std::fabs( squaredLength - 1.0f ) > FLT_EPSILON )
+						{
+							normals.set( i, Normalize( normal ) );
+						}
+					}
+				}
 			}
 
 			if( synthesizeWeights )
