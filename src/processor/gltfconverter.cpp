@@ -686,9 +686,9 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 						}
 					}
 				}
-				if( const auto* normalElem = cmf::FindElement( newDecl, cmf::Usage::Normal ) )
+				if( elem.usage == cmf::Usage::Normal )
 				{
-					const cmf::BufferElementStream<Vector3> normals( *normalElem, vb, bufferManager );
+					const cmf::BufferElementStream<Vector3> normals( elem, vb, bufferManager );
 					for( uint32_t i = 0; i < normals.size(); i++ )
 					{
 						const Vector3 normal = normals[i];
