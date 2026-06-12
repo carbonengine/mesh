@@ -1603,165 +1603,162 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 {
 	const auto& skeletons = cmfContent.m_cmfData->skeletons;
 
-	//if( hasSkeleton )
-	{
-		std::string skelName = cmf::ToStdString( skeleton.name );
-		ImGui::Text( "Skeleton: %s  Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
+	std::string skelName = cmf::ToStdString( skeleton.name );
+	ImGui::Text( "Skeleton: %s  Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
 
-		static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
+	static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
+	for( const auto& col : allBoneCols )
+	{
+		if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
+			m_meshDetailsState.boneColumnFilter[col] = true;
+	}
+
+	if( ImGui::CollapsingHeader( "Filters" ) )
+	{
+		if( ImGui::Button( "Reset##bf" ) )
+		{
+			for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
+				enabled = true;
+		}
 		for( const auto& col : allBoneCols )
 		{
-			if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
-				m_meshDetailsState.boneColumnFilter[col] = true;
+			bool enabled = m_meshDetailsState.boneColumnFilter[col];
+			if( ImGui::Checkbox( col, &enabled ) )
+				m_meshDetailsState.boneColumnFilter[col] = enabled;
+		}
+	}
+
+	std::vector<int> activeColIndices;
+	for( int i = 0; i < 5; ++i )
+	{
+		if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
+			activeColIndices.push_back( i );
+	}
+
+	ImGuiTableFlags tableFlags =
+		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_ScrollX |
+		ImGuiTableFlags_ScrollY |
+		ImGuiTableFlags_SizingFixedFit;
+
+	int colCount = (int)activeColIndices.size() + 1;
+	if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
+	{
+		if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
+		{
+			ImGui::SetScrollY( (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing() );
+			m_selectedItem.scrollTo = false;
 		}
 
-		if( ImGui::CollapsingHeader( "Filters" ) )
+		ImGui::TableSetupScrollFreeze( 1, 1 );
+		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+		for( int ci : activeColIndices )
+			ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
+		ImGui::TableHeadersRow();
+
+		ImGuiListClipper clipper;
+		clipper.Begin( (int)skeleton.bones.size() );
+		while( clipper.Step() )
 		{
-			if( ImGui::Button( "Reset##bf" ) )
+			for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
 			{
-				for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
-					enabled = true;
-			}
-			for( const auto& col : allBoneCols )
-			{
-				bool enabled = m_meshDetailsState.boneColumnFilter[col];
-				if( ImGui::Checkbox( col, &enabled ) )
-					m_meshDetailsState.boneColumnFilter[col] = enabled;
-			}
-		}
+				ImGui::PushID( bi );
+				uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
+				bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
 
-		std::vector<int> activeColIndices;
-		for( int i = 0; i < 5; ++i )
-		{
-			if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
-				activeColIndices.push_back( i );
-		}
+				ImGui::TableNextRow();
 
-		ImGuiTableFlags tableFlags =
-			ImGuiTableFlags_Borders |
-			ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_ScrollX |
-			ImGuiTableFlags_ScrollY |
-			ImGuiTableFlags_SizingFixedFit;
-
-		int colCount = (int)activeColIndices.size() + 1;
-		if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
-		{
-			if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
-			{
-				ImGui::SetScrollY( (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing() );
-				m_selectedItem.scrollTo = false;
-			}
-
-			ImGui::TableSetupScrollFreeze( 1, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-			for( int ci : activeColIndices )
-				ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
-			ImGui::TableHeadersRow();
-
-			ImGuiListClipper clipper;
-			clipper.Begin( (int)skeleton.bones.size() );
-			while( clipper.Step() )
-			{
-				for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
+				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), (uint32_t)bi ) != m_selectedItem.selectedIndices.end() )
 				{
-					ImGui::PushID( bi );
-					uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
-					bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
+				}
 
-					ImGui::TableNextRow();
-
-					if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), (uint32_t)bi ) != m_selectedItem.selectedIndices.end() )
+				char buf[128];
+				for( int col = 0; col < (int)activeColIndices.size(); ++col )
+				{
+					ImGui::TableSetColumnIndex( col + 1 );
+					switch( activeColIndices[col] )
 					{
-						ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
-					}
-
-					char buf[128];
-					for( int col = 0; col < (int)activeColIndices.size(); ++col )
-					{
-						ImGui::TableSetColumnIndex( col + 1 );
-						switch( activeColIndices[col] )
+					case 0: // Name
+						ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[bi] ).c_str() );
+						break;
+					case 1: // Parent
+						if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
 						{
-						case 0: // Name
-							ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[bi] ).c_str() );
-							break;
-						case 1: // Parent
-							if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
-							{
-								ImGui::TextUnformatted( "-" );
-							}
-							else
-							{
-								std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
-								ImGui::PushID( bi );
-								if( ImGui::TextLink( parentName.c_str() ) )
-								{
-									m_selectedItem.selectedIndices = { parentIdx };
-									m_selectedItem.scrollTo = true;
-								}
-								ImGui::PopID();
-							}
-							break;
-						case 2: // Position
-							if( hasTransform )
-							{
-								const auto& p = skeleton.restTransforms[bi].position;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						case 3: // Rotation
-							if( hasTransform )
-							{
-								const auto& r = skeleton.restTransforms[bi].rotation;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						case 4: // Scale
-							if( hasTransform )
-							{
-								const auto& s = skeleton.restTransforms[bi].scale;
-								snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
-								ImGui::TextUnformatted( buf );
-							}
-							break;
-						}
-					}
-
-					ImGui::TableSetColumnIndex( 0 );
-
-					auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
-						return selected.GetValue() == (uint32_t)bi;
-					} );
-
-					bool itemIsSelected = index != appState.modelState.selectedBones.end();
-					if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
-					{
-						if( ImGui::GetIO().KeyCtrl )
-						{
-							if( itemIsSelected )
-							{
-								appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
-							}
-							else
-							{
-								appState.modelState.selectedBones.AddState( (uint32_t)bi );
-							}
+							ImGui::TextUnformatted( "-" );
 						}
 						else
 						{
-							appState.modelState.selectedBones.Clear();
+							std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
+							ImGui::PushID( bi );
+							if( ImGui::TextLink( parentName.c_str() ) )
+							{
+								m_selectedItem.selectedIndices = { parentIdx };
+								m_selectedItem.scrollTo = true;
+							}
+							ImGui::PopID();
+						}
+						break;
+					case 2: // Position
+						if( hasTransform )
+						{
+							const auto& p = skeleton.restTransforms[bi].position;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					case 3: // Rotation
+						if( hasTransform )
+						{
+							const auto& r = skeleton.restTransforms[bi].rotation;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					case 4: // Scale
+						if( hasTransform )
+						{
+							const auto& s = skeleton.restTransforms[bi].scale;
+							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
+							ImGui::TextUnformatted( buf );
+						}
+						break;
+					}
+				}
+
+				ImGui::TableSetColumnIndex( 0 );
+
+				auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
+					return selected.GetValue() == (uint32_t)bi;
+				} );
+
+				bool itemIsSelected = index != appState.modelState.selectedBones.end();
+				if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
+				{
+					if( ImGui::GetIO().KeyCtrl )
+					{
+						if( itemIsSelected )
+						{
+							appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
+						}
+						else
+						{
 							appState.modelState.selectedBones.AddState( (uint32_t)bi );
 						}
 					}
-
-					ImGui::PopID();
+					else
+					{
+						appState.modelState.selectedBones.Clear();
+						appState.modelState.selectedBones.AddState( (uint32_t)bi );
+					}
 				}
+
+				ImGui::PopID();
 			}
-			clipper.End();
-			ImGui::EndTable();
 		}
+		clipper.End();
+		ImGui::EndTable();
 	}
 }
 
@@ -1964,14 +1961,13 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 								if( ImGui::TreeNode( &target, "%s", cmf::ToStdString( target.name ).c_str() ) )
 								{
 									textNode( "Max Displacement: %.4f", target.maxDisplacement );
-									for( int li = 0; li < (int)mesh.lods.size(); ++li )
+									for( const auto& lod : mesh.lods )
 									{
-										const auto& lod = mesh.lods[li];
 										if( ti < lod.morphTargets.size() )
 										{
 											const auto& morphLod = lod.morphTargets[ti];
 											const uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
-											clickableNode( SelectedItem::VertexBuffer, morphLod.vb, std::string( "LOD " + std::to_string( li ) + ": " + std::to_string( vtxCount ) + " vertices" ).c_str() );
+											clickableNode( SelectedItem::VertexBuffer, morphLod.vb, std::string( "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) ) + ": " + std::to_string( vtxCount ) + " vertices" ).c_str() );
 										}
 									}
 									ImGui::TreePop();
@@ -2001,9 +1997,8 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 
 		if( !skeletons.empty() && ImGui::TreeNodeEx( &skeletons, ImGuiTreeNodeFlags_DefaultOpen, "Skeletons (%zu)", skeletons.size() ) )
 		{
-			for( int si = 0; si < (int)skeletons.size(); ++si )
+			for( const auto& skeleton : skeletons )
 			{
-				const auto& skeleton = skeletons[si];
 				renderSkeleton( skeleton );
 			}
 			ImGui::TreePop();
