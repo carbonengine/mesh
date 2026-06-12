@@ -898,7 +898,6 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 					attributes[name] = accIdx;
 				}
 			};
-			
 			processVertexData( prim.attributes, lod.vb, mesh.decl );
 
 			prim.targets.resize( mesh.morphTargets.targets.size() );
