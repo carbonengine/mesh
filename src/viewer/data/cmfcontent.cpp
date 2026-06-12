@@ -116,7 +116,7 @@ CcpMath::Sphere CmfContent::GetBoundingSphere() const
 	return CcpMath::Sphere( Vector4( 0.0f, 0.0f, 0.0f, 1.0f ) );
 }
 
-const uint8_t* CmfContent::Index( size_t sectionIndex, size_t offset )
+const uint8_t* CmfContent::Index( size_t sectionIndex, size_t offset ) const
 {
 	if( m_decompressedSections.size() <= sectionIndex )
 	{
