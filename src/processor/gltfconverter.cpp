@@ -92,15 +92,19 @@ int GetGltfComponentType( cmf::ElementType element )
 std::string GenerateAttributeName( const std::map<std::string, int>& usedAttributeNames, const cmf::Usage usage, int usageIndex )
 {
 	// Continue for a reasonable number of similarly named attributes.
-	// VK and GL guarantee at least 16 elements, so we will provide a worst case scenario
-	const int minimumGLAttributes = 16;
+	// Vulkan/OpenGL guarantee at least 16 vertex attributes, so we use that as a worst case.
+	int minimumGLAttributes = 16;
 	std::string attributeName = GetGltfAttributeName( usage );
 	for( int i = usageIndex; i < minimumGLAttributes; i++ )
 	{
 		std::string newName = attributeName;
-		if( i > 0 || ( usage == cmf::Usage::TexCoord || usage == cmf::Usage::Color || usage == cmf::Usage::BoneIndices || usage == cmf::Usage::BoneWeights ) )
+		if( usage == cmf::Usage::TexCoord || usage == cmf::Usage::Color || usage == cmf::Usage::BoneIndices || usage == cmf::Usage::BoneWeights )
 		{
 			newName += "_" + std::to_string( i );
+		}
+		else if( i > 0 )
+		{
+			newName = "_" + newName + "_" + std::to_string( i );
 		}
 		if( usedAttributeNames.find( newName ) == usedAttributeNames.end() )
 		{
