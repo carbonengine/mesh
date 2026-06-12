@@ -649,7 +649,6 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 		};
 		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4 );
 		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3 );
-		
 		bool synthesizeWeights = cmf::FindElement( mesh.decl, cmf::Usage::BoneIndices ) && !cmf::FindElement( mesh.decl, cmf::Usage::BoneWeights );
 
 		for( auto& lod : mesh.lods )
@@ -738,8 +737,7 @@ bool IsMeshSkinned( const cmf::Mesh& mesh )
 	return mesh.skeleton != 0xFF && !mesh.boneBindings.empty();
 }
 
-void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, 
-	std::vector<MorphMeshNode>& morphMeshNodes, const std::vector<SkeletonNodes>& skeletonNodes )
+void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, std::vector<MorphMeshNode>& morphMeshNodes, const std::vector<SkeletonNodes>& skeletonNodes )
 {
 	auto& data = cmfFile.GetData();
 	auto& bufferManager = cmfFile.GetBufferManager();
@@ -833,12 +831,11 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 			}
 
 			// Process vertex data
-			auto processVertexData = [&gltfBuffer, &model, &vertexCount, &bufferManager]( 
-				std::map<std::string, 
-				int>& attributes, 
-				const cmf::BufferView& vb, 
-				const cmf::Span<cmf::VertexElement>& decl )
-			{
+			auto processVertexData = [&gltfBuffer, &model, &vertexCount, &bufferManager](
+										 std::map<std::string,
+												  int>& attributes,
+										 const cmf::BufferView& vb,
+										 const cmf::Span<cmf::VertexElement>& decl ) {
 				const auto* vbBytes = static_cast<const uint8_t*>( bufferManager.GetData( vb ) );
 
 				AlignBuffer( gltfBuffer, sizeof( float ) );
