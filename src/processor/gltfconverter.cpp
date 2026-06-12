@@ -430,10 +430,10 @@ void AddMorphWeightChannels( const cmf::Animation& animation, const std::vector<
 	}
 }
 
-void AddAnimations( 
-	CmfFile& cmfFile, 
-	tinygltf::Buffer& gltfBuffer, 
-	tinygltf::Model& model, 
+void AddAnimations(
+	CmfFile& cmfFile,
+	tinygltf::Buffer& gltfBuffer,
+	tinygltf::Model& model,
 	const std::vector<MorphMeshNode>& morphMeshNodes )
 {
 	auto& data = cmfFile.GetData();
