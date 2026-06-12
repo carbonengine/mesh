@@ -178,18 +178,17 @@ private:
 	};
 
 	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes );
-	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
-	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( CmfContent* cmfContent, const cmf::Skeleton& skeleton, AppState& appState );
-	void RenderBoneBindingTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
+	void RenderVertexDataTab( const CmfContent& cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
+	void RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
+	void RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton, AppState& appState );
+	void RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, AppState& appState );
 
 	SelectedItem m_selectedItem{};
 
-	SelectedItem RenderHierarchyTab( CmfContent* cmfContent );
+	SelectedItem RenderHierarchyTab( const CmfContent& cmfContent );
 	void RenderAnimationChannelsSubTab( const cmf::Animation& anim, const cmf::Data& data );
 	void RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, const cmf::Animation& anim );
-	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
+	void RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcclusionMesh );
 
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
