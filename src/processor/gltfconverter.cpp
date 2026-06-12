@@ -252,7 +252,6 @@ std::vector<SkeletonNodes> AddSkeletons( CmfFile& cmfFile, tinygltf::Model& mode
 	for( size_t skeletonIndex = 0; skeletonIndex < data.skeletons.size(); skeletonIndex++ )
 	{
 		const auto& skeleton = data.skeletons[skeletonIndex];
-		
 		if( skeleton.bones.size() == 0 )
 		{
 			continue;
