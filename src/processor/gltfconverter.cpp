@@ -700,6 +700,11 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	}
 }
 
+bool IsMeshSkinned( const cmf::Mesh& mesh )
+{
+	return mesh.skeleton != 0xFF && !mesh.boneBindings.empty();
+}
+
 void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model& model, tinygltf::Scene& scene, 
 	std::vector<MorphMeshNode>& morphMeshNodes, const std::vector<SkeletonNodes>& skeletonNodes )
 {
@@ -714,7 +719,7 @@ void AddMeshes( CmfFile& cmfFile, tinygltf::Buffer& gltfBuffer, tinygltf::Model&
 		const std::string meshName = cmf::ToStdString( mesh.name );
 
 		int skinIndex = -1;
-		if( mesh.skeleton != 0xFF && !mesh.boneBindings.empty() )
+		if( IsMeshSkinned( mesh ) )
 		{
 			skinIndex = BuildMeshSkin( mesh, data.skeletons[mesh.skeleton], skeletonNodes[mesh.skeleton], gltfBuffer, model );
 		}
@@ -961,7 +966,12 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 		AddMeshes( cmfFile, gltfBuffer, model, scene, morphMeshNodes, skeletonNodes1 );
 		if( cmfFile2 )
 		{
-			auto skeletonNodes2 = AddSkeletons( cmfFile2.value(), model, scene );
+			const auto& meshes = cmfFile2.value().GetData().meshes;
+			std::vector<SkeletonNodes> skeletonNodes2;
+			if( std::any_of( meshes.begin(), meshes.end(), IsMeshSkinned ) )
+			{
+				skeletonNodes2 = AddSkeletons( cmfFile2.value(), model, scene );
+			}
 			AddMeshes( cmfFile2.value(), gltfBuffer, model, scene, morphMeshNodes, skeletonNodes2 );
 		}
 
