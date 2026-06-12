@@ -2,13 +2,27 @@
 #include "cmffile.h"
 #include "cmf/tangents.h"
 #include "cmf/declutils.h"
+
+#include <algorithm>
+#include <array>
+#include <cfloat>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include <tiny_gltf.h>
 
-#include <cfloat>
-#include <stdexcept>
 #include <cmf/bufferstreams.h>
 #include <cmf/bufferutils.h>
 #include <cmf/animation.h>
