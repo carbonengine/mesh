@@ -6,6 +6,7 @@
 
 #include "appState.h"
 #include "rendering/renderer.h"
+#include "uiDetailWindow.h"
 #include "vulkan/commandbuffer.h"
 
 // Handles rendering the UI
@@ -22,7 +23,6 @@ public:
 
 	void SetupUi( AppState& appState );
 	void CMFInfoWindow( AppState& appState );
-	void MeshDetailsWindow( AppState& appState );
 	void SetupMenubar( AppState& appState );
 	void UpdateInputs( AppState& state );
 
@@ -114,11 +114,6 @@ private:
 		CmfUiComboBox<std::string> animationComboBox;
 	};
 
-	struct MeshDetailsState
-	{
-		std::vector<std::pair<cmf::Usage, uint8_t>> hiddenAttributes;
-		std::unordered_map<std::string, bool> boneColumnFilter;
-	};
 	void RegisterModelCallbacks( AppState& appState );
 
 	void SetupGeneralView( AppState& appState );
@@ -142,39 +137,6 @@ private:
 	void UpdateUiState( AppState& appState );
 	const char* FileOpenDialog();
 
-	struct SelectedItem
-	{
-		enum Type
-		{
-			None,
-			SkeletonBones,
-			BoneBindings,
-			VertexBuffer,
-			IndexBuffer,
-			AudioOcclusionMesh,
-			Animation,
-			AnimationCurve
-		};
-		Type type = None;
-		const void* context = nullptr;
-		std::vector<uint32_t> selectedIndices;
-		bool scrollTo = false;
-	};
-
-	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<cmf::VertexElement>& attributes );
-
-	void RenderVertexDataTab( const CmfContent& cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
-	void RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton );
-	void RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh );
-
-	SelectedItem m_selectedItem{};
-
-	SelectedItem RenderHierarchyTab( const CmfContent& cmfContent );
-	void RenderAnimationChannelsSubTab( const cmf::Animation& anim, const cmf::Data& data );
-	void RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, const cmf::Animation& anim );
-	void RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcclusionMesh );
-
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
 	std::shared_ptr<const Renderer> m_renderer;
@@ -183,7 +145,7 @@ private:
 	UiState m_uiState{};
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	Playback m_playback{};
-	MeshDetailsState m_meshDetailsState{};
+	UIDetailWindow m_detailWindow{};
 };
 
 
