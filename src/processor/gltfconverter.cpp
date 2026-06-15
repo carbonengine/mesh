@@ -650,10 +650,15 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 	// Generate new decl for the mesh where all data is stored in float format
 	for( auto& mesh : data.meshes )
 	{
-		auto generateNewDecl = [&allocator]( const cmf::Span<cmf::VertexElement>& oldDecl, uint8_t tangentElementCount ) -> cmf::Span<cmf::VertexElement> {
+		auto generateNewDecl = [&allocator]( const cmf::Span<cmf::VertexElement>& oldDecl, uint8_t tangentElementCount, bool isMorphTarget ) -> cmf::Span<cmf::VertexElement> {
 			cmf::Span<cmf::VertexElement> newDecl;
 			for( const auto& elem : oldDecl )
 			{
+				if( isMorphTarget && ( elem.usage == cmf::Usage::BoneIndices || elem.usage == cmf::Usage::BoneWeights ) )
+				{
+					// glTF forbids JOINTS/WEIGHTS on morph targets
+					continue;
+				}
 				if( elem.usage == cmf::Usage::Binormal )
 				{
 					// Skip binormal elements since we are converting them into tangents with binormal sign baked in according to the glTF spec
@@ -706,7 +711,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 				}
 			}
 
-			if( cmf::FindElement( oldDecl, cmf::Usage::BoneIndices ) && !cmf::FindElement( oldDecl, cmf::Usage::BoneWeights ) )
+			if( !isMorphTarget && cmf::FindElement( oldDecl, cmf::Usage::BoneIndices ) && !cmf::FindElement( oldDecl, cmf::Usage::BoneWeights ) )
 			{
 				cmf::Modify( newDecl, allocator ).push_back( cmf::VertexElement{ cmf::Usage::BoneWeights, 0, cmf::ElementType::Float32, 4 } );
 			}
@@ -721,8 +726,8 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 
 			return newDecl;
 		};
-		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4 );
-		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3 );
+		cmf::Span<cmf::VertexElement> newDecl = generateNewDecl( mesh.decl, 4, false );
+		cmf::Span<cmf::VertexElement> newMorphTargetsDecl = generateNewDecl( mesh.morphTargets.decl, 3, true );
 		bool synthesizeWeights = cmf::FindElement( mesh.decl, cmf::Usage::BoneIndices ) && !cmf::FindElement( mesh.decl, cmf::Usage::BoneWeights );
 
 		for( auto& lod : mesh.lods )
