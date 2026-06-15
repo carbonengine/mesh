@@ -316,7 +316,7 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 	{
 		if( normalState.GetValue().second )
 		{
-			// since the state and renderables are created in the same order based on the vertex elements, 
+			// since the state and renderables are created in the same order based on the vertex elements,
 			// we can use the index to get the corresponding renderable for the normal/tangent/binormal we want to render
 			m_normalAxisRenderables[index].SetUniformData( 0, viewProj );
 			m_normalAxisRenderables[index].Render( commandBuffer, buffer, nullptr, 2, streamElementCount );
@@ -344,7 +344,6 @@ void MeshRenderable::RenderDebug( GraphicsCommandBuffer& commandBuffer, const Ap
 		}
 		++index;
 	}
-
 }
 
 void MeshRenderable::PrepareMesh( ComputeCommandBuffer& commandBuffer )

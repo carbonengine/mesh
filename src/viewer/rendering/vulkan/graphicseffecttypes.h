@@ -20,7 +20,6 @@ struct ShaderInputDeclaration
 		if( vertexDeclarations.size() != other.vertexDeclarations.size() )
 		{
 			return false;
-		
 		}
 		for( size_t i = 0; i < vertexDeclarations.size(); i++ )
 		{

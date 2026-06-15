@@ -41,7 +41,7 @@ GraphicsEffect CreateAxisEffect( std::shared_ptr<const Renderer> renderer, const
 		}
 		else
 		{
-			inputDeclaration.vertexDeclarations.push_back( element );	
+			inputDeclaration.vertexDeclarations.push_back( element );
 		}
 	}
 	effectConfig.inputDeclaration = inputDeclaration;
