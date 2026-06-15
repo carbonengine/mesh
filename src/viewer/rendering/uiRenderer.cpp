@@ -20,36 +20,101 @@ const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 const float BUTTON_SIZE = 18.0f;
 
-enum class BoneColumn
+namespace
 {
-	Name,
-	Parent,
-	Position,
-	Rotation,
-	Scale
-};
-enum class ChannelColumn
+const char* GetAnimationTargetTypeName( cmf::AnimationChannelTargetType type )
 {
-	Target,
-	Type,
-	Curve
-};
-enum class CurveColumn
-{
-	Interpolation,
-	KnotType,
-	ValueType,
-	Dimensions,
-	Knots
-};
-enum class AudioVertexColumn
-{
-	X,
-	Y,
-	Z
-};
+	switch( type )
+	{
+	case cmf::AnimationChannelTargetType::BonePosition:
+		return "Bone Position";
+	case cmf::AnimationChannelTargetType::BoneRotation:
+		return "Bone Rotation";
+	case cmf::AnimationChannelTargetType::BoneScale:
+		return "Bone Scale";
+	case cmf::AnimationChannelTargetType::MorphTarget:
+		return "Morph Target";
+	case cmf::AnimationChannelTargetType::Other:
+		return "Other";
+	}
+	return "Unknown";
+}
 
-const ImVec4 LINK_COLOR( 0.4f, 0.6f, 1.0f, 1.0f );
+std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex )
+{
+	std::string name;
+	switch( usage )
+	{
+	case cmf::Usage::Position:
+		name = "Position";
+		break;
+	case cmf::Usage::Normal:
+		name = "Normal";
+		break;
+	case cmf::Usage::Tangent:
+		name = "Tangent";
+		break;
+	case cmf::Usage::Binormal:
+		name = "Binormal";
+		break;
+	case cmf::Usage::TexCoord:
+		name = "TexCoord";
+		break;
+	case cmf::Usage::Color:
+		name = "Color";
+		break;
+	case cmf::Usage::BoneIndices:
+		name = "Bone Indices";
+		break;
+	case cmf::Usage::BoneWeights:
+		name = "Bone Weights";
+		break;
+	case cmf::Usage::PackedTangent:
+		name = "Packed Tangent";
+		break;
+	case cmf::Usage::PackedTangentLegacy:
+		name = "Packed Tangent (Legacy)";
+		break;
+	default:
+		name = "Unknown";
+		break;
+	}
+	if( usageIndex > 0 )
+	{
+		name += std::to_string( usageIndex );
+	}
+	return name;
+}
+
+const char* GetElementTypeName( cmf::ElementType type )
+{
+	switch( type )
+	{
+	case cmf::ElementType::Float32:
+		return "Float32";
+	case cmf::ElementType::Float16:
+		return "Float16";
+	case cmf::ElementType::UInt16Norm:
+		return "UInt16Norm";
+	case cmf::ElementType::UInt16:
+		return "UInt16";
+	case cmf::ElementType::Int16Norm:
+		return "Int16Norm";
+	case cmf::ElementType::Int16:
+		return "Int16";
+	case cmf::ElementType::UInt8Norm:
+		return "UInt8Norm";
+	case cmf::ElementType::UInt8:
+		return "UInt8";
+	case cmf::ElementType::Int8Norm:
+		return "Int8Norm";
+	case cmf::ElementType::Int8:
+		return "Int8";
+	}
+	return "Unknown";
+}
+
+}
 
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
@@ -1307,60 +1372,7 @@ void UIRenderer::OnChange( bool changed, std::function<void()> callback )
 	}
 }
 
-std::string UIRenderer::GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex )
-{
-	std::string name;
-	switch( usage )
-	{
-	case cmf::Usage::Position:
-		name = "Position";
-		break;
-	case cmf::Usage::Normal:
-		name = "Normal";
-		break;
-	case cmf::Usage::Tangent:
-		name = "Tangent";
-		break;
-	case cmf::Usage::Binormal:
-		name = "Binormal";
-		break;
-	case cmf::Usage::TexCoord:
-		name = "TexCoord";
-		break;
-	case cmf::Usage::Color:
-		name = "Color";
-		break;
-	case cmf::Usage::BoneIndices:
-		name = "Bone Indices";
-		break;
-	case cmf::Usage::BoneWeights:
-		name = "Bone Weights";
-		break;
-	case cmf::Usage::PackedTangent:
-		name = "Packed Tangent";
-		break;
-	case cmf::Usage::PackedTangentLegacy:
-		name = "Packed Tangent (Legacy)";
-		break;
-	default:
-		name = "Unknown";
-		break;
-	}
-	if( usageIndex > 0 )
-		name += std::to_string( usageIndex );
-	return name;
-}
-
-const char* UIRenderer::GetElementTypeName( cmf::ElementType type )
-{
-	static const char* names[] = {
-		"Float32", "Float16", "UInt16Norm", "UInt16", "Int16Norm", "Int16", "UInt8Norm", "UInt8", "Int8Norm", "Int8"
-	};
-	int idx = (int)type;
-	return idx >= 0 && idx < cmf::ElementTypeCount ? names[idx] : "Unknown";
-}
-
-void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes )
+void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<cmf::VertexElement>& attributes )
 {
 	if( attributes.empty() )
 	{
@@ -1368,37 +1380,45 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 		return;
 	}
 
-	ImGuiTableFlags tableFlags =
+	const ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
 		ImGuiTableFlags_RowBg |
 		ImGuiTableFlags_ScrollX |
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	int colCount = (int)attributes.size() + 1;
-	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+	const int colCount = int( attributes.size() + 1 );
+	const ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
 	if( ImGui::BeginTable( tableId, colCount, tableFlags, outerSize ) )
 	{
 		if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
 		{
-			float targetY = (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing();
+			const float targetY = (float)m_selectedItem.selectedIndices.front() * ImGui::GetTextLineHeightWithSpacing();
 			ImGui::SetScrollY( targetY );
+			m_selectedItem.scrollTo = false;
 		}
 
 		ImGui::TableSetupScrollFreeze( 1, 1 );
 		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
 		for( const auto& attr : attributes )
-			ImGui::TableSetupColumn( attr.name.c_str(), ImGuiTableColumnFlags_WidthStretch );
+		{
+			ImGui::TableSetupColumn( GetUsageFlagLabel( attr.usage, attr.usageIndex ).c_str(), ImGuiTableColumnFlags_WidthStretch );
+		}
 		ImGui::TableHeadersRow();
 
+		std::vector<cmf::ConstBufferElementStream<Vector4>> attributeStreams;
+		attributeStreams.reserve( attributes.size() );
+		for( const auto& attr : attributes )
+		{
+			attributeStreams.emplace_back( attr, vbData, vertexCount, stride );
+		}
+
 		ImGuiListClipper clipper;
-		clipper.Begin( (int)vertexCount );
+		clipper.Begin( int( vertexCount ) );
 		while( clipper.Step() )
 		{
 			for( int vi = clipper.DisplayStart; vi < clipper.DisplayEnd; ++vi )
 			{
-				const uint8_t* vertexPtr = vbData + (size_t)vi * stride;
-
 				ImGui::TableNextRow();
 				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), uint32_t( vi ) ) != m_selectedItem.selectedIndices.end() )
 				{
@@ -1410,46 +1430,38 @@ void UIRenderer::RenderAttributeTable( const char* tableId, const uint8_t* vbDat
 				for( int ai = 0; ai < (int)attributes.size(); ++ai )
 				{
 					const auto& attr = attributes[ai];
+					const auto& stream = attributeStreams[ai];
+
 					ImGui::TableSetColumnIndex( ai + 1 );
 
-					if( attr.byteOffset + (uint32_t)attr.elementCount * (uint32_t)attr.conv.second > stride )
+					if( attr.usage == cmf::Usage::Color )
 					{
-						ImGui::TextUnformatted( "Stride Offset Missmatch" );
-						continue;
-					}
-
-					if( attr.name.find( "Color" ) == 0 )
-					{
-						float c[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-						// Only read in RGB for the colors since we dont store alpha data
-						for( uint8_t i = 0; i < attr.elementCount && i < 3; ++i )
-						{
-							const uint8_t* compPtr = vertexPtr + attr.byteOffset + i * attr.conv.second;
-							float v = attr.conv.first.to( compPtr );
-							c[i] = v < 0.0f ? 0.0f : ( v > 1.0f ? 1.0f : v );
-						}
-						float sz = ImGui::GetTextLineHeight();
-						ImVec2 p = ImGui::GetCursorScreenPos();
+						auto color = stream[vi];
+						const float sz = ImGui::GetTextLineHeight();
+						const ImVec2 p = ImGui::GetCursorScreenPos();
 						ImGui::GetWindowDrawList()->AddRectFilled(
-							p, ImVec2( p.x + sz, p.y + sz ), IM_COL32( (int)( c[0] * 255 ), (int)( c[1] * 255 ), (int)( c[2] * 255 ), (int)( c[3] * 255 ) ) );
+							p, 
+							ImVec2( p.x + sz, p.y + sz ), 
+							ImColor( color.x, color.y, color.z ) );
 						ImGui::Dummy( ImVec2( sz + 4.0f, sz ) );
 						ImGui::SameLine();
 					}
 
-					char valueBuf[128];
-					char* ptr = valueBuf;
-					char* end = valueBuf + sizeof( valueBuf );
-					for( uint8_t c = 0; c < attr.elementCount && ptr < end - 1; ++c )
+					switch( attr.elementCount )
 					{
-						if( c > 0 && ptr < end - 3 )
-						{
-							*ptr++ = ' ';
-							*ptr++ = ' ';
-						}
-						const uint8_t* compPtr = vertexPtr + attr.byteOffset + c * attr.conv.second;
-						ptr += snprintf( ptr, end - ptr, "%.4f", attr.conv.first.to( compPtr ) );
+					case 2:
+						ImGui::Text( "%.4f  %.4f", stream[vi].x, stream[vi].y );
+						break;
+					case 3:
+						ImGui::Text( "%.4f  %.4f  %.4f", stream[vi].x, stream[vi].y, stream[vi].z );
+						break;
+					case 4:
+						ImGui::Text( "%.4f  %.4f  %.4f  %.4f", stream[vi].x, stream[vi].y, stream[vi].z, stream[vi].w );
+						break;
+					default:
+						ImGui::Text( "%.4f", stream[vi].x );
+						break;
 					}
-					ImGui::TextUnformatted( valueBuf );
 				}
 			}
 		}
@@ -1471,44 +1483,59 @@ void UIRenderer::RenderVertexDataTab( const CmfContent& cmfContent, const cmf::S
 		return;
 	}
 
-	uint32_t vertexCount = vb.size / vb.stride;
+	const uint32_t vertexCount = vb.size / vb.stride;
 	ImGui::Text( "Vertices: %u   Stride: %u bytes", vertexCount, vb.stride );
 	const uint8_t* vbData = cmfContent.Index( vb.index, 0 ) + vb.offset;
 
-	// Get the labels for the vertex atributes
-	auto allAttributes = BuildAttributes( decl );
-
-	for( const auto& attr : allAttributes )
-	{
-		if( m_meshDetailsState.vertexAttributeFilter.find( attr.name ) == m_meshDetailsState.vertexAttributeFilter.end() )
-			m_meshDetailsState.vertexAttributeFilter[attr.name] = true;
-	}
+	auto isVisible = [&]( cmf::Usage usage, uint8_t usageIndex ) {
+		return std::find( m_meshDetailsState.hiddenAttributes.begin(), m_meshDetailsState.hiddenAttributes.end(), std::make_pair( usage, usageIndex ) ) == m_meshDetailsState.hiddenAttributes.end();
+	};
 
 	// Vertex attribute filter list
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
+		auto unhideAttribute = [&]( cmf::Usage usage, uint8_t usageIndex ) {
+			auto found = std::find( m_meshDetailsState.hiddenAttributes.begin(), m_meshDetailsState.hiddenAttributes.end(), std::make_pair( usage, usageIndex ) );
+			if( found != m_meshDetailsState.hiddenAttributes.end() )
+			{
+				m_meshDetailsState.hiddenAttributes.erase( found );
+			}
+		};
+
 		if( ImGui::Button( "Reset##vf" ) )
 		{
-			for( auto& [name, enabled] : m_meshDetailsState.vertexAttributeFilter )
-				enabled = true;
+			for( const auto& attr : decl )
+			{
+				unhideAttribute( attr.usage, attr.usageIndex );
+			}
 		}
-		for( const auto& attr : allAttributes )
+		for( const auto& attr : decl )
 		{
-			bool enabled = m_meshDetailsState.vertexAttributeFilter[attr.name];
-			if( ImGui::Checkbox( attr.name.c_str(), &enabled ) )
-				m_meshDetailsState.vertexAttributeFilter[attr.name] = enabled;
+			bool enabled = isVisible( attr.usage, attr.usageIndex );
+			if( ImGui::Checkbox( GetUsageFlagLabel( attr.usage, attr.usageIndex ).c_str(), &enabled ) )
+			{
+				if( enabled )
+				{
+					unhideAttribute( attr.usage, attr.usageIndex );
+				}
+				else
+				{
+					m_meshDetailsState.hiddenAttributes.emplace_back( attr.usage, attr.usageIndex );
+				}
+			}
 		}
 	}
 
-	std::vector<AttributeInfo> filteredAttributes;
-	for( const auto& attr : allAttributes )
+	std::vector<cmf::VertexElement> filteredAttributes;
+	for( const auto& attr : decl )
 	{
-		if( m_meshDetailsState.vertexAttributeFilter[attr.name] )
+		if( isVisible( attr.usage, attr.usageIndex ) )
+		{
 			filteredAttributes.push_back( attr );
+		}
 	}
 
 	RenderAttributeTable( "##vertexdata", vbData, vertexCount, vb.stride, filteredAttributes );
-	m_selectedItem.scrollTo = false;
 }
 
 void UIRenderer::RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod )
@@ -1523,9 +1550,9 @@ void UIRenderer::RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Me
 		return;
 	}
 
-	uint32_t indexCount = ib.size / ib.stride;
+	const uint32_t indexCount = ib.size / ib.stride;
 	const uint8_t* ibData = cmfContent.Index( ib.index, 0 ) + ib.offset;
-	cmf::IndexConverter indexConv( ib.stride );
+	const cmf::IndexConverter indexConv( ib.stride );
 
 	auto indexSelectable = [&]( uint32_t vertexIdx, int uniqueId ) {
 		ImGui::PushID( uniqueId );
@@ -1542,16 +1569,16 @@ void UIRenderer::RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Me
 		ImGui::PopID();
 	};
 
-	uint32_t triangleCount = indexCount / 3;
+	const uint32_t triangleCount = indexCount / 3;
 	ImGui::Text( "Triangles: %u   Indices: %u", triangleCount, indexCount );
 
-	ImGuiTableFlags tableFlags =
+	const ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
 		ImGuiTableFlags_RowBg |
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
+	const ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
 	if( ImGui::BeginTable( "##indexdata", 5, tableFlags, outerSize ) )
 	{
 		ImGui::TableSetupScrollFreeze( 0, 1 );
@@ -1607,14 +1634,15 @@ void UIRenderer::RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Me
 
 void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton )
 {
-	std::string skelName = cmf::ToStdString( skeleton.name );
-	ImGui::Text( "Skeleton: %s  Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
+	ImGui::Text( "Skeleton: %s  Bones: %zu", cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() );
 
 	static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
 	for( const auto& col : allBoneCols )
 	{
 		if( m_meshDetailsState.boneColumnFilter.find( col ) == m_meshDetailsState.boneColumnFilter.end() )
+		{
 			m_meshDetailsState.boneColumnFilter[col] = true;
+		}
 	}
 
 	if( ImGui::CollapsingHeader( "Filters" ) )
@@ -1622,13 +1650,17 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 		if( ImGui::Button( "Reset##bf" ) )
 		{
 			for( auto& [name, enabled] : m_meshDetailsState.boneColumnFilter )
+			{
 				enabled = true;
+			}
 		}
 		for( const auto& col : allBoneCols )
 		{
 			bool enabled = m_meshDetailsState.boneColumnFilter[col];
 			if( ImGui::Checkbox( col, &enabled ) )
+			{
 				m_meshDetailsState.boneColumnFilter[col] = enabled;
+			}
 		}
 	}
 
@@ -1636,17 +1668,19 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 	for( int i = 0; i < 5; ++i )
 	{
 		if( m_meshDetailsState.boneColumnFilter[allBoneCols[i]] )
+		{
 			activeColIndices.push_back( i );
+		}
 	}
 
-	ImGuiTableFlags tableFlags =
+	const ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
 		ImGuiTableFlags_RowBg |
 		ImGuiTableFlags_ScrollX |
 		ImGuiTableFlags_ScrollY |
 		ImGuiTableFlags_SizingFixedFit;
 
-	int colCount = (int)activeColIndices.size() + 1;
+	const int colCount = int( activeColIndices.size() + 1 );
 	if( ImGui::BeginTable( "##boneslist", colCount, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 	{
 		if( m_selectedItem.scrollTo && !m_selectedItem.selectedIndices.empty() )
@@ -1657,8 +1691,10 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 
 		ImGui::TableSetupScrollFreeze( 1, 1 );
 		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-		for( int ci : activeColIndices )
+		for( const int ci : activeColIndices )
+		{
 			ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
+		}
 		ImGui::TableHeadersRow();
 
 		ImGuiListClipper clipper;
@@ -1668,12 +1704,9 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 			for( int bi = clipper.DisplayStart; bi < clipper.DisplayEnd; ++bi )
 			{
 				ImGui::PushID( bi );
-				uint32_t parentIdx = ( (size_t)bi < skeleton.parents.size() ) ? skeleton.parents[bi] : 0xffffffff;
-				bool hasTransform = (size_t)bi < skeleton.restTransforms.size();
 
 				ImGui::TableNextRow();
 
-				char buf[128];
 				for( int col = 0; col < (int)activeColIndices.size(); ++col )
 				{
 					ImGui::TableSetColumnIndex( col + 1 );
@@ -1683,45 +1716,40 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 						ImGui::TextUnformatted( cmf::ToStdString( skeleton.bones[bi] ).c_str() );
 						break;
 					case 1: // Parent
-						if( parentIdx == (uint32_t)bi || parentIdx >= (uint32_t)skeleton.bones.size() )
+						if( skeleton.parents[bi] == uint32_t( bi ) || skeleton.parents[bi] >= uint32_t( skeleton.bones.size() ) )
 						{
 							ImGui::TextUnformatted( "-" );
 						}
 						else
 						{
-							std::string parentName = cmf::ToStdString( skeleton.bones[parentIdx] );
 							ImGui::PushID( bi );
-							if( ImGui::TextLink( parentName.c_str() ) )
+							if( ImGui::TextLink( cmf::ToStdString( skeleton.bones[skeleton.parents[bi]] ).c_str() ) )
 							{
-								m_selectedItem.selectedIndices = { parentIdx };
+								m_selectedItem.selectedIndices = { skeleton.parents[bi] };
 								m_selectedItem.scrollTo = true;
 							}
 							ImGui::PopID();
 						}
 						break;
 					case 2: // Position
-						if( hasTransform )
 						{
 							const auto& p = skeleton.restTransforms[bi].position;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", p.x, p.y, p.z );
-							ImGui::TextUnformatted( buf );
+							ImGui::Text( "%.4f  %.4f  %.4f", p.x, p.y, p.z );
 						}
 						break;
 					case 3: // Rotation
-						if( hasTransform )
 						{
 							const auto& r = skeleton.restTransforms[bi].rotation;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
-							ImGui::TextUnformatted( buf );
+							ImGui::Text( "%.4f  %.4f  %.4f  %.4f", r.x, r.y, r.z, r.w );
 						}
 						break;
 					case 4: // Scale
-						if( hasTransform )
 						{
 							const auto& s = skeleton.restTransforms[bi].scale;
-							snprintf( buf, sizeof( buf ), "%.4f  %.4f  %.4f", s.x, s.y, s.z );
-							ImGui::TextUnformatted( buf );
+							ImGui::Text( "%.4f  %.4f  %.4f", s.x, s.y, s.z );
 						}
+						break;
+					default:
 						break;
 					}
 				}
@@ -1759,8 +1787,8 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 void UIRenderer::RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh )
 {
 	const auto& skeletons = cmfContent.m_cmfData->skeletons;
-	bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
-	bool hasBoneBindings = !mesh.boneBindings.empty();
+	const bool hasSkeleton = mesh.skeleton != 0xff && size_t( mesh.skeleton ) < skeletons.size();
+	const bool hasBoneBindings = !mesh.boneBindings.empty();
 
 	if( !hasSkeleton && !hasBoneBindings )
 	{
@@ -1770,22 +1798,15 @@ void UIRenderer::RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::
 
 	if( hasBoneBindings )
 	{
-		if( hasSkeleton )
-			ImGui::SeparatorText( "Bone Bindings" );
-		ImGui::Text( "Bindings: %u", (uint32_t)mesh.boneBindings.size() );
+		ImGui::Text( "Bindings: %zu", mesh.boneBindings.size() );
 
-		float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-		float contentHeight = (float)( mesh.boneBindings.size() + 1 ) * lineHeight;
-		float halfWindowHeight = ImGui::GetContentRegionAvail().y * 0.5f;
-		float bindingsHeight = hasSkeleton ? std::min( contentHeight, halfWindowHeight ) : ImGui::GetContentRegionAvail().y;
-
-		ImGuiTableFlags tableFlags =
+		const ImGuiTableFlags tableFlags =
 			ImGuiTableFlags_Borders |
 			ImGuiTableFlags_RowBg |
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		if( ImGui::BeginTable( "##bonebindingstable", 2, tableFlags, ImVec2( 0.0f, bindingsHeight ) ) )
+		if( ImGui::BeginTable( "##bonebindingstable", 2, tableFlags ) )
 		{
 			ImGui::TableSetupScrollFreeze( 0, 1 );
 			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
@@ -1813,7 +1834,7 @@ void UIRenderer::RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::
 						if( ImGui::TextLink( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() ) )
 						{
 							uint32_t boneIndex = 0xffffffff;
-							auto found = std::find( skeleton->bones.begin(), skeleton->bones.end(), mesh.boneBindings[i].name );
+							const auto* found = std::find( skeleton->bones.begin(), skeleton->bones.end(), mesh.boneBindings[i].name );
 							if( found != skeleton->bones.end() )
 							{
 								boneIndex = static_cast<uint32_t>( std::distance( skeleton->bones.begin(), found ) );
@@ -1974,7 +1995,7 @@ UIRenderer::SelectedItem UIRenderer::RenderHierarchyTab( const CmfContent& cmfCo
 					textNode( "Bounds Max:  %.4f  %.4f  %.4f", mesh.bounds.m_max.x, mesh.bounds.m_max.y, mesh.bounds.m_max.z );
 					textNode( "Bounds Size: %.4f  %.4f  %.4f", mesh.bounds.Size().x, mesh.bounds.Size().y, mesh.bounds.Size().z );
 
-					if( mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size() )
+					if( mesh.skeleton != 0xff && size_t( mesh.skeleton ) < skeletons.size() )
 					{
 						const auto& skeleton = skeletons[mesh.skeleton];
 						renderSkeleton( skeleton );
@@ -2017,7 +2038,7 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 {
 	ImGui::Text( "Name: %s", ToStdString( anim.name ).c_str() );
 	ImGui::Text( "Duration: %.4f s", anim.duration );
-	ImGui::Text( "Channels: %u   Curves: %u", (uint32_t)anim.channels.size(), (uint32_t)anim.curves.size() );
+	ImGui::Text( "Channels: %zu   Curves: %zu", anim.channels.size(), anim.curves.size() );
 
 	ImGui::Separator();
 
@@ -2027,7 +2048,7 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 		return;
 	}
 
-	ImGuiTableFlags tableFlags =
+	const ImGuiTableFlags tableFlags =
 		ImGuiTableFlags_Borders |
 		ImGuiTableFlags_RowBg |
 		ImGuiTableFlags_ScrollX |
@@ -2044,32 +2065,12 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 		ImGui::TableHeadersRow();
 
 		ImGuiListClipper clipper;
-		clipper.Begin( (int)anim.channels.size() );
+		clipper.Begin( int( anim.channels.size() ) );
 		while( clipper.Step() )
 		{
 			for( int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i )
 			{
 				const auto& channel = anim.channels[i];
-
-				const char* typeName = "Unknown";
-				switch( channel.targetType )
-				{
-				case cmf::AnimationChannelTargetType::BonePosition:
-					typeName = "Bone Position";
-					break;
-				case cmf::AnimationChannelTargetType::BoneRotation:
-					typeName = "Bone Rotation";
-					break;
-				case cmf::AnimationChannelTargetType::BoneScale:
-					typeName = "Bone Scale";
-					break;
-				case cmf::AnimationChannelTargetType::MorphTarget:
-					typeName = "Morph Target";
-					break;
-				case cmf::AnimationChannelTargetType::Other:
-					typeName = "Other";
-					break;
-				}
 
 				ImGui::TableNextRow();
 				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), uint32_t( i ) ) != m_selectedItem.selectedIndices.end() )
@@ -2085,14 +2086,14 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 				case cmf::AnimationChannelTargetType::BonePosition:
 				case cmf::AnimationChannelTargetType::BoneRotation:
 				case cmf::AnimationChannelTargetType::BoneScale:
-					for( auto& skeleton : data.skeletons )
+					for( const auto& skeleton : data.skeletons )
 					{
-						auto bone = std::find( skeleton.bones.begin(), skeleton.bones.end(), channel.target );
+						const auto* bone = std::find( skeleton.bones.begin(), skeleton.bones.end(), channel.target );
 						if( bone != skeleton.bones.end() )
 						{
 							if( ImGui::TextLink( cmf::ToStdString( *bone ).c_str() ) )
 							{
-								m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, &skeleton, { (uint32_t)std::distance( skeleton.bones.begin(), bone ) }, true };
+								m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, &skeleton, { uint32_t( std::distance( skeleton.bones.begin(), bone ) ) }, true };
 							}
 							foundTarget = true;
 							break;
@@ -2100,9 +2101,9 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 					}
 					break;
 				case cmf::AnimationChannelTargetType::MorphTarget:
-					for( auto& mesh : data.meshes )
+					for( const auto& mesh : data.meshes )
 					{
-						for( auto& target : mesh.morphTargets.targets )
+						for( const auto& target : mesh.morphTargets.targets )
 						{
 							if( target.name == channel.target )
 							{
@@ -2130,7 +2131,7 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 				ImGui::PopID();
 
 				ImGui::TableSetColumnIndex( 1 );
-				ImGui::TextUnformatted( typeName );
+				ImGui::TextUnformatted( GetAnimationTargetTypeName( channel.targetType ) );
 
 				ImGui::TableSetColumnIndex( 2 );
 				ImGui::PushID( i );
@@ -2148,7 +2149,7 @@ void UIRenderer::RenderAnimationChannelsSubTab( const cmf::Animation& anim, cons
 
 void UIRenderer::RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, const cmf::Animation& anim )
 {
-	const uint32_t curveIndex = uint32_t( std::distance( anim.curves.begin(), &curve ) );
+	const auto curveIndex = uint32_t( std::distance( anim.curves.begin(), &curve ) );
 	ImGui::Text( "Index: %u", curveIndex );
 	ImGui::Text( "Knots: %u", curve.knotCount );
 	ImGui::Text( "Knot Type: %s", GetElementTypeName( curve.knotType ) );
@@ -2201,11 +2202,11 @@ void UIRenderer::RenderAnimationCurvesSubTab( const cmf::AnimationCurve& curve, 
 		element.type = curve.knotType;
 		element.elementCount = 1;
 		const auto stride = cmf::GetVertexElementSize( element );
-		cmf::ConstBufferElementStream<float>  knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
+		const cmf::ConstBufferElementStream<float>  knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
 
 		element.type = curve.valueType;
 		const auto valueStride = cmf::GetVertexElementSize( element );
-		cmf::ConstBufferElementStream<float> values{ element, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
+		const cmf::ConstBufferElementStream<float> values{ element, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
 
 		ImGuiListClipper clipper;
 		clipper.Begin( int( curve.knotCount ) );
@@ -2251,8 +2252,8 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcc
 		return;
 	}
 
-	const uint32_t vertexCount = uint32_t( audioOcclusionMesh.vertices.size() );
-	const uint32_t triCount = uint32_t( audioOcclusionMesh.indices.size() / 3 );
+	const auto vertexCount = uint32_t( audioOcclusionMesh.vertices.size() );
+	const auto triCount = uint32_t( audioOcclusionMesh.indices.size() / 3 );
 
 	ImGui::Text( "Vertices: %u  Triangles: %u", vertexCount, triCount );
 	const auto& b = audioOcclusionMesh.bounds;
@@ -2262,6 +2263,9 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcc
 	ImGui::Text( "Bounds Size: %.4f  %.4f  %.4f", sz.x, sz.y, sz.z );
 
 	ImGui::Spacing();
+
+	const float indexColumnWidth = 60.0f;
+	const float columnWidth = 80.0f;
 
 	if( ImGui::CollapsingHeader( "Vertices", ImGuiTreeNodeFlags_DefaultOpen ) )
 	{
@@ -2276,9 +2280,9 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcc
 		if( ImGui::BeginTable( "##aomverts", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 60.0f );
-			ImGui::TableSetupColumn( "X", ImGuiTableColumnFlags_WidthFixed, 80.0f );
-			ImGui::TableSetupColumn( "Y", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, indexColumnWidth );
+			ImGui::TableSetupColumn( "X", ImGuiTableColumnFlags_WidthFixed, columnWidth );
+			ImGui::TableSetupColumn( "Y", ImGuiTableColumnFlags_WidthFixed, columnWidth );
 			ImGui::TableSetupColumn( "Z", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
@@ -2320,9 +2324,9 @@ void UIRenderer::RenderAudioOccluderTab( const cmf::AudioOcclusionMesh& audioOcc
 		if( ImGui::BeginTable( "##aomtris", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
-			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 60.0f );
-			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthFixed, 80.0f );
-			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+			ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, indexColumnWidth );
+			ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthFixed, columnWidth );
+			ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthFixed, columnWidth );
 			ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
