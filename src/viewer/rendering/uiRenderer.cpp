@@ -346,7 +346,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		{
 			if( &skeleton == skeletonPtr )
 			{
-				RenderBonesTab( cmfContent, skeleton, appState );
+				RenderBonesTab( cmfContent, skeleton );
 				return true;
 			}
 		}
@@ -357,7 +357,7 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		{
 			if( &mesh.boneBindings == boneBindingsPtr )
 			{
-				RenderBoneBindingTab( cmfContent, mesh, appState );
+				RenderBoneBindingTab( cmfContent, mesh );
 				return true;
 			}
 		}
@@ -413,6 +413,8 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		}
 	};
 
+	appState.modelState.selectedBones.Clear();
+
 	switch( m_selectedItem.type )
 	{
 	case SelectedItem::VertexBuffer:
@@ -422,6 +424,10 @@ void UIRenderer::MeshDetailsWindow( AppState& appState )
 		renderForDataSources( m_selectedItem.context, renderIndexBuffer );
 		break;
 	case SelectedItem::SkeletonBones:
+		for( const auto& boneIndex : m_selectedItem.selectedIndices )
+		{
+			appState.modelState.selectedBones.AddState( boneIndex );
+		}
 		renderForDataSources( m_selectedItem.context, renderSkeleton );
 		break;
 	case SelectedItem::BoneBindings:
@@ -1573,10 +1579,8 @@ void UIRenderer::RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Me
 	}
 }
 
-void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton, AppState& appState )
+void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton )
 {
-	const auto& skeletons = cmfContent.m_cmfData->skeletons;
-
 	std::string skelName = cmf::ToStdString( skeleton.name );
 	ImGui::Text( "Skeleton: %s  Bones: %u", skelName.c_str(), (uint32_t)skeleton.bones.size() );
 
@@ -1643,11 +1647,6 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 
 				ImGui::TableNextRow();
 
-				if( std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), (uint32_t)bi ) != m_selectedItem.selectedIndices.end() )
-				{
-					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32( ImGuiCol_Header ) );
-				}
-
 				char buf[128];
 				for( int col = 0; col < (int)activeColIndices.size(); ++col )
 				{
@@ -1703,28 +1702,23 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 
 				ImGui::TableSetColumnIndex( 0 );
 
-				auto index = std::find_if( appState.modelState.selectedBones.begin(), appState.modelState.selectedBones.end(), [bi]( State<uint32_t> selected ) {
-					return selected.GetValue() == (uint32_t)bi;
-				} );
-
-				bool itemIsSelected = index != appState.modelState.selectedBones.end();
-				if( ImGui::Selectable( std::to_string( bi ).c_str(), itemIsSelected, ImGuiSelectableFlags_SpanAllColumns ) )
+				const auto foundSelected = std::find( m_selectedItem.selectedIndices.begin(), m_selectedItem.selectedIndices.end(), uint32_t( bi ) );
+				if( ImGui::Selectable( std::to_string( bi ).c_str(), foundSelected != m_selectedItem.selectedIndices.end(), ImGuiSelectableFlags_SpanAllColumns ) )
 				{
 					if( ImGui::GetIO().KeyCtrl )
 					{
-						if( itemIsSelected )
+						if( foundSelected != m_selectedItem.selectedIndices.end() )
 						{
-							appState.modelState.selectedBones.RemoveAt( std::distance( appState.modelState.selectedBones.begin(), index ) );
+							m_selectedItem.selectedIndices.erase( foundSelected );
 						}
 						else
 						{
-							appState.modelState.selectedBones.AddState( (uint32_t)bi );
+							m_selectedItem.selectedIndices.push_back( uint32_t( bi ) );
 						}
 					}
 					else
 					{
-						appState.modelState.selectedBones.Clear();
-						appState.modelState.selectedBones.AddState( (uint32_t)bi );
+						m_selectedItem.selectedIndices = { uint32_t( bi ) };
 					}
 				}
 
@@ -1736,7 +1730,7 @@ void UIRenderer::RenderBonesTab( const CmfContent& cmfContent, const cmf::Skelet
 	}
 }
 
-void UIRenderer::RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, AppState& appState )
+void UIRenderer::RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh )
 {
 	const auto& skeletons = cmfContent.m_cmfData->skeletons;
 	bool hasSkeleton = mesh.skeleton != 0xff && (size_t)mesh.skeleton < skeletons.size();
