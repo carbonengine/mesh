@@ -125,7 +125,7 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 	}
 
 	std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> shaders = ShaderCache::GetAvailableShaders( availableVertexElements );
-	auto foundItem = std::find_if( shaders.begin(), shaders.end(), [&]( const auto& shaderNameAndDeclarations ) {
+	auto foundItem = std::find_if( shaders.begin(), shaders.end(), [&currentShaderName]( const auto& shaderNameAndDeclarations ) {
 		return shaderNameAndDeclarations.first == currentShaderName;
 	} );
 	if( foundItem == shaders.end() && shaders.size() > 0 )

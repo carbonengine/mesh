@@ -626,7 +626,7 @@ std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>> UIRenderer::GetAx
 		{
 			auto [index, checked] = axis.GetValue();
 
-			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [index]( const std::pair<uint32_t, ImGui::CheckBoxTriStateValue>& pair ) {
+			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [&index]( const std::pair<uint32_t, ImGui::CheckBoxTriStateValue>& pair ) {
 				return pair.first == index;
 			} );
 

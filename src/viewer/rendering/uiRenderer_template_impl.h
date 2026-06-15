@@ -68,7 +68,7 @@ void UIRenderer::SetupModelAxisRow( std::vector<std::pair<uint32_t, ImGui::Check
 
 	ImGui::BeginDisabled( maxIndex < 0 );
 	ImGui::TableNextColumn();
-	ImGui::Text( name.c_str() );
+	ImGui::Text( "%s", name.c_str() );
 	ImGui::SetItemTooltip( "Toggles the %s visualization for all meshes", name.c_str() );
 	ImGui::TableNextColumn();
 
