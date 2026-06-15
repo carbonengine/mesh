@@ -259,11 +259,11 @@ Quaternion NormalizedQuaternion( Quaternion quaternion )
 	return quaternion;
 }
 
-std::vector<float> NormalizedQuaternionStream( const cmf::ConstBufferElementStream<float>& values )
+std::vector<float> NormalizedQuaternionStream( const std::vector<float>& values )
 {
 	std::vector<float> result;
 	result.resize( values.size() );
-	for( uint32_t i = 0; i < result.size(); i += 4 )
+	for( size_t i = 0; i < result.size(); i += 4 )
 	{
 		Quaternion normalized = NormalizedQuaternion( { values[i], values[i + 1], values[i + 2], values[i + 3] } );
 		result[i + 0] = normalized.x;
@@ -535,11 +535,8 @@ void AddAnimations(
 			cmf::VertexElement knotElement = {};
 			knotElement.type = curve.knotType;
 			knotElement.elementCount = 1;
-
 			const auto knotStride = cmf::GetVertexElementSize( knotElement );
 			const cmf::ConstBufferElementStream<float> knotFloats{ knotElement, curve.knots.data(), curve.knotCount, knotStride };
-
-			int inputAccIdx = AppendFloatAccessor( gltfBuffer, model, knotFloats, TINYGLTF_TYPE_SCALAR, true );
 
 			cmf::VertexElement valueElement = {};
 			valueElement.type = curve.valueType;
@@ -547,15 +544,36 @@ void AddAnimations(
 			const auto valueStride = cmf::GetVertexElementSize( valueElement );
 			const cmf::ConstBufferElementStream<float> valueFloats{ valueElement, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
 
+			// remove duplicate knots
+			uint32_t dimension = curve.valueDimension;
+			std::vector<float> times;
+			std::vector<float> values;
+			times.reserve( curve.knotCount );
+			values.reserve( curve.knotCount * dimension );
+			for( uint32_t i = 0; i < curve.knotCount; i++ )
+			{
+				if( !times.empty() && knotFloats[i] <= times.back() )
+				{
+					continue;
+				}
+				times.push_back( knotFloats[i] );
+				for( uint32_t component = 0; component < dimension; component++ )
+				{
+					values.push_back( valueFloats[i * dimension + component] );
+				}
+			}
+
+			int inputAccIdx = AppendFloatAccessor( gltfBuffer, model, times, TINYGLTF_TYPE_SCALAR, true );
+
 			int outputAccIdx;
 			if( channel.targetType == cmf::AnimationChannelTargetType::BoneRotation )
 			{
-				std::vector<float> normalizedValues = NormalizedQuaternionStream( valueFloats );
+				std::vector<float> normalizedValues = NormalizedQuaternionStream( values );
 				outputAccIdx = AppendFloatAccessor( gltfBuffer, model, normalizedValues, gltfValueType, false );
 			}
 			else
 			{
-				outputAccIdx = AppendFloatAccessor( gltfBuffer, model, valueFloats, gltfValueType, false );
+				outputAccIdx = AppendFloatAccessor( gltfBuffer, model, values, gltfValueType, false );
 			}
 
 			const int samplerIdx = static_cast<int>( gltfAnim.samplers.size() );
