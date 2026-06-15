@@ -659,9 +659,25 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 					}
 					cmf::Modify( newDecl, allocator ).push_back( newElem );
 				}
-				else if( elem.usage == cmf::Usage::Position || elem.usage == cmf::Usage::Normal || elem.type == cmf::ElementType::Float16 )
+				else if( elem.usage == cmf::Usage::Position || elem.usage == cmf::Usage::Normal )
 				{
-					// glTF requires POSITION and NORMAL to be float, and we convert float16 into float32 for compatibility
+					// glTF requires POSITION and NORMAL to be VEC3
+					auto newElem = elem;
+					newElem.type = cmf::ElementType::Float32;
+					newElem.elementCount = 3;
+					cmf::Modify( newDecl, allocator ).push_back( newElem );
+				}
+				else if( elem.usage == cmf::Usage::TexCoord )
+				{
+					// glTF requires TEXCOORD to be VEC2
+					auto newElem = elem;
+					newElem.type = cmf::ElementType::Float32;
+					newElem.elementCount = 2;
+					cmf::Modify( newDecl, allocator ).push_back( newElem );
+				}
+				else if( elem.type == cmf::ElementType::Float16 )
+				{
+					// We convert remaining attributes from float16 to float32
 					auto newElem = elem;
 					newElem.type = cmf::ElementType::Float32;
 					cmf::Modify( newDecl, allocator ).push_back( newElem );
