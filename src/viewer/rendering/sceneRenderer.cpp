@@ -123,7 +123,7 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 		// add all of the declarations, there may be situations where one mesh has more declarations than another inside the same model
 		availableVertexElements.insert( availableVertexElements.end(), mesh.decl.begin(), mesh.decl.end() );
 	}
-	
+
 	std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> shaders = ShaderCache::GetAvailableShaders( availableVertexElements );
 	auto foundItem = std::find_if( shaders.begin(), shaders.end(), [&]( const auto& shaderNameAndDeclarations ) {
 		return shaderNameAndDeclarations.first == currentShaderName;
@@ -147,7 +147,7 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 		}
 	}
 	appState.modelState.availableShaders.SetValue( shaders );
-	
+
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
 	m_model->Initialize( appState );
 }

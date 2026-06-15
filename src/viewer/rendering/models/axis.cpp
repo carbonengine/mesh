@@ -57,7 +57,7 @@ PrimitiveRenderable CreatePackedNormal( std::shared_ptr<const Renderer> renderer
 PrimitiveRenderable CreatePackedTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex )
 {
 	// the bufferdata is the output of the geoprepass and will be handled later
-	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedAxisEffect( renderer, cmf::Usage::Tangent, usageIndex,mesh ) );
+	return PrimitiveRenderable( renderer, PrimitiveEffects::CreatePackedAxisEffect( renderer, cmf::Usage::Tangent, usageIndex, mesh ) );
 }
 
 PrimitiveRenderable CreatePackedBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex )
