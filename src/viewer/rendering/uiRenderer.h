@@ -8,6 +8,17 @@
 #include "rendering/renderer.h"
 #include "vulkan/commandbuffer.h"
 
+namespace ImGui
+{
+enum class CheckBoxTriStateValue
+{
+	UNCHECKED = 0,
+	CHECKED = 1,
+	MIXED = -1
+};
+bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate );
+}
+
 // Handles rendering the UI
 class UIRenderer
 {
@@ -68,9 +79,9 @@ private:
 		bool wireframeOverlay{ false };
 		bool audioOcclusionMesh{ false };
 		bool hasAudioOcclusionMesh{ false };
-		std::vector<std::pair< uint32_t, bool>> showVertexNormals{ };
-		std::vector<std::pair< uint32_t, bool>> showVertexTangents{ };
-		std::vector<std::pair< uint32_t, bool>> showVertexBinormals{ };
+		std::vector<std::pair<uint32_t, bool>> showVertexNormals{};
+		std::vector<std::pair<uint32_t, bool>> showVertexTangents{};
+		std::vector<std::pair<uint32_t, bool>> showVertexBinormals{};
 	};
 
 	struct ModelUiState
@@ -145,6 +156,12 @@ private:
 	void SetupGeneralView( AppState& appState );
 	void SetupMeshListView( const ModelUiState& modelState, AppState& appState );
 	void SetupMeshView( const MeshUiState& mesh, AppState& appState );
+	void SetupModelAxisRows( AppState& appState );
+
+	template <typename Callable>
+	void SetupModelAxisRow( std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>>& checkboxStates, const std::string& name, const Callable& changeCallback );
+
+	std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>> GetAxisTriCheckboxStates( const std::vector<StateCollection<std::pair<uint32_t, bool>>>& axisStates );
 	void SetupVertexAxisRows( MeshState& meshAppState );
 	void SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>& vertexAxisStates, const char* label, int columnCount );
 	void SetupMorphTarget( const MorphTargetUiState& morphTarget, size_t meshIndex, AppState& appState );

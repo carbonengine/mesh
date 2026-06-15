@@ -5,11 +5,43 @@
 #include <cmf/bufferstreams.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
+#include <imgui_internal.h>
 #include <tinyfiledialogs/tinyfiledialogs.h>
 
 #include "appState.h"
 #include "vulkan/vulkanerrors.h"
 
+// taken from https://github.com/ocornut/imgui/issues/2644
+namespace ImGui
+{
+
+// threeway checkbox
+bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate )
+{
+	bool ret;
+	if( *v_tristate == CheckBoxTriStateValue::MIXED )
+	{
+		ImGui::PushItemFlag( ImGuiItemFlags_MixedValue, true );
+		bool b = false;
+		ret = ImGui::Checkbox( label, &b );
+		if( ret )
+		{
+			*v_tristate = CheckBoxTriStateValue::CHECKED;
+		}
+		ImGui::PopItemFlag();
+	}
+	else
+	{
+		bool b = ( *v_tristate != CheckBoxTriStateValue::UNCHECKED );
+		ret = ImGui::Checkbox( label, &b );
+		if( ret )
+		{
+			*v_tristate = (CheckBoxTriStateValue)(int)b;
+		}
+	}
+	return ret;
+}
+};
 
 const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
@@ -255,7 +287,6 @@ void UIRenderer::CMFInfoWindow( AppState& appState )
 void UIRenderer::MeshDetailsWindow( AppState& appState )
 {
 	bool open = true;
-	ImGui::ShowDemoWindow( &open );
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
@@ -449,13 +480,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Display" );
 		ImGui::TableNextColumn();
-		bool display = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-						   return state.GetValue().display.GetValue();
-					   } ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##displaycheckbox", &display ), [&appState, &display]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [display]( State<MeshState>& state ) {
-				state.GetValue().display.SetValue( display );
+		size_t checkedCount = std::count_if( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+			return state.GetValue().display.GetValue();
+		} );
+		ImGui::CheckBoxTriStateValue checked = ( checkedCount == 0 ) ? ImGui::CheckBoxTriStateValue::UNCHECKED : ( checkedCount == appState.modelState.meshes.size() ? ImGui::CheckBoxTriStateValue::CHECKED : ImGui::CheckBoxTriStateValue::MIXED );
+		OnChange( ImGui::CheckBoxTristate( "##displaycheckbox", &checked ), [&appState, &checked]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [checked]( State<MeshState>& state ) {
+				state.GetValue().display.SetValue( checked == ImGui::CheckBoxTriStateValue::CHECKED );
 			} );
 		} );
 		ImGui::TableNextRow();
@@ -472,13 +503,13 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Wireframe Overlay" );
 		ImGui::TableNextColumn();
-		bool wireframeOverlay = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-									return state.GetValue().wireframeOverlay.GetValue();
-								} ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##wireframecheckbox", &wireframeOverlay ), [&appState, &wireframeOverlay]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [wireframeOverlay]( State<MeshState>& state ) {
-				state.GetValue().wireframeOverlay.SetValue( wireframeOverlay );
+		checkedCount = std::count_if( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+			return state.GetValue().wireframeOverlay.GetValue();
+		} );
+		checked = ( checkedCount == 0 ) ? ImGui::CheckBoxTriStateValue::UNCHECKED : ( checkedCount == appState.modelState.meshes.size() ? ImGui::CheckBoxTriStateValue::CHECKED : ImGui::CheckBoxTriStateValue::MIXED );
+		OnChange( ImGui::CheckBoxTristate( "##wireframecheckbox", &checked ), [&appState, &checked]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [checked]( State<MeshState>& state ) {
+				state.GetValue().wireframeOverlay.SetValue( checked == ImGui::CheckBoxTriStateValue::CHECKED );
 			} );
 		} );
 		ImGui::TableNextRow();
@@ -490,79 +521,20 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "Audio Occlusion Mesh" );
 		ImGui::TableNextColumn();
-		bool audioOcclusion = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-								  return state.GetValue().audioOcclusionMesh.GetValue();
-							  } ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##audioocclusioncheckbox", &audioOcclusion ), [&appState, &audioOcclusion]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [audioOcclusion]( State<MeshState>& state ) {
-				state.GetValue().audioOcclusionMesh.SetValue( audioOcclusion );
+		checkedCount = std::count_if( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
+			return state.GetValue().audioOcclusionMesh.GetValue();
+		} );
+		checked = ( checkedCount == 0 ) ? ImGui::CheckBoxTriStateValue::UNCHECKED : ( checkedCount == appState.modelState.meshes.size() ? ImGui::CheckBoxTriStateValue::CHECKED : ImGui::CheckBoxTriStateValue::MIXED );
+		OnChange( ImGui::CheckBoxTristate( "##audioocclusioncheckbox", &checked ), [&appState, &checked]() {
+			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [checked]( State<MeshState>& state ) {
+				state.GetValue().audioOcclusionMesh.SetValue( checked == ImGui::CheckBoxTriStateValue::CHECKED );
 			} );
 		} );
 		ImGui::TableNextRow();
 		ImGui::EndDisabled();
-		/*
-		bool hasNormals = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
-			return state.hasNormals;
-		} );
-		ImGui::BeginDisabled( !hasNormals );
-		ImGui::TableNextColumn();
-		ImGui::Text( "Normals" );
-		ImGui::SetItemTooltip( "Toggles the normals for all meshes" );
-		ImGui::TableNextColumn();
-		bool normals = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-						   return state.GetValue().showVertexNormals.GetValue();
-					   } ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##vertexnormals", &normals ), [&appState, &normals]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [normals]( State<MeshState>& state ) {
-				state.GetValue().showVertexNormals.SetValue( normals );
-			} );
-		} );
-		ImGui::EndDisabled();
 
+		SetupModelAxisRows( appState );
 
-		bool hasTangents = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
-			return state.hasTangents;
-		} );
-		ImGui::BeginDisabled( !hasTangents );
-		ImGui::TableNextRow();
-		ImGui::TableNextColumn();
-		ImGui::Text( "Tangents" );
-		ImGui::SetItemTooltip( "Toggles the tangents for all meshes" );
-		ImGui::TableNextColumn();
-		bool tangents = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-							return state.GetValue().showVertexTangents.GetValue();
-						} ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##vertextangents", &tangents ), [&appState, &tangents]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [tangents]( State<MeshState>& state ) {
-				state.GetValue().showVertexTangents.SetValue( tangents );
-			} );
-		} );
-		ImGui::EndDisabled();
-
-
-		bool hasBinormals = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
-			return state.hasBinormals;
-		} );
-		ImGui::BeginDisabled( !hasBinormals );
-		ImGui::TableNextRow();
-		ImGui::TableNextColumn();
-		ImGui::Text( "Bitangents" );
-		ImGui::SetItemTooltip( "Toggles the bitangents for all meshes" );
-		ImGui::TableNextColumn();
-		bool bitangents = std::all_of( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), []( const State<MeshState>& state ) {
-							  return state.GetValue().showVertexBinormals.GetValue();
-						  } ) &&
-			appState.modelState.meshes.size() > 0;
-		OnChange( ImGui::Checkbox( "##vertexbitangents", &bitangents ), [&appState, &bitangents]() {
-			std::for_each( appState.modelState.meshes.begin(), appState.modelState.meshes.end(), [bitangents]( State<MeshState>& state ) {
-				state.GetValue().showVertexBinormals.SetValue( bitangents );
-			} );
-		} );
-		ImGui::EndDisabled();
-		*/
 		ImGui::EndTable();
 	}
 }
@@ -584,6 +556,100 @@ void UIRenderer::SetupMeshListView( const ModelUiState& modelState, AppState& ap
 	}
 }
 
+void UIRenderer::SetupModelAxisRows( AppState& appState )
+{
+	std::vector<StateCollection<std::pair<uint32_t, bool>>> allNormalStates;
+	std::vector<StateCollection<std::pair<uint32_t, bool>>> allTangentStates;
+	std::vector<StateCollection<std::pair<uint32_t, bool>>> allBinormalStates;
+
+	for( const auto& meshState : appState.modelState.meshes )
+	{
+		allNormalStates.push_back( meshState.GetValue().showVertexNormals );
+		allTangentStates.push_back( meshState.GetValue().showVertexTangents );
+		allBinormalStates.push_back( meshState.GetValue().showVertexBinormals );
+	}
+
+	auto normalCheckboxes = GetAxisTriCheckboxStates( allNormalStates );
+	auto tangentCheckboxes = GetAxisTriCheckboxStates( allTangentStates );
+	auto binormalCheckboxes = GetAxisTriCheckboxStates( allBinormalStates );
+
+	SetupModelAxisRow( normalCheckboxes, std::string( "Normals" ), [&appState]( bool checked, uint32_t index ) {
+		for( auto& meshState : appState.modelState.meshes )
+		{
+			auto& vertexNormalStates = meshState.GetValue().showVertexNormals;
+			auto foundState = std::find_if( vertexNormalStates.begin(), vertexNormalStates.end(), [index]( const State<std::pair<uint32_t, bool>>& state ) {
+				return state.GetValue().first == index;
+			} );
+			if( foundState != vertexNormalStates.end() )
+			{
+				foundState->SetValue( { index, checked } );
+			}
+		}
+	} );
+
+	SetupModelAxisRow( tangentCheckboxes, std::string( "Tangents" ), [&appState]( bool checked, uint32_t index ) {
+		for( auto& meshState : appState.modelState.meshes )
+		{
+			auto& vertexTangentStates = meshState.GetValue().showVertexTangents;
+			auto foundState = std::find_if( vertexTangentStates.begin(), vertexTangentStates.end(), [index]( const State<std::pair<uint32_t, bool>>& state ) {
+				return state.GetValue().first == index;
+			} );
+			if( foundState != vertexTangentStates.end() )
+			{
+				foundState->SetValue( { index, checked } );
+			}
+		}
+	} );
+
+	SetupModelAxisRow( binormalCheckboxes, std::string( "Bitangents" ), [&appState]( bool checked, uint32_t index ) {
+		for( auto& meshState : appState.modelState.meshes )
+		{
+			auto& vertexBinormalStates = meshState.GetValue().showVertexBinormals;
+			auto foundState = std::find_if( vertexBinormalStates.begin(), vertexBinormalStates.end(), [index]( const State<std::pair<uint32_t, bool>>& state ) {
+				return state.GetValue().first == index;
+			} );
+			if( foundState != vertexBinormalStates.end() )
+			{
+				foundState->SetValue( { index, checked } );
+			}
+		}
+	} );
+}
+
+std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>> UIRenderer::GetAxisTriCheckboxStates( const std::vector<StateCollection<std::pair<uint32_t, bool>>>& axisStates )
+{
+	std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>> combinedStates;
+
+	for( const auto& meshState : axisStates )
+	{
+		for( const auto& axis : meshState )
+		{
+			auto [index, checked] = axis.GetValue();
+
+			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [index]( const std::pair<uint32_t, ImGui::CheckBoxTriStateValue>& pair ) {
+				return pair.first == index;
+			} );
+
+			if( foundState == combinedStates.end() )
+			{
+				combinedStates.push_back( { index, checked ? ImGui::CheckBoxTriStateValue::CHECKED : ImGui::CheckBoxTriStateValue::UNCHECKED } );
+			}
+			else
+			{
+				if( foundState->second != ImGui::CheckBoxTriStateValue::MIXED )
+				{
+					if( ( foundState->second == ImGui::CheckBoxTriStateValue::CHECKED && !checked ) || ( foundState->second == ImGui::CheckBoxTriStateValue::UNCHECKED && checked ) )
+					{
+						foundState->second = ImGui::CheckBoxTriStateValue::MIXED;
+					}
+				}
+			}
+		}
+	}
+
+	return combinedStates;
+}
+
 void UIRenderer::SetupVertexAxisRows( MeshState& meshAppState )
 {
 	auto usageIndexChecker = []( const State<std::pair<uint32_t, bool>>& pair1, const State<std::pair<uint32_t, bool>>& pair2 ) {
@@ -594,20 +660,17 @@ void UIRenderer::SetupVertexAxisRows( MeshState& meshAppState )
 	auto maxTangentIndexState = std::max_element( meshAppState.showVertexTangents.begin(), meshAppState.showVertexTangents.end(), usageIndexChecker );
 	auto maxBitangentIndexState = std::max_element( meshAppState.showVertexBinormals.begin(), meshAppState.showVertexBinormals.end(), usageIndexChecker );
 
-	auto maxNormalIndex = maxNormalIndexState != meshAppState.showVertexNormals.end() ? maxNormalIndexState->GetValue().first : -1;
-	auto maxTangentIndex = maxTangentIndexState != meshAppState.showVertexTangents.end() ? maxTangentIndexState->GetValue().first : -1;
-	auto maxBitangentIndex = maxBitangentIndexState != meshAppState.showVertexBinormals.end() ? maxBitangentIndexState->GetValue().first : -1;
+	int32_t maxNormalIndex = maxNormalIndexState != meshAppState.showVertexNormals.end() ? maxNormalIndexState->GetValue().first : -1;
+	int32_t maxTangentIndex = maxTangentIndexState != meshAppState.showVertexTangents.end() ? maxTangentIndexState->GetValue().first : -1;
+	int32_t maxBitangentIndex = maxBitangentIndexState != meshAppState.showVertexBinormals.end() ? maxBitangentIndexState->GetValue().first : -1;
 
-	auto maxIndex = std::max( { maxNormalIndex, maxTangentIndex, maxBitangentIndex } ) + 1;
-
-	SetupVertexAxisRow( meshAppState.showVertexNormals, "Normals", maxIndex );
-	SetupVertexAxisRow( meshAppState.showVertexTangents, "Tangents", maxIndex );
-	SetupVertexAxisRow( meshAppState.showVertexBinormals, "Bitangents", maxIndex );
+	SetupVertexAxisRow( meshAppState.showVertexNormals, "Normals", maxNormalIndex );
+	SetupVertexAxisRow( meshAppState.showVertexTangents, "Tangents", maxTangentIndex );
+	SetupVertexAxisRow( meshAppState.showVertexBinormals, "Bitangents", maxBitangentIndex );
 }
 
-void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>& vertexAxisStates, const char* label, int columnCount )
+void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>& vertexAxisStates, const char* label, int maxUsageIndex )
 {
-	// table with the first column being the label and the rest being checkboxes for each attribute index
 	if( vertexAxisStates.empty() )
 	{
 		ImGui::BeginDisabled();
@@ -617,9 +680,9 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 	ImGui::Text( label );
 	ImGui::TableNextColumn();
 
-	if( columnCount >= 0 )
+	if( maxUsageIndex >= 0 )
 	{
-		for( int32_t i = 0; i < columnCount; ++i )
+		for( int32_t i = 0; i <= maxUsageIndex; ++i )
 		{
 			// find the states that have the index of the column (f.ex there is nothing stopping a mesh having one color attribute that is using usageindex at 16)
 			auto foundElement = std::find_if( vertexAxisStates.begin(), vertexAxisStates.end(), [i]( const State<std::pair<uint32_t, bool>>& state ) {
@@ -634,12 +697,17 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 					foundElement->SetValue( { foundElement->GetValue().first, foundElement->GetValue().second } );
 				} );
 
-				ImGui::SetItemTooltip( "%s %d", label, foundElement->GetValue().first );
+				ImGui::SetItemTooltip( "Toggles debug visualization for %s with usage index %d", label, i );
 				ImGui::SameLine();
 			}
 			else
 			{
-				ImGui::SameLine( 18.0f );
+				ImGui::BeginDisabled( true );
+				bool value = false;
+				ImGui::Checkbox( ( std::string( "##" ) + label + std::to_string( i ) ).c_str(), &value );
+				ImGui::SetItemTooltip( "Mesh doesn't have %s with usage index %d.", label, i );
+				ImGui::SameLine();
+				ImGui::EndDisabled();
 			}
 		}
 		ImGui::NewLine();
