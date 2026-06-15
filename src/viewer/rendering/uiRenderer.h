@@ -116,10 +116,8 @@ private:
 
 	struct MeshDetailsState
 	{
-		std::unordered_map<std::string, bool> vertexAttributeFilter;
-		std::unordered_map<std::string, bool> morphAttributeFilter;
+		std::vector<std::pair<cmf::Usage, uint8_t>> hiddenAttributes;
 		std::unordered_map<std::string, bool> boneColumnFilter;
-		std::unordered_map<std::string, bool> audioVertexColumnFilter;
 	};
 	void RegisterModelCallbacks( AppState& appState );
 
@@ -144,20 +142,6 @@ private:
 	void UpdateUiState( AppState& appState );
 	const char* FileOpenDialog();
 
-	struct AttributeInfo
-	{
-		std::string name;
-		uint32_t byteOffset;
-		uint8_t elementCount;
-		std::pair<cmf::ConversionFunction<float>, size_t> conv;
-	};
-
-	static std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex );
-	static const char* GetElementTypeName( cmf::ElementType type );
-
-	template <typename Decl>
-	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
-
 	struct SelectedItem
 	{
 		enum Type
@@ -177,7 +161,8 @@ private:
 		bool scrollTo = false;
 	};
 
-	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes );
+	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<cmf::VertexElement>& attributes );
+
 	void RenderVertexDataTab( const CmfContent& cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
 	void RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
 	void RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton );
