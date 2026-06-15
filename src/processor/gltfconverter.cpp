@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -656,6 +657,19 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 			auto vb = cmf::ChangeBufferVertexDeclaration( lod.vb, mesh.decl, newDecl, allocator, bufferManager, 4 );
 			for( const auto& elem : newDecl )
 			{
+				auto normalizedVector = []( Vector3 vector, Vector3 defaultValue ) -> Vector3 {
+					float squaredLength = Dot( vector, vector );
+					if( squaredLength < FLT_EPSILON )
+					{
+						return defaultValue;
+					}
+					if( std::fabs( squaredLength - 1.0f ) > FLT_EPSILON )
+					{
+						return Normalize( vector );
+					}
+					return vector;
+				};
+
 				if( elem.usage == cmf::Usage::Tangent )
 				{
 					const auto* binormalElem = cmf::FindElement( mesh.decl, cmf::Usage::Binormal, elem.usageIndex );
@@ -664,6 +678,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 					{
 						normalElem = cmf::FindElement( mesh.decl, cmf::Usage::Normal );
 					}
+
 					if( binormalElem && normalElem )
 					{
 						const cmf::BufferElementStream<Vector4> tangents( elem, vb, bufferManager );
@@ -673,7 +688,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 						{
 							auto tangent = tangents[i].GetXYZ();
 							const float w = GenerateBinormalSign( normals[i], tangent, binormals[i] );
-							tangents.set( i, Vector4{ tangent, w } );
+							tangents.set( i, Vector4{ normalizedVector( tangent, Vector3( 1.f, 0.f, 0.f ) ), w } );
 						}
 					}
 					else
@@ -682,7 +697,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 						const cmf::BufferElementStream<Vector4> tangents( elem, vb, bufferManager );
 						for( uint32_t i = 0; i < tangents.size(); ++i )
 						{
-							tangents.set( i, Vector4{ tangents[i].GetXYZ(), 1.0f } );
+							tangents.set( i, Vector4{ normalizedVector( tangents[i].GetXYZ(), Vector3( 1.f, 0.f, 0.f ) ), 1.0f } );
 						}
 					}
 				}
@@ -691,16 +706,7 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 					const cmf::BufferElementStream<Vector3> normals( elem, vb, bufferManager );
 					for( uint32_t i = 0; i < normals.size(); i++ )
 					{
-						const Vector3 normal = normals[i];
-						const float squaredLength = Dot( normal, normal );
-						if( squaredLength < FLT_EPSILON )
-						{
-							normals.set( i, Vector3( 0.0f, 1.0f, 0.0f ) );
-						}
-						else if( std::fabs( squaredLength - 1.0f ) > FLT_EPSILON )
-						{
-							normals.set( i, Normalize( normal ) );
-						}
+						normals.set( i, normalizedVector( normals[i], Vector3( 0.f, 1.f, 0.f ) ) );
 					}
 				}
 			}
