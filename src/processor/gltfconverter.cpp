@@ -245,6 +245,35 @@ struct SkeletonNodes
 	int rootNodeIndex = -1;
 };
 
+Quaternion NormalizedQuaternion( Quaternion quaternion )
+{
+	float squaredLength = LengthSq( quaternion );
+	if( squaredLength < FLT_EPSILON )
+	{
+		return { 0.0, 0.0, 0.0, 1.0 };
+	}
+	if( std::fabs( squaredLength - 1.0f ) > FLT_EPSILON )
+	{
+		return Normalize( quaternion );
+	}
+	return quaternion;
+}
+
+std::vector<float> NormalizedQuaternionStream( const cmf::ConstBufferElementStream<float>& values )
+{
+	std::vector<float> result;
+	result.resize( values.size() );
+	for( uint32_t i = 0; i < result.size(); i += 4 )
+	{
+		Quaternion normalized = NormalizedQuaternion( { values[i], values[i + 1], values[i + 2], values[i + 3] } );
+		result[i + 0] = normalized.x;
+		result[i + 1] = normalized.y;
+		result[i + 2] = normalized.z;
+		result[i + 3] = normalized.w;
+	}
+	return result;
+}
+
 std::vector<SkeletonNodes> AddSkeletons( CmfFile& cmfFile, tinygltf::Model& model, tinygltf::Scene& scene )
 {
 	const auto& data = cmfFile.GetData();
@@ -267,7 +296,8 @@ std::vector<SkeletonNodes> AddSkeletons( CmfFile& cmfFile, tinygltf::Model& mode
 			tinygltf::Node node;
 			node.name = cmf::ToStdString( boneName );
 			node.translation = { transform.position.x, transform.position.y, transform.position.z };
-			node.rotation = { transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w };
+			Quaternion rotation = NormalizedQuaternion( transform.rotation );
+			node.rotation = { rotation.x, rotation.y, rotation.z, rotation.w };
 			node.scale = { transform.scale.x, transform.scale.y, transform.scale.z };
 			model.nodes.push_back( node );
 		}
@@ -517,7 +547,16 @@ void AddAnimations(
 			const auto valueStride = cmf::GetVertexElementSize( valueElement );
 			const cmf::ConstBufferElementStream<float> valueFloats{ valueElement, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
 
-			int outputAccIdx = AppendFloatAccessor( gltfBuffer, model, valueFloats, gltfValueType, false );
+			int outputAccIdx;
+			if( channel.targetType == cmf::AnimationChannelTargetType::BoneRotation )
+			{
+				std::vector<float> normalizedValues = NormalizedQuaternionStream( valueFloats );
+				outputAccIdx = AppendFloatAccessor( gltfBuffer, model, normalizedValues, gltfValueType, false );
+			}
+			else
+			{
+				outputAccIdx = AppendFloatAccessor( gltfBuffer, model, valueFloats, gltfValueType, false );
+			}
 
 			const int samplerIdx = static_cast<int>( gltfAnim.samplers.size() );
 			{
