@@ -1140,7 +1140,10 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 			AddAnimations( cmfFile2.value(), gltfBuffer, model, morphMeshNodes );
 		}
 
-		model.buffers.push_back( gltfBuffer );
+		if( !gltfBuffer.data.empty() )
+		{
+			model.buffers.push_back( gltfBuffer );
+		}
 		model.scenes.push_back( scene );
 		model.defaultScene = 0;
 		model.asset.version = "2.0"; // This is the GLTF version we want to use, not our internal asset version
