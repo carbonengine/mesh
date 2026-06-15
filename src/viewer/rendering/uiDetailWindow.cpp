@@ -8,6 +8,9 @@
 
 namespace
 {
+
+constexpr uint8_t NO_SKELETON = 0xff;
+
 const char* GetAnimationTargetTypeName( cmf::AnimationChannelTargetType type )
 {
 	switch( type )
@@ -109,18 +112,17 @@ const char* GetElementTypeName( cmf::ElementType type )
 
 void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBottom )
 {
-	bool open = true;
+	const float width = (float)appState.windowSize.GetValue().first;
+	const float height = (float)appState.windowSize.GetValue().second;
 
-	float width = (float)appState.windowSize.GetValue().first;
-	float height = (float)appState.windowSize.GetValue().second;
-
-	float ySize = std::max( 1.0f, height - marginTop - marginBottom + 1 ); // +1 so we get an overlap of the borders
+	const float ySize = std::max( 1.0f, height - marginTop - marginBottom + 1 ); // +1 so we get an overlap of the borders
 
 	// Pivot (1,0) anchors the top-right corner to the right edge of the viewport
 	ImGui::SetNextWindowPos( ImVec2( width, marginTop ), ImGuiCond_Always, ImVec2( 1.0f, 0.0f ) );
 	ImGui::SetNextWindowSizeConstraints( ImVec2( 0, ySize ), ImVec2( width, ySize ) );
 	ImGui::SetNextWindowSize( ImVec2( width / 4.0f, ySize ), ImGuiCond_FirstUseEver );
-	if( !ImGui::Begin( "Details", &open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings ) )
+	ImGui::SetNextWindowCollapsed( true, ImGuiCond_FirstUseEver );
+	if( !ImGui::Begin( "Details", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings ) )
 	{
 		ImGui::End();
 		return;
@@ -187,7 +189,7 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 		{
 			if( &skeleton == skeletonPtr )
 			{
-				RenderSkeleton( cmfContent, skeleton );
+				RenderSkeleton( skeleton );
 				return true;
 			}
 		}
@@ -318,144 +320,146 @@ void UIDetailWindow::RenderFileHierarchy( const CmfContent& cmfContent )
 	if( ImGui::TreeNodeEx( &cmfContent, ImGuiTreeNodeFlags_DefaultOpen, "%s", filePath.filename().string().c_str() ) )
 	{
 		const auto& cmfData = *cmfContent.m_cmfData;
-		const auto& meshes = cmfContent.m_cmfData->meshes;
-		const auto& skeletons = cmfContent.m_cmfData->skeletons;
 
 		auto renderSkeleton = [&]( const cmf::Skeleton& skeleton ) {
-			const auto name = "Skeleton[" + std::to_string( std::distance( skeletons.begin(), &skeleton ) ) + "]: " + cmf::ToStdString( skeleton.name ) + " (" + std::to_string( skeleton.bones.size() ) + " bones)";
+			const auto name = "Skeleton[" + std::to_string( std::distance( cmfData.skeletons.begin(), &skeleton ) ) + "]: " + cmf::ToStdString( skeleton.name ) + " (" + std::to_string( skeleton.bones.size() ) + " bones)";
 			clickableNode( SelectedItem::Type::SkeletonBones, skeleton, name.c_str() );
 		};
 
-		if( !meshes.empty() && ImGui::TreeNodeEx( &cmfData.meshes, ImGuiTreeNodeFlags_DefaultOpen, "Meshes (%zu)", meshes.size() ) )
-		{
-			for( const auto& mesh : meshes )
+		auto renderMesh = [&]( const cmf::Mesh& mesh ) {
+			if( ImGui::TreeNode( &mesh, "Mesh: %s", cmf::ToStdString( mesh.name ).c_str() ) )
 			{
-				if( ImGui::TreeNode( &mesh, "Mesh: %s", cmf::ToStdString( mesh.name ).c_str() ) )
+				if( !mesh.lods.empty() )
 				{
-					if( !mesh.lods.empty() )
+					if( ImGui::TreeNode( &mesh.lods, "LODs (%zu)", mesh.lods.size() ) )
 					{
-						if( ImGui::TreeNode( &mesh.lods, "LODs (%zu)", mesh.lods.size() ) )
+						for( const auto& lod : mesh.lods )
 						{
-							for( const auto& lod : mesh.lods )
+							std::string lodLabel = "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) );
+							if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
 							{
-								std::string lodLabel = "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) );
-								if( lod.threshold == cmf::MeshLod::MAX_THRESHOLD )
-								{
-									lodLabel += " (base)";
-								}
-								else
-								{
-									lodLabel += " (threshold: " + std::to_string( lod.threshold ) + "px)";
-								}
-								if( ImGui::TreeNode( &lod, "%s", lodLabel.c_str() ) )
-								{
-									const uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
-									const uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
+								lodLabel += " (base)";
+							}
+							else
+							{
+								lodLabel += " (threshold: " + std::to_string( lod.threshold ) + "px)";
+							}
+							if( ImGui::TreeNode( &lod, "%s", lodLabel.c_str() ) )
+							{
+								const uint32_t vertexCount = lod.vb.stride > 0 ? lod.vb.size / lod.vb.stride : 0;
+								const uint32_t indexCount = lod.ib.stride > 0 ? lod.ib.size / lod.ib.stride : 0;
 
-									clickableNode( SelectedItem::Type::VertexBuffer, lod.vb, std::string( "Vertices: " + std::to_string( vertexCount ) ).c_str() );
-									clickableNode( SelectedItem::Type::IndexBuffer, lod.ib, std::string( "Indices: " + std::to_string( indexCount ) ).c_str() );
-									ImGui::TreePop();
-								}
+								clickableNode( SelectedItem::Type::VertexBuffer, lod.vb, std::string( "Vertices: " + std::to_string( vertexCount ) ).c_str() );
+								clickableNode( SelectedItem::Type::IndexBuffer, lod.ib, std::string( "Indices: " + std::to_string( indexCount ) ).c_str() );
+								ImGui::TreePop();
 							}
-							ImGui::TreePop();
 						}
+						ImGui::TreePop();
 					}
-					if( !mesh.areas.empty() )
-					{
-						if( ImGui::TreeNode( &mesh.areas, "Mesh Areas (%zu)", mesh.areas.size() ) )
-						{
-							for( const auto& area : mesh.areas )
-							{
-								if( ImGui::TreeNode( &area, "%s", area.name.empty() ? "Unnamed Area" : cmf::ToStdString( area.name ).c_str() ) )
-								{
-									textNode( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
-									textNode( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
-									if( !area.bones.empty() )
-									{
-										if( ImGui::TreeNode( &area.bones, "Bones" ) )
-										{
-											for( const auto& boneIndex : area.bones )
-											{
-												const auto& binding = mesh.boneBindings[boneIndex];
-												clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, ToStdString( binding.name ).c_str() );
-												textNode(
-													"Bounds: [%.4f, %.4f, %.4f] - [%.4f, %.4f, %.4f]",
-													binding.bounds.m_min.x,
-													binding.bounds.m_min.y,
-													binding.bounds.m_min.z,
-													binding.bounds.m_max.x,
-													binding.bounds.m_max.y,
-													binding.bounds.m_max.z );
-											}
-											ImGui::TreePop();
-										}
-									}
-									ImGui::TreePop();
-								}
-							}
-							ImGui::TreePop();
-						}
-					}
-					if( !mesh.boneBindings.empty() )
-					{
-						clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, "Bone Bindings" );
-					}
-					if( !mesh.morphTargets.targets.empty() )
-					{
-						if( ImGui::TreeNode( &mesh.morphTargets.targets, "Morph Targets (%zu)", mesh.morphTargets.targets.size() ) )
-						{
-							for( size_t ti = 0; ti < mesh.morphTargets.targets.size(); ++ti )
-							{
-								const auto& target = mesh.morphTargets.targets[ti];
-								if( ImGui::TreeNode( &target, "%s", cmf::ToStdString( target.name ).c_str() ) )
-								{
-									textNode( "Max Displacement: %.4f", target.maxDisplacement );
-									for( const auto& lod : mesh.lods )
-									{
-										if( ti < lod.morphTargets.size() )
-										{
-											const auto& morphLod = lod.morphTargets[ti];
-											const uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
-											clickableNode( SelectedItem::VertexBuffer, morphLod.vb, std::string( "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) ) + ": " + std::to_string( vtxCount ) + " vertices" ).c_str() );
-										}
-									}
-									ImGui::TreePop();
-								}
-							}
-							ImGui::TreePop();
-						}
-					}
-					textNode( "Bounds Min:  %.4f  %.4f  %.4f", mesh.bounds.m_min.x, mesh.bounds.m_min.y, mesh.bounds.m_min.z );
-					textNode( "Bounds Max:  %.4f  %.4f  %.4f", mesh.bounds.m_max.x, mesh.bounds.m_max.y, mesh.bounds.m_max.z );
-					textNode( "Bounds Size: %.4f  %.4f  %.4f", mesh.bounds.Size().x, mesh.bounds.Size().y, mesh.bounds.Size().z );
-
-					if( mesh.skeleton != 0xff && size_t( mesh.skeleton ) < skeletons.size() )
-					{
-						const auto& skeleton = skeletons[mesh.skeleton];
-						renderSkeleton( skeleton );
-					}
-					if( !mesh.audioOcclusionMesh.vertices.empty() )
-					{
-						clickableNode( SelectedItem::Type::AudioOcclusionMesh, mesh.audioOcclusionMesh, "Audio Occlusion Mesh" );
-					}
-					ImGui::TreePop();
 				}
+				if( !mesh.areas.empty() )
+				{
+					if( ImGui::TreeNode( &mesh.areas, "Mesh Areas (%zu)", mesh.areas.size() ) )
+					{
+						for( const auto& area : mesh.areas )
+						{
+							if( ImGui::TreeNode( &area, "%s", area.name.empty() ? "Unnamed Area" : cmf::ToStdString( area.name ).c_str() ) )
+							{
+								textNode( "Affected by Bones: %s", area.affectedByBones ? "Yes" : "No" );
+								textNode( "Affected by Morphs: %s", area.affectedByMorphTargets ? "Yes" : "No" );
+								if( !area.bones.empty() )
+								{
+									if( ImGui::TreeNode( &area.bones, "Bones" ) )
+									{
+										for( const auto& boneIndex : area.bones )
+										{
+											const auto& binding = mesh.boneBindings[boneIndex];
+											clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, ToStdString( binding.name ).c_str() );
+											textNode(
+												"Bounds: [%.4f, %.4f, %.4f] - [%.4f, %.4f, %.4f]",
+												binding.bounds.m_min.x,
+												binding.bounds.m_min.y,
+												binding.bounds.m_min.z,
+												binding.bounds.m_max.x,
+												binding.bounds.m_max.y,
+												binding.bounds.m_max.z );
+										}
+										ImGui::TreePop();
+									}
+								}
+								ImGui::TreePop();
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
+				if( !mesh.boneBindings.empty() )
+				{
+					clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, "Bone Bindings" );
+				}
+				if( !mesh.morphTargets.targets.empty() )
+				{
+					if( ImGui::TreeNode( &mesh.morphTargets.targets, "Morph Targets (%zu)", mesh.morphTargets.targets.size() ) )
+					{
+						for( size_t ti = 0; ti < mesh.morphTargets.targets.size(); ++ti )
+						{
+							const auto& target = mesh.morphTargets.targets[ti];
+							if( ImGui::TreeNode( &target, "%s", cmf::ToStdString( target.name ).c_str() ) )
+							{
+								textNode( "Max Displacement: %.4f", target.maxDisplacement );
+								for( const auto& lod : mesh.lods )
+								{
+									if( ti < lod.morphTargets.size() )
+									{
+										const auto& morphLod = lod.morphTargets[ti];
+										const uint32_t vtxCount = morphLod.vb.stride > 0 ? morphLod.vb.size / morphLod.vb.stride : 0;
+										clickableNode( SelectedItem::VertexBuffer, morphLod.vb, std::string( "LOD " + std::to_string( std::distance( mesh.lods.begin(), &lod ) ) + ": " + std::to_string( vtxCount ) + " vertices" ).c_str() );
+									}
+								}
+								ImGui::TreePop();
+							}
+						}
+						ImGui::TreePop();
+					}
+				}
+				textNode( "Bounds Min:  %.4f  %.4f  %.4f", mesh.bounds.m_min.x, mesh.bounds.m_min.y, mesh.bounds.m_min.z );
+				textNode( "Bounds Max:  %.4f  %.4f  %.4f", mesh.bounds.m_max.x, mesh.bounds.m_max.y, mesh.bounds.m_max.z );
+				textNode( "Bounds Size: %.4f  %.4f  %.4f", mesh.bounds.Size().x, mesh.bounds.Size().y, mesh.bounds.Size().z );
+
+				if( mesh.skeleton != NO_SKELETON && size_t( mesh.skeleton ) < cmfData.skeletons.size() )
+				{
+					const auto& skeleton = cmfData.skeletons[mesh.skeleton];
+					renderSkeleton( skeleton );
+				}
+				if( !mesh.audioOcclusionMesh.vertices.empty() )
+				{
+					clickableNode( SelectedItem::Type::AudioOcclusionMesh, mesh.audioOcclusionMesh, "Audio Occlusion Mesh" );
+				}
+				ImGui::TreePop();
+			}
+		};
+
+		if( !cmfData.meshes.empty() && ImGui::TreeNodeEx( &cmfData.meshes, ImGuiTreeNodeFlags_DefaultOpen, "Meshes (%zu)", cmfData.meshes.size() ) )
+		{
+			for( const auto& mesh : cmfData.meshes )
+			{
+				renderMesh( mesh );
 			}
 			ImGui::TreePop(); // Meshes
 		}
 
-		if( !skeletons.empty() && ImGui::TreeNodeEx( &skeletons, ImGuiTreeNodeFlags_DefaultOpen, "Skeletons (%zu)", skeletons.size() ) )
+		if( !cmfData.skeletons.empty() && ImGui::TreeNodeEx( &cmfData.skeletons, ImGuiTreeNodeFlags_DefaultOpen, "Skeletons (%zu)", cmfData.skeletons.size() ) )
 		{
-			for( const auto& skeleton : skeletons )
+			for( const auto& skeleton : cmfData.skeletons )
 			{
 				renderSkeleton( skeleton );
 			}
 			ImGui::TreePop();
 		}
 
-		if( !cmfContent.m_cmfData->animations.empty() && ImGui::TreeNodeEx( &cmfContent.m_cmfData->animations, ImGuiTreeNodeFlags_DefaultOpen, "Animations (%zu)", cmfContent.m_cmfData->animations.size() ) )
+		if( !cmfData.animations.empty() && ImGui::TreeNodeEx( &cmfData.animations, ImGuiTreeNodeFlags_DefaultOpen, "Animations (%zu)", cmfData.animations.size() ) )
 		{
-			for( auto& anim : cmfContent.m_cmfData->animations )
+			for( const auto& anim : cmfData.animations )
 			{
 				clickableNode( SelectedItem::Animation, anim, ToStdString( anim.name ).c_str() );
 			}
@@ -673,7 +677,7 @@ void UIDetailWindow::RenderIndexData( const CmfContent& cmfContent, const cmf::M
 		ImGuiTableFlags_SizingFixedFit;
 
 	const ImVec2 outerSize( 0.0f, ImGui::GetContentRegionAvail().y );
-	if( ImGui::BeginTable( "##indexdata", 5, tableFlags, outerSize ) )
+	if( ImGui::BeginTable( "##indexdata", areas.empty() ? 4 : 5, tableFlags, outerSize ) )
 	{
 		ImGui::TableSetupScrollFreeze( 0, 1 );
 		ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 72.0f );
@@ -726,18 +730,9 @@ void UIDetailWindow::RenderIndexData( const CmfContent& cmfContent, const cmf::M
 	}
 }
 
-void UIDetailWindow::RenderSkeleton( const CmfContent& cmfContent, const cmf::Skeleton& skeleton )
+void UIDetailWindow::RenderSkeleton( const cmf::Skeleton& skeleton )
 {
 	ImGui::Text( "Skeleton: %s  Bones: %zu", cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() );
-
-	static const char* allBoneCols[] = { "Name", "Parent", "Position", "Rotation", "Scale" };
-	for( const auto& col : allBoneCols )
-	{
-		if( m_boneColumnFilter.find( col ) == m_boneColumnFilter.end() )
-		{
-			m_boneColumnFilter[col] = true;
-		}
-	}
 
 	if( ImGui::CollapsingHeader( "Filters" ) )
 	{
@@ -748,22 +743,18 @@ void UIDetailWindow::RenderSkeleton( const CmfContent& cmfContent, const cmf::Sk
 				enabled = true;
 			}
 		}
-		for( const auto& col : allBoneCols )
+		for( auto& [name, enabled] : m_boneColumnFilter )
 		{
-			bool enabled = m_boneColumnFilter[col];
-			if( ImGui::Checkbox( col, &enabled ) )
-			{
-				m_boneColumnFilter[col] = enabled;
-			}
+			ImGui::Checkbox( name.c_str(), &enabled );
 		}
 	}
 
 	std::vector<int> activeColIndices;
-	for( int i = 0; i < 5; ++i )
+	for( size_t i = 0; i < m_boneColumnFilter.size(); ++i )
 	{
-		if( m_boneColumnFilter[allBoneCols[i]] )
+		if( m_boneColumnFilter[i].second )
 		{
-			activeColIndices.push_back( i );
+			activeColIndices.push_back( int( i ) );
 		}
 	}
 
@@ -787,7 +778,7 @@ void UIDetailWindow::RenderSkeleton( const CmfContent& cmfContent, const cmf::Sk
 		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
 		for( const int ci : activeColIndices )
 		{
-			ImGui::TableSetupColumn( allBoneCols[ci], ImGuiTableColumnFlags_WidthStretch );
+			ImGui::TableSetupColumn( m_boneColumnFilter[ci].first.c_str(), ImGuiTableColumnFlags_WidthStretch );
 		}
 		ImGui::TableHeadersRow();
 
@@ -801,7 +792,7 @@ void UIDetailWindow::RenderSkeleton( const CmfContent& cmfContent, const cmf::Sk
 
 				ImGui::TableNextRow();
 
-				for( int col = 0; col < (int)activeColIndices.size(); ++col )
+				for( int col = 0; col < int( activeColIndices.size() ); ++col )
 				{
 					ImGui::TableSetColumnIndex( col + 1 );
 					switch( activeColIndices[col] )
@@ -912,7 +903,7 @@ void UIDetailWindow::RenderBoneBindings( const CmfContent& cmfContent, const cmf
 			while( clipper.Step() )
 			{
 				const cmf::Skeleton* skeleton = nullptr;
-				if( mesh.skeleton != 0xff )
+				if( mesh.skeleton != NO_SKELETON )
 				{
 					skeleton = &cmfContent.m_cmfData->skeletons[mesh.skeleton];
 				}
@@ -927,13 +918,16 @@ void UIDetailWindow::RenderBoneBindings( const CmfContent& cmfContent, const cmf
 					{
 						if( ImGui::TextLink( cmf::ToStdString( mesh.boneBindings[i].name ).c_str() ) )
 						{
-							uint32_t boneIndex = 0xffffffff;
 							const auto* found = std::find( skeleton->bones.begin(), skeleton->bones.end(), mesh.boneBindings[i].name );
 							if( found != skeleton->bones.end() )
 							{
-								boneIndex = static_cast<uint32_t>( std::distance( skeleton->bones.begin(), found ) );
+								const auto boneIndex = static_cast<uint32_t>( std::distance( skeleton->bones.begin(), found ) );
+								m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, skeleton, { boneIndex }, true };
 							}
-							m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, skeleton, { boneIndex }, true };
+							else
+							{
+								m_selectedItem = SelectedItem{ SelectedItem::Type::SkeletonBones, skeleton };
+							}
 						}
 					}
 					else
