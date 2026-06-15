@@ -787,6 +787,20 @@ void PreprocessCmfFile( CmfFile& cmfFile )
 						normals.set( i, normalizedVector( normals[i], Vector3( 0.f, 1.f, 0.f ) ) );
 					}
 				}
+				if( elem.usage == cmf::Usage::Color )
+				{
+					// glTF requires COLOR components to be in the range [0,1]
+					const cmf::BufferElementStream<Vector4> colors( elem, vb, bufferManager );
+					for( uint32_t i = 0; i < colors.size(); i++ )
+					{
+						Vector4 c = colors[i];
+						c.x = std::clamp( c.x, 0.0f, 1.0f );
+						c.y = std::clamp( c.y, 0.0f, 1.0f );
+						c.z = std::clamp( c.z, 0.0f, 1.0f );
+						c.w = std::clamp( c.w, 0.0f, 1.0f );
+						colors.set( i, c );
+					}
+				}
 			}
 
 			if( synthesizeWeights )
