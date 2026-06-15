@@ -184,8 +184,8 @@ private:
 	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes );
 	void RenderVertexDataTab( const CmfContent& cmfContent, const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb );
 	void RenderIndexDataTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton, AppState& appState );
-	void RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh, AppState& appState );
+	void RenderBonesTab( const CmfContent& cmfContent, const cmf::Skeleton& skeleton );
+	void RenderBoneBindingTab( const CmfContent& cmfContent, const cmf::Mesh& mesh );
 
 	SelectedItem m_selectedItem{};
 
