@@ -256,7 +256,10 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 		}
 	};
 
-	appState.modelState.selectedBones.Clear();
+	while( appState.modelState.selectedBones.size() > 0 )
+	{
+		appState.modelState.selectedBones.RemoveAt( appState.modelState.selectedBones.size() - 1 );
+	}
 
 	switch( m_selectedItem.type )
 	{
