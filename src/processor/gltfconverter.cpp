@@ -302,19 +302,33 @@ std::vector<SkeletonNodes> AddSkeletons( CmfFile& cmfFile, tinygltf::Model& mode
 			model.nodes.push_back( node );
 		}
 
-		int rootNodeIndex = -1;
+		std::vector<int> rootNodeIndices;
 		for( size_t boneIndex = 0; boneIndex < skeleton.bones.size(); boneIndex++ )
 		{
 			uint32_t parentIndex = skeleton.parents[boneIndex];
 			int nodeIndex = boneNodeOffset + (int)boneIndex;
 			if( parentIndex >= skeleton.bones.size() )
 			{
-				rootNodeIndex = nodeIndex;
+				rootNodeIndices.push_back( nodeIndex );
 			}
 			else
 			{
 				model.nodes[boneNodeOffset + parentIndex].children.push_back( nodeIndex );
 			}
+		}
+
+		int rootNodeIndex = -1;
+		if( rootNodeIndices.size() == 1 )
+		{
+			rootNodeIndex = rootNodeIndices[0];
+		}
+		else if( rootNodeIndices.size() > 1 )
+		{
+			rootNodeIndex = (int)model.nodes.size();
+			tinygltf::Node root;
+			root.name = cmf::ToStdString( skeleton.name ) + "_root";
+			root.children = rootNodeIndices;
+			model.nodes.push_back( root );
 		}
 
 		result[skeletonIndex] = { boneNodeOffset, rootNodeIndex };
