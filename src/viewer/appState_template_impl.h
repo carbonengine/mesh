@@ -132,6 +132,8 @@ template <typename T>
 void StateCollection<T>::Clear()
 {
 	m_states.clear();
+	// fire local callbacks to notify about the change in the collection
+	m_fireCallbacks = true;
 }
 
 template <typename T>

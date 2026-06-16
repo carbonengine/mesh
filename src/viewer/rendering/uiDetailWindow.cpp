@@ -256,10 +256,6 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 		}
 	};
 
-	while( appState.modelState.selectedBones.size() > 0 )
-	{
-		appState.modelState.selectedBones.RemoveAt( appState.modelState.selectedBones.size() - 1 );
-	}
 
 	switch( m_selectedItem.type )
 	{
@@ -270,10 +266,6 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 		renderForDataSources( m_selectedItem.context, renderIndexBuffer );
 		break;
 	case SelectedItem::SkeletonBones:
-		for( const auto& boneIndex : m_selectedItem.selectedIndices )
-		{
-			appState.modelState.selectedBones.AddState( boneIndex );
-		}
 		renderForDataSources( m_selectedItem.context, renderSkeleton );
 		break;
 	case SelectedItem::BoneBindings:
@@ -292,7 +284,40 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 		break;
 	}
 
+	UpdateSelection( appState );
+
 	ImGui::End();
+}
+
+void UIDetailWindow::UpdateSelection( AppState& appState )
+{
+	if( m_selectedItem.type == SelectedItem::SkeletonBones )
+	{
+		bool same = appState.modelState.selectedBones.size() == m_selectedItem.selectedIndices.size();
+		if( same )
+		{
+			for( size_t i = 0; i < appState.modelState.selectedBones.size(); ++i )
+			{
+				if( appState.modelState.selectedBones[i].GetValue() != m_selectedItem.selectedIndices[i] )
+				{
+					same = false;
+					break;
+				}
+			}
+		}
+		if( !same )
+		{
+			appState.modelState.selectedBones.Clear();
+			for( const auto& boneIndex : m_selectedItem.selectedIndices )
+			{
+				appState.modelState.selectedBones.AddState( boneIndex );
+			}
+		}
+	}
+	else
+	{
+		appState.modelState.selectedBones.Clear();
+	}
 }
 
 void UIDetailWindow::RenderFileHierarchy( const CmfContent& cmfContent )
@@ -377,7 +402,9 @@ void UIDetailWindow::RenderFileHierarchy( const CmfContent& cmfContent )
 										for( const auto& boneIndex : area.bones )
 										{
 											const auto& binding = mesh.boneBindings[boneIndex];
+											ImGui::PushID( int( boneIndex ) );
 											clickableNode( SelectedItem::Type::BoneBindings, mesh.boneBindings, ToStdString( binding.name ).c_str() );
+											ImGui::PopID();
 											textNode(
 												"Bounds: [%.4f, %.4f, %.4f] - [%.4f, %.4f, %.4f]",
 												binding.bounds.m_min.x,

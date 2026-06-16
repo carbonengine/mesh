@@ -37,6 +37,8 @@ private:
 	void RenderAnimationCurves( const cmf::AnimationCurve& curve, const cmf::Animation& anim );
 	void RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOcclusionMesh );
 
+	void UpdateSelection( AppState& appState );
+
 	SelectedItem m_selectedItem{};
 	std::vector<std::pair<cmf::Usage, uint8_t>> m_hiddenAttributes;
 	std::vector<std::pair<std::string, bool>> m_boneColumnFilter = { { "Name", true }, { "Parent", true }, { "Position", true }, { "Rotation", true }, { "Scale", true } };
