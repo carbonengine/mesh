@@ -253,12 +253,13 @@ void UIRenderer::Render( AppState& appState )
 void UIRenderer::SetupUi( AppState& appState )
 {
 	UpdateUiState( appState );
+	if( m_showMainUI )
+	{
+		CMFInfoWindow( appState );
+		MeshDetailsWindow( appState );
 
-	CMFInfoWindow( appState );
-	MeshDetailsWindow( appState );
-
-	SetupPlaybackControls( appState );
-
+		SetupPlaybackControls( appState );
+	}
 	SetupPopupWindows( appState );
 }
 
@@ -1065,11 +1066,22 @@ void UIRenderer::SetupMenubar( AppState& appState )
 
 				ImGui::EndMenu();
 			}
+			ImGui::Separator();
+			const char* toggleUiLabel = m_showMainUI ? "Hide UI" : "Show UI";
+			if( ImGui::MenuItem( toggleUiLabel, "Ctrl+F12" ) )
+			{
+				ToggleUiVisibility();
+			}
 			ImGui::EndMenu();
 		}
 
 		ImGui::EndMainMenuBar();
 	}
+}
+
+void UIRenderer::ToggleUiVisibility()
+{
+	m_showMainUI = !m_showMainUI;
 }
 
 const char* UIRenderer::GetPlaybackButtonLabel() const
@@ -1103,25 +1115,6 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 {
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
-
-	// update the current time
-	if( m_playback.playing )
-	{
-		m_playback.currentTime += ImGui::GetIO().DeltaTime;
-		appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
-		if( m_playback.currentTime >= m_playback.duration )
-		{
-			if( m_playback.repeat )
-			{
-				m_playback.currentTime = 0.0f;
-			}
-			else
-			{
-				m_playback.currentTime = m_playback.duration;
-				m_playback.playing = false;
-			}
-		}
-	}
 
 	// animation player
 	ImGui::SetNextWindowPos( ImVec2( 0, height - ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
@@ -1206,6 +1199,33 @@ void UIRenderer::SetupPopupWindows( AppState& appState )
 	}
 }
 
+void UIRenderer::Update( AppState& appstate )
+{
+	UpdatePlayback( appstate );
+	UpdateInputs( appstate );
+}
+
+void UIRenderer::UpdatePlayback( AppState& appState )
+{
+	if( m_playback.playing )
+	{
+		m_playback.currentTime += ImGui::GetIO().DeltaTime;
+		appState.modelState.currentAnimationTime.SetValue( m_playback.currentTime );
+		if( m_playback.currentTime >= m_playback.duration )
+		{
+			if( m_playback.repeat )
+			{
+				m_playback.currentTime = 0.0f;
+			}
+			else
+			{
+				m_playback.currentTime = m_playback.duration;
+				m_playback.playing = false;
+			}
+		}
+	}
+}
+
 void UIRenderer::UpdateInputs( AppState& appState )
 {
 	auto io = ImGui::GetIO();
@@ -1225,8 +1245,9 @@ void UIRenderer::UpdateInputs( AppState& appState )
 		appState.mouseState.Reset();
 	}
 	// Handle ui keyboard shortcuts
-	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_O ) )
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_O ) )
 	{
+		// file open
 		auto filePath = FileOpenDialog();
 		if( filePath != nullptr )
 		{
@@ -1235,9 +1256,14 @@ void UIRenderer::UpdateInputs( AppState& appState )
 			appState.cmfPath.SetValue( std::string( filePath ) );
 		}
 	}
-	if( ImGui::IsKeyDown( ImGuiMod_Ctrl ) && ImGui::IsKeyPressed( ImGuiKey_F ) )
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F ) )
 	{
+		// focus camera on model
 		appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+	}
+	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F12 ) )
+	{
+		ToggleUiVisibility();
 	}
 }
 
