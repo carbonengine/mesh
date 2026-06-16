@@ -5,11 +5,9 @@
 class UIDetailWindow
 {
 public:
-
 	void Render( AppState& appState, float marginTop, float marginBottom );
 
 private:
-
 	struct SelectedItem
 	{
 		enum Type
@@ -41,5 +39,5 @@ private:
 
 	SelectedItem m_selectedItem{};
 	std::vector<std::pair<cmf::Usage, uint8_t>> m_hiddenAttributes;
-	std::vector < std::pair<std::string, bool>> m_boneColumnFilter = { { "Name", true }, { "Parent", true }, { "Position", true }, { "Rotation", true }, { "Scale", true } };
+	std::vector<std::pair<std::string, bool>> m_boneColumnFilter = { { "Name", true }, { "Parent", true }, { "Position", true }, { "Rotation", true }, { "Scale", true } };
 };
