@@ -24,9 +24,12 @@ public:
 	void CMFInfoWindow( AppState& appState );
 	void MeshDetailsWindow( AppState& appState );
 	void SetupMenubar( AppState& appState );
-	void UpdateInputs( AppState& state );
+	void Update( AppState& state );
 
 private:
+	void UpdateInputs( AppState& state );
+	void UpdatePlayback( AppState& appState );
+
 	template <typename T>
 	struct CmfUiComboBox
 	{
@@ -158,6 +161,7 @@ private:
 	void SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState );
 
 	void UpdateUiState( AppState& appState );
+	void ToggleUiVisibility();
 	const char* FileOpenDialog();
 
 	struct AttributeInfo
@@ -191,6 +195,7 @@ private:
 	GraphicsCommandBuffer m_graphicsCommandBuffer;
 
 	UiState m_uiState{};
+	bool m_showMainUI{ true };
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	Playback m_playback{};
 	MeshDetailsState m_meshDetailsState{};
