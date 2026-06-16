@@ -196,7 +196,7 @@ void Application::Run()
 			m_sceneRenderer->Render( m_appState, m_camera );
 			m_orientationGizmoRenderer->Render( m_appState, m_camera );
 
-			m_uiRenderer->UpdateInputs( m_appState );
+			m_uiRenderer->Update( m_appState );
 			m_uiRenderer->Render( m_appState );
 
 			if( m_renderer->EndRender() != VK_SUCCESS )
