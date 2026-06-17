@@ -1,7 +1,10 @@
 #include "cmf/utils.h"
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
+#include "cmf/compression.h"
+#include <map>
 #include <numeric>
+#include <vector>
 #include <cmath>
 
 namespace
@@ -649,6 +652,17 @@ std::string IsMeshValid( const cmf::Mesh& mesh, const cmf::Span<cmf::Skeleton>& 
 		}
 	}
 
+	for( size_t i = 0; i < mesh.boneBindings.size(); i++ )
+	{
+		for( size_t j = i + 1; j < mesh.boneBindings.size(); j++ )
+		{
+			if( mesh.boneBindings[i].name == mesh.boneBindings[j].name )
+			{
+				return "Mesh \"" + ToStdString( mesh.name ) + "\" has duplicate boneBinding name " + ToStdString( mesh.boneBindings[i].name );
+			}
+		}
+	}
+
 	const size_t uvCount = std::accumulate( mesh.decl.begin(), mesh.decl.end(), size_t( 0 ), []( size_t count, const cmf::VertexElement& element ) {
 		if( element.usage == cmf::Usage::TexCoord )
 		{
@@ -892,12 +906,19 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	cmf::VertexElement element = {};
 	element.type = curve.knotType;
 	element.elementCount = 1;
-	const auto stride = cmf::GetVertexElementSize( element );
+	uint32_t stride = cmf::GetVertexElementSize( element );
 	if( curve.knots.size() != uint64_t( curve.knotCount ) * stride )
 	{
 		return "Curve keyframe buffer size does not match keyframes count and time type";
 	}
 	const cmf::ConstBufferElementStream<float> knots{ element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
+	for( uint32_t i = 0; i < knots.size(); ++i )
+	{
+		if( std::isinf( knots[i] ) || std::isnan( knots[i] ) )
+		{
+			return "Curve has knots with invalid float";
+		}
+	}
 	for( uint32_t i = 1; i < knots.size(); ++i )
 	{
 		if( knots[i] < knots[i - 1] )
@@ -914,6 +935,19 @@ std::string IsCurveValid( const cmf::AnimationCurve& curve )
 	if( curve.values.size() != uint64_t( curve.knotCount ) * curve.valueDimension * cmf::GetElementTypeSize( curve.valueType ) )
 	{
 		return "Curve value buffer size does not match keyframes count, value dimension and value type";
+	}
+
+	cmf::VertexElement valueElement = {};
+	valueElement.type = curve.valueType;
+	valueElement.elementCount = 1;
+	uint32_t valueStride = cmf::GetVertexElementSize( valueElement );
+	const cmf::ConstBufferElementStream<float> values{ valueElement, curve.values.data(), uint32_t( curve.values.size() / valueStride ), valueStride };
+	for( uint32_t i = 0; i < values.size(); ++i )
+	{
+		if( std::isinf( values[i] ) || std::isnan( values[i] ) )
+		{
+			return "Curve has values with invalid float";
+		}
 	}
 	return {};
 }
@@ -1058,6 +1092,86 @@ std::string IsMetadataValid( const cmf::Metadata& metaData, size_t sectionSize )
 	return {};
 }
 
+const uint8_t* GetDecompressedSection( uint32_t index, const void* fileData, const cmf::Span<cmf::Section>& sections, std::map<uint32_t, std::vector<uint8_t>>& cache )
+{
+	const auto& section = sections[index];
+	const auto* sectionData = static_cast<const uint8_t*>( fileData ) + section.offset;
+	if( section.compression == cmf::SectionCompression::None )
+	{
+		return sectionData;
+	}
+	auto [it, inserted] = cache.try_emplace( index );
+	if( inserted )
+	{
+		it->second.resize( section.uncompressedSize );
+		cmf::Decompress( it->second.data(), section, sectionData );
+	}
+	return it->second.data();
+}
+
+std::string AreFloatElementsFinite( const cmf::Span<cmf::VertexElement>& decl, const cmf::BufferView& vb, const uint8_t* sectionData )
+{
+	if( vb.stride == 0 )
+	{
+		return {};
+	}
+	uint32_t vertexCount = vb.size / vb.stride;
+	const auto* bufferData = sectionData + vb.offset;
+	for( const auto& element : decl )
+	{
+		if( element.type != cmf::ElementType::Float32 && element.type != cmf::ElementType::Float16 )
+		{
+			continue;
+		}
+		const cmf::ConstBufferElementStream<Vector4> stream{ element, bufferData, vertexCount, vb.stride };
+		for( const auto& value : stream )
+		{
+			for( int i = 0; i < 4 && i < element.elementCount; i++ )
+			{
+				if( std::isinf( value[i] ) || std::isnan( value[i] ) )
+				{
+					return "contains an invalid float";
+				}
+			}
+		}
+	}
+	return {};
+}
+
+std::string AreBuffersValid( const cmf::Data& mainData, const cmf::Header& header, const void* fileData )
+{
+	std::map<uint32_t, std::vector<uint8_t>> sectionCache;
+	for( const auto& mesh : mainData.meshes )
+	{
+		for( size_t lodIndex = 0; lodIndex < mesh.lods.size(); lodIndex++ )
+		{
+			const auto& lod = mesh.lods[lodIndex];
+			if( lod.vb.size != 0 )
+			{
+				auto error = AreFloatElementsFinite( mesh.decl, lod.vb, GetDecompressedSection( lod.vb.index, fileData, header.sections, sectionCache ) );
+				if( !error.empty() )
+				{
+					return "Mesh \"" + ToStdString( mesh.name ) + "\" LOD " + std::to_string( lodIndex ) + " vertex buffer " + error;
+				}
+			}
+			for( size_t i = 0; i < lod.morphTargets.size(); i++ )
+			{
+				const auto& morph = lod.morphTargets[i];
+				if( morph.vb.size == 0 )
+				{
+					continue;
+				}
+				auto error = AreFloatElementsFinite( mesh.morphTargets.decl, morph.vb, GetDecompressedSection( morph.vb.index, fileData, header.sections, sectionCache ) );
+				if( !error.empty() )
+				{
+					return "Mesh \"" + ToStdString( mesh.name ) + "\" LOD " + std::to_string( lodIndex ) + " morph target " + std::to_string( i ) + " " + error;
+				}
+			}
+		}
+	}
+	return {};
+}
+
 }
 
 namespace cmf
@@ -1093,7 +1207,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		}
 	}
 
-	if( !options.validateHeader && !options.validateMainData )
+	if( !options.validateHeader && !options.validateMainData && !options.validateBuffers )
 	{
 		return { true, {} };
 	}
@@ -1123,10 +1237,12 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 	}
 
 	const auto& mainData = *reinterpret_cast<const Data*>( mainDataAddress );
-	auto error = IsMainDataValid( mainData, header );
-	if( !error.empty() )
 	{
-		return { false, error };
+		auto error = IsMainDataValid( mainData, header );
+		if( !error.empty() )
+		{
+			return { false, error };
+		}
 	}
 
 	const auto& lastSection = header.sections[header.sections.size() - 1];
@@ -1144,6 +1260,17 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		{
 			return { false, error };
 		}
+	}
+	
+	if( !options.validateBuffers )
+	{
+		return { true, {} };
+	}
+
+	auto error = AreBuffersValid( mainData, header, data );
+	if( !error.empty() )
+	{
+		return { false, error };
 	}
 
 	return { true, {} };
