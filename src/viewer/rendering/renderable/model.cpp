@@ -65,14 +65,23 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 
 		if( animationIt == activeAnimationOwner->m_cmfData->animations.end() )
 		{
-			Log::Error( "Animation %s not found in active animation owner.", animationName.c_str() );
-			return;
+			if( !animationName.empty() )
+			{
+				Log::Error( "Animation %s not found in active animation owner.", animationName.c_str() );
+			}
+			for( auto& animationState : m_animationStates )
+			{
+				animationState.SetAnimation( nullptr );
+			}
 		}
-		const auto& animation = *animationIt;
-
-		for( auto& animationState : m_animationStates )
+		else
 		{
-			animationState.SetAnimation( &animation );
+			const auto& animation = *animationIt;
+
+			for( auto& animationState : m_animationStates )
+			{
+				animationState.SetAnimation( &animation );
+			}
 		}
 		UpdateAnimation( 0.0f, appState );
 	} );
