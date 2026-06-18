@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "boundingBox.h"
 #include "primitiveEffects.h"
 

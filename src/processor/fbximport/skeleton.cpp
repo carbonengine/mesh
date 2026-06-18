@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "skeleton.h"
 #include "cmf/memallocator.h"
 #include "options.h"

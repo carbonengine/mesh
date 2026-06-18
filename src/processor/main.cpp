@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include <CLI/CLI.hpp>
 #include "commands.h"
 #include <nlohmann/json.hpp>

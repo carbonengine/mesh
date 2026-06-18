@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "commands.h"
 #include "cmffile.h"
 #include "cmf/tangents.h"

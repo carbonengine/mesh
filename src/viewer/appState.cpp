@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "appState.h"
 
 bool MouseState::operator==( const MouseState& other ) const

@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #pragma once
 
 #define IDI_CARBON_MESH_VIEWER 101

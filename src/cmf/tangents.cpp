@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "cmf/tangents.h"
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 CCP ehf.
 
 #version 450
 

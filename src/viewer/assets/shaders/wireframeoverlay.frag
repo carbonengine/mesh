@@ -1,3 +1,5 @@
+// Copyright (c) 2026 CCP ehf.
+
 #version 450
 #extension GL_EXT_fragment_shader_barycentric : require
 // parts of the source obtained from:
