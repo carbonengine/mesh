@@ -1,7 +1,7 @@
 cmfprocessor
 ============
 
-cmfprocessor is a command-line tool for working with CMF (Carbon Mesh Format) files. It provides multiple sub-commands for importing, processing, inspecting, and validating 3D mesh data.
+cmfprocessor is a command-line tool for working with CMF (Carbon Mesh Format) files. It provides multiple sub-commands for importing, processing, inspecting, validating and exporting 3D mesh data.
 
 General Usage
 -------------
@@ -56,6 +56,14 @@ Metadata Management
 
    metadata
 
+Export
+^^^^^^
+
+.. toctree::
+   :maxdepth: 1
+
+   gltfconverter
+
 Command Summary
 ---------------
 
@@ -83,6 +91,8 @@ Command Summary
      - Computes and prints the MD5 hash of any file for integrity verification
    * - :doc:`metadata <metadata>`
      - Adds, modifies, or removes metadata key-value pairs in CMF files
+   * - :doc:`gltfconverter <gltfconverter>`
+     - Converts a CMF file to GLTF, including meshes, skeletons and animations
 
 Quick Start
 -----------
@@ -110,6 +120,11 @@ Validate a CMF file:
 .. code-block:: bash
 
    cmfprocessor validate model.cmf
+
+Convert a CMF file to GLTF:
+.. code-block:: bash
+
+   cmfprocessor gltfconverter model.cmf model.gltf
 
 Common Workflows
 ----------------
@@ -165,6 +180,14 @@ Asset Verification Pipeline
 
    # Compute hash for tracking
    cmfprocessor hash model.cmf > model.md5
+
+Exporting CMF to GLTF with secondary CMF files containing animations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   # Export a CMF file containing the model, with separate CMF files containing animations
+   cmfprocessor gltfconverter --src2 animation1.cmf --src2 animation2.cmf model.cmf model.gltf
 
 Error Handling
 --------------
