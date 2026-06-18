@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "animation.h"
 #include "cmf/declutils.h"
 #include "cmf/animation.h"

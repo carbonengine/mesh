@@ -1,3 +1,5 @@
+// Copyright (c) 2026 CCP ehf.
+
 #version 450
 
 layout( binding = 0 ) uniform UBO 

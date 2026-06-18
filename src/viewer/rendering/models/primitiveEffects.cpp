@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "primitiveEffects.h"
 #include <cmf/declutils.h>
 #include <algorithm>

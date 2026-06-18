@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include <unordered_map>
 
 // used by the template file

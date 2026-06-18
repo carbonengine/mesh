@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "cmf/declutils.h"
 
 namespace cmf

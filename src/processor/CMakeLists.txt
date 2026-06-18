@@ -1,3 +1,5 @@
+# Copyright © 2026 CCP ehf.
+
 set(PROCESSOR_SOURCES
     cmffile.h
     cmffile.cpp

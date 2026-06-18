@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "options.h"
 #include "lodsimplygon.h"
 

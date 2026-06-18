@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "primitive.h"
 
 #include "../vulkan/vulkanerrors.h"

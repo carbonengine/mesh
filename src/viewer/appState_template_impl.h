@@ -1,3 +1,4 @@
+// Copyright © 2026 CCP ehf.
 
 template <typename T>
 State<T>::State( T initialValue ) :

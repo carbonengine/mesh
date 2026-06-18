@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "animationState.h"
 
 #include <numeric>
@@ -47,10 +49,14 @@ void AnimationState::SetAnimation( const cmf::Animation* animation )
 {
 	const cmf::Skeleton& animationSkeleton = m_animationOverrideSkeleton ? *m_animationOverrideSkeleton : m_skeleton;
 	cmf::RestPose( m_pose, animationSkeleton );
+	m_animation = animation;
 	if( animation )
 	{
-		m_animation = animation;
 		m_animationPlayer = std::make_unique<cmf::AnimationPlayer>( animationSkeleton, *animation );
+	}
+	else
+	{
+		m_animationPlayer.reset();
 	}
 	Update( 0.0f );
 }

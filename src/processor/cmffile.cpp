@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "cmffile.h"
 #include "cmf/compression.h"
 #include "cmf/writer.h"

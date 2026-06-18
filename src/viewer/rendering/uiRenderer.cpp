@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "uiRenderer.h"
 
 #include <algorithm>
