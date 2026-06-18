@@ -519,7 +519,7 @@ void AddAnimations(
 				// handled separately
 				continue;
 			case cmf::AnimationChannelTargetType::Other:
-				printf( "Unsupported AnimationChannelTargetType, continuing.\n" );
+				printf( "Unsupported AnimationChannelTargetType for animation '%s' target '%s', continuing.\n", cmf::ToStdString( animation.name ).c_str(), cmf::ToStdString( channel.target ).c_str() );
 				continue;
 			}
 
