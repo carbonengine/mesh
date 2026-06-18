@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -35,7 +36,7 @@ constexpr uint32_t MAX_SCREEN_SIZE = 2048; // same as lodsimplygon.cpp
 struct GLTFOptions
 {
 	std::string srcPath;
-	std::string srcPath2;
+	std::vector<std::string> srcPaths2;
 	std::string dstPath;
 	bool combinedFile = false;
 };
@@ -1112,13 +1113,15 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 	app.add_option( "src", options.srcPath, "Path to the source CMF file" )->required()->check( CLI::ExistingFile );
 	app.add_option( "dst", options.dstPath, "Path to the output glTF" )->required();
 	app.add_flag( "--combinedfile", options.combinedFile, "Should we store the .bin data inside the gltf file as base64" );
-	app.add_option( "--src2", options.srcPath2, "Secondary source file (i.e. containing animations)" )->check( CLI::ExistingFile );
+	app.add_option( "--src2", options.srcPaths2, "Secondary source file(s) (i.e. containing animations); repeat the flag to add more than one" )->check( CLI::ExistingFile );
 	app.final_callback( [&options]() {
 		CmfFile cmfFile( options.srcPath );
-		std::optional<CmfFile> cmfFile2;
-		if( !options.srcPath2.empty() )
+
+		std::vector<std::unique_ptr<CmfFile>> secondaryFiles;
+		secondaryFiles.reserve( options.srcPaths2.size() );
+		for( const auto& path : options.srcPaths2 )
 		{
-			cmfFile2.emplace( options.srcPath2 );
+			secondaryFiles.push_back( std::make_unique<CmfFile>( path ) );
 		}
 
 		tinygltf::Model model;
@@ -1130,28 +1133,28 @@ void GLTFConverter( CLI::App& app, GLTFOptions& options )
 		std::vector<MorphMeshNode> morphMeshNodes;
 
 		PreprocessCmfFile( cmfFile );
-		if( cmfFile2 )
+		for( auto& secondary : secondaryFiles )
 		{
-			PreprocessCmfFile( cmfFile2.value() );
+			PreprocessCmfFile( *secondary );
 		}
 
 		auto skeletonNodes1 = AddSkeletons( cmfFile, model, scene );
 		AddMeshes( cmfFile, gltfBuffer, model, scene, morphMeshNodes, skeletonNodes1 );
-		if( cmfFile2 )
+		for( auto& secondary : secondaryFiles )
 		{
-			const auto& meshes = cmfFile2.value().GetData().meshes;
-			std::vector<SkeletonNodes> skeletonNodes2;
+			const auto& meshes = secondary->GetData().meshes;
+			std::vector<SkeletonNodes> secondarySkeletonNodes;
 			if( std::any_of( meshes.begin(), meshes.end(), IsMeshSkinned ) )
 			{
-				skeletonNodes2 = AddSkeletons( cmfFile2.value(), model, scene );
+				secondarySkeletonNodes = AddSkeletons( *secondary, model, scene );
 			}
-			AddMeshes( cmfFile2.value(), gltfBuffer, model, scene, morphMeshNodes, skeletonNodes2 );
+			AddMeshes( *secondary, gltfBuffer, model, scene, morphMeshNodes, secondarySkeletonNodes );
 		}
 
 		AddAnimations( cmfFile, gltfBuffer, model, morphMeshNodes );
-		if( cmfFile2 )
+		for( auto& secondary : secondaryFiles )
 		{
-			AddAnimations( cmfFile2.value(), gltfBuffer, model, morphMeshNodes );
+			AddAnimations( *secondary, gltfBuffer, model, morphMeshNodes );
 		}
 
 		if( !gltfBuffer.data.empty() )
