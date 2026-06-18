@@ -69,6 +69,7 @@ struct ValidationOptions
 	bool validateHeader = false;
 
 	bool validateMainData = false;
+	bool validateBuffers = false;
 };
 
 struct ValidationResult

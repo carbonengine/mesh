@@ -81,12 +81,15 @@ BufferView MakeIdentityIndexBuffer( uint32_t indexCount, MemoryAllocator& alloca
 	return newIB;
 }
 
-BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager )
+BufferView ChangeBufferVertexDeclaration( const BufferView& bufferView, const Span<VertexElement>& oldDecl, const Span<VertexElement>& newDecl, MemoryAllocator& allocator, BufferManager& bufferManager, uint32_t alignment )
 {
 	const auto vertexCount = bufferView.size / bufferView.stride;
-	const auto newVertexStride = std::accumulate( newDecl.begin(), newDecl.end(), 0u, []( uint32_t sum, const VertexElement& element ) {
-		return sum + GetVertexElementSize( element );
-	} );
+	uint32_t newVertexStride = 0;
+	for( const auto& element : newDecl )
+	{
+		newVertexStride = std::max( newVertexStride, element.offset + GetVertexElementSize( element ) );
+	}
+	newVertexStride = ( newVertexStride + alignment - 1 ) & ~( alignment - 1 );
 	const auto newView = bufferManager.AllocateBuffer( nullptr, vertexCount * newVertexStride, newVertexStride );
 
 	for( const auto& newElement : newDecl )
