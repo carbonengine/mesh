@@ -72,7 +72,7 @@ ImportOptions LoadOptions( const ImportFBXArguments& cliArgs )
 void WriteCmf( const char* path, const cmf::Data& data, const cmf::Metadata& metadata, cmf::BufferManager& bufferAllocator )
 {
 	auto fileData = cmf::BuildFile( data, bufferAllocator, &metadata );
-	auto validated = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
+	auto validated = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true, true } );
 	if( !validated )
 	{
 		throw std::runtime_error( "Generated CMF file is invalid: " + validated.error );

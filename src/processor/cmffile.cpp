@@ -57,7 +57,7 @@ CmfFile::CmfFile( std::string_view path )
 	m_fileContents = ReadFile( std::string( path ).c_str() );
 
 	auto* header = reinterpret_cast<cmf::Header*>( m_fileContents.data() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-	auto result = cmf::ValidateFile( m_fileContents.data(), m_fileContents.size(), { true, true, true } );
+	auto result = cmf::ValidateFile( m_fileContents.data(), m_fileContents.size(), { true, true, true, true } );
 	if( !result )
 	{
 		throw std::runtime_error( std::string( "File is not a valid CMF file: " ) + std::string( path ) + " (" + result.error + ")" );
@@ -95,7 +95,7 @@ void CmfFile::Save( std::string_view path )
 
 	auto fileData = cmf::BuildFile( *m_data, m_bufferManager, m_metadata );
 
-	auto status = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true } );
+	auto status = cmf::ValidateFile( fileData.data(), fileData.size(), { true, true, true, true } );
 	if( !status )
 	{
 		throw std::runtime_error( std::string( "Generated file is not valid: " ) + status.error );

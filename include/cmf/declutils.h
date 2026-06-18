@@ -37,4 +37,18 @@ CARBON_MESH_EXPORT uint32_t GetElementTypeSize( ElementType type );
  */
 CARBON_MESH_EXPORT uint32_t GetVertexElementSize( const VertexElement& element );
 
+/**
+ * @brief Returns whether the element type is signed or unsigned
+ * @param type The element type to query.
+ * @return Returns whether the element is signed or unsigned
+ */
+CARBON_MESH_EXPORT bool IsSignedElementType( ElementType type );
+
+/**
+ * @brief Returns whether the element type is normalized
+ * @param type The element type to query.
+ * @return A bool returning whether the element is normalized
+ */
+CARBON_MESH_EXPORT bool IsNormalizedElementType( ElementType type );
+
 }
