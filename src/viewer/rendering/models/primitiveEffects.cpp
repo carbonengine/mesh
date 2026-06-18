@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "primitiveEffects.h"
 
 GraphicsEffect PrimitiveEffects::CreateFlatColorEffect( std::shared_ptr<const Renderer> renderer, ColorInfo colorInfo, GraphicsEffect::Config config, std::vector<uint32_t> vertexToBoneMapping )

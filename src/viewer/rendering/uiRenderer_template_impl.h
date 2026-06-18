@@ -1,3 +1,4 @@
+// Copyright © 2026 CCP ehf.
 
 template <typename T>
 void UIRenderer::SetupCombo( const char* name, UIRenderer::CmfUiComboBox<T>& combo, State<T>& applicableState )

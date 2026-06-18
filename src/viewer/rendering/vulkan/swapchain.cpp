@@ -1,3 +1,5 @@
+// Copyright © 2025 CCP ehf.
+
 #include "swapchain.h"
 
 #include "vulkanerrors.h"

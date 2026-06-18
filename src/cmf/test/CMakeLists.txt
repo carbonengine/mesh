@@ -1,3 +1,5 @@
+# Copyright © 2025 CCP ehf.
+
 set(CMF_TEST_SOURCES
     animation.cpp
     main.cpp

@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "orientationGizmoRenderer.h"
 
 #include "models/axis.h"

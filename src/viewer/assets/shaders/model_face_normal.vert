@@ -1,3 +1,5 @@
+// Copyright (c) 2025 CCP ehf.
+
 #version 450
 
 // Constants

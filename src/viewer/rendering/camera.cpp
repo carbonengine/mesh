@@ -1,3 +1,5 @@
+// Copyright © 2025 CCP ehf.
+
 #include "camera.h"
 
 const float DEFAULT_ZOOM_MULTIPLIER = 2.5f;

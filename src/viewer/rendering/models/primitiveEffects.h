@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #pragma once
 
 #include "../vulkan/graphicseffect.h"

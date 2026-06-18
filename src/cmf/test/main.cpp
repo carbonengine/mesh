@@ -1,3 +1,5 @@
+// Copyright © 2025 CCP ehf.
+
 #include "gtest/gtest.h"
 
 int main( int argc, char** argv )

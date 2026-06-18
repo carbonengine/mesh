@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "mesh.h"
 #include "lodsimplygon.h"
 #include "cmf/declutils.h"

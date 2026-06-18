@@ -1,3 +1,5 @@
+// Copyright © 2025 CCP ehf.
+
 #include "cmf/utils.h"
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
