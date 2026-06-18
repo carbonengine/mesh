@@ -1261,7 +1261,6 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 			return { false, error };
 		}
 	}
-	
 	if( !options.validateBuffers )
 	{
 		return { true, {} };
