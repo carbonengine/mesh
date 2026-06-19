@@ -1,4 +1,4 @@
-// Copyright © 2025 CCP ehf.
+// Copyright Â© 2025 CCP ehf.
 
 #include "cmf/bounds.h"
 #include "cmf/bufferstreams.h"

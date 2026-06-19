@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "CarbonMeshViewerResource.h"
 
 IDI_CARBON_MESH_VIEWER ICON "assets/icons/carbon_trans-256.ico"

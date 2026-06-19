@@ -1,4 +1,4 @@
-# Copyright © 2025 CCP ehf.
+# Copyright Â© 2025 CCP ehf.
 
 function(_create_venv_and_install_packages)
     set(options "")

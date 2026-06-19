@@ -1,4 +1,4 @@
-// Copyright © 2026 CCP ehf.
+// Copyright Â© 2026 CCP ehf.
 
 template <typename Decl>
 std::vector<UIRenderer::AttributeInfo> UIRenderer::BuildAttributes( const Decl& decl )
