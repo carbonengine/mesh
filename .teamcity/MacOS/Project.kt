@@ -155,6 +155,9 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
                     token = "%GITHUB_TEAMCITY_TOKEN%"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+				filterTargetBranch = """
+                +:refs/heads/*
+                """.trimIndent()
             }
         }
         commitStatusPublisher {
