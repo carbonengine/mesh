@@ -905,7 +905,7 @@ void UIDetailWindow::RenderSkeleton( const cmf::Skeleton& skeleton )
 void UIDetailWindow::RenderBoneBindings( const CmfContent& cmfContent, const cmf::Mesh& mesh )
 {
 	const auto& skeletons = cmfContent.m_cmfData->skeletons;
-	const bool hasSkeleton = mesh.skeleton != 0xff && size_t( mesh.skeleton ) < skeletons.size();
+	const bool hasSkeleton = mesh.skeleton != NO_SKELETON && size_t( mesh.skeleton ) < skeletons.size();
 	const bool hasBoneBindings = !mesh.boneBindings.empty();
 
 	if( !hasSkeleton && !hasBoneBindings )
