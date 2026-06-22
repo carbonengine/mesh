@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 #include "uiDetailWindow.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
@@ -139,6 +141,7 @@ void UIDetailWindow::Render( AppState& appState, float marginTop, float marginBo
 	if( !ImGui::BeginChild( "Hierarchy", ImVec2( 0, 0 ), ImGuiChildFlags_ResizeY ) )
 	{
 		ImGui::EndChild();
+		ImGui::End();
 		return;
 	}
 	RenderFileHierarchy( *cmfContent );

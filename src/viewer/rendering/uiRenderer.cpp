@@ -1,4 +1,4 @@
-// Copyright © 2026 CCP ehf.
+// Copyright Â© 2026 CCP ehf.
 
 #include "uiRenderer.h"
 
@@ -12,8 +12,7 @@
 #include "appState.h"
 #include "vulkan/vulkanerrors.h"
 
-#include <numeric>
-#include <filesystem>
+#include <limits>
 
 // ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
 // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
