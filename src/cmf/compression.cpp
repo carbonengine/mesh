@@ -1,4 +1,4 @@
-// Copyright © 2026 CCP ehf.
+// Copyright Â© 2026 CCP ehf.
 
 #include "cmf/compression.h"
 #include "meshoptimizer.h"
