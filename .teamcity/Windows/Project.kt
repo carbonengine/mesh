@@ -207,6 +207,9 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String) 
                     token = "%GITHUB_TEAMCITY_TOKEN%"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+				filterTargetBranch = """
+                +:refs/heads/*
+                """.trimIndent()
             }
         }
         commitStatusPublisher {
