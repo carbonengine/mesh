@@ -30,7 +30,7 @@ class UniversalBuild() : BuildType({
         )
     }
 
-    artifactRules = "%universal-output-dir%"
+    artifactRules = "%universal-output-dir% => artifact.zip"
 
     vcs {
         root(AbsoluteId("CarbonPipelineTools"), "+:carbon/.=>carbon")
@@ -86,7 +86,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/arm64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/arm64"
             }
         }
         dependency(MacOS.x64_Debug) {
@@ -95,7 +95,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/x64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/x64"
             }
         }
 
@@ -105,7 +105,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/arm64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/arm64"
             }
         }
         dependency(MacOS.x64_Release) {
@@ -114,7 +114,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/x64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/x64"
             }
         }
 
@@ -124,7 +124,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/arm64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/arm64"
             }
         }
         dependency(MacOS.x64_Internal) {
@@ -133,7 +133,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/x64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/x64"
             }
         }
 
@@ -143,7 +143,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/arm64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/arm64"
             }
         }
         dependency(MacOS.x64_TrinityDev) {
@@ -152,7 +152,7 @@ class UniversalBuild() : BuildType({
             }
 
             artifacts {
-                artifactRules = "**/*=>%system.teamcity.build.workingDir%/x64"
+                artifactRules = "artifact.zip!**=>%system.teamcity.build.workingDir%/x64"
             }
         }
     }
