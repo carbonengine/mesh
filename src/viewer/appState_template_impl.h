@@ -1,4 +1,4 @@
-// Copyright © 2026 CCP ehf.
+// Copyright Â© 2026 CCP ehf.
 
 template <typename T>
 State<T>::State( T initialValue ) :
@@ -182,7 +182,12 @@ void StateCollection<T>::CallCallbacks( AppState& appState )
 template <typename T>
 void StateCollection<T>::Clear()
 {
-	m_states.clear();
+	if( !m_states.empty() )
+	{
+		m_states.clear();
+		// fire local callbacks to notify about the change in the collection
+		m_fireCallbacks = true;
+	}
 }
 
 template <typename T>

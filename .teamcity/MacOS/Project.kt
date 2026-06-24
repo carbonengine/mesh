@@ -53,7 +53,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
     id(buildName.toId())
     name = buildName
 
-    artifactRules = "%env.CMAKE_INSTALL_PREFIX%"
+    artifactRules = "%env.CMAKE_INSTALL_PREFIX% => artifact.zip"
 
     params {
         param("env.SENTRY_CLI_DEBUG_SYMBOL_TYPE", "dsym")
@@ -152,16 +152,19 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
             vcsRootExtId = "${DslContext.settingsRootId.id}"
             provider = github {
                 authType = token {
-                    token = "%GITHUB_TEAMCITY_TOKEN%"
+                    token = "%GITHUB_CARBON_PAT%"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+				filterTargetBranch = """
+                +:refs/heads/*
+                """.trimIndent()
             }
         }
         commitStatusPublisher {
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "%GITHUB_TEAMCITY_TOKEN%"
+                    token = "%GITHUB_CARBON_PAT%"
                 }
             }
         }
@@ -189,3 +192,4 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
         startsWith("teamcity.agent.jvm.os.arch", agentArchitecture)
     }
 })
+

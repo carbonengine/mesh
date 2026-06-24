@@ -1,4 +1,4 @@
-// Copyright © 2026 CCP ehf.
+// Copyright Â© 2026 CCP ehf.
 
 #include <unordered_map>
 
@@ -8,6 +8,7 @@
 
 #include "appState.h"
 #include "rendering/renderer.h"
+#include "uiDetailWindow.h"
 #include "vulkan/commandbuffer.h"
 
 namespace ImGui
@@ -35,7 +36,6 @@ public:
 
 	void SetupUi( AppState& appState );
 	void CMFInfoWindow( AppState& appState );
-	void MeshDetailsWindow( AppState& appState );
 	void SetupMenubar( AppState& appState );
 	void Update( AppState& state );
 
@@ -133,29 +133,6 @@ private:
 		CmfUiComboBox<std::string> animationComboBox;
 	};
 
-	struct MeshDetailsState
-	{
-		int selectedMeshIndex{ 0 };
-		int selectedLodIndex{ 0 };
-		int selectedMorphTargetIndex{ 0 };
-		int indexViewMode{ 1 }; // 0 = triangles, 1 = raw
-		std::unordered_map<std::string, bool> vertexAttributeFilter;
-		std::unordered_map<std::string, bool> morphAttributeFilter;
-		std::unordered_map<std::string, bool> boneColumnFilter;
-		int linkedVertexIndex{ 0 };
-		bool scrollToLinkedVertex{ true };
-		int selectedIndexValue{ -1 };
-		int linkedBoneIndex{ -1 };
-		bool scrollToLinkedBone{ false };
-		int linkedMorphTargetIndex{ -1 };
-		bool navigateToLinkedMorphTarget{ false };
-		int selectedAnimationIndex{ 0 };
-		int linkedCurveIndex{ -1 };
-		bool navigateToLinkedCurve{ false };
-		std::unordered_map<std::string, bool> channelColumnFilter;
-		std::unordered_map<std::string, bool> curveColumnFilter;
-		std::unordered_map<std::string, bool> audioVertexColumnFilter;
-	};
 	void RegisterModelCallbacks( AppState& appState );
 
 	void SetupGeneralView( AppState& appState );
@@ -188,31 +165,6 @@ private:
 	void ToggleUiVisibility();
 	const char* FileOpenDialog();
 
-	struct AttributeInfo
-	{
-		std::string name;
-		uint32_t byteOffset;
-		uint8_t elementCount;
-		std::pair<cmf::ConversionFunction<float>, size_t> conv;
-	};
-
-	static std::string GetUsageFlagLabel( cmf::Usage usage, uint8_t usageIndex );
-	static const char* GetElementTypeName( cmf::ElementType type );
-
-	template <typename Decl>
-	static std::vector<AttributeInfo> BuildAttributes( const Decl& decl );
-
-	void RenderAttributeTable( const char* tableId, const uint8_t* vbData, uint32_t vertexCount, uint32_t stride, const std::vector<AttributeInfo>& attributes, int scrollToVertex );
-	void RenderVertexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderIndexDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderMorphDataTab( CmfContent* cmfContent, const cmf::Mesh& mesh, const cmf::MeshLod& lod );
-	void RenderBonesTab( CmfContent* cmfContent, const cmf::Mesh& mesh, AppState& appState );
-	void RenderHierarchyTab( CmfContent* cmfContent );
-	void RenderAnimationsTab( CmfContent* cmfContent );
-	void RenderAnimationChannelsSubTab( const cmf::Animation& anim );
-	void RenderAnimationCurvesSubTab( const cmf::Animation& anim );
-	void RenderAudioOccluderTab( const cmf::Mesh& mesh );
-
 	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
 
 	std::shared_ptr<const Renderer> m_renderer;
@@ -222,7 +174,7 @@ private:
 	bool m_showMainUI{ true };
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	Playback m_playback{};
-	MeshDetailsState m_meshDetailsState{};
+	UIDetailWindow m_detailWindow{};
 };
 
 

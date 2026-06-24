@@ -1,4 +1,4 @@
-// Copyright © 2025 CCP ehf.
+// Copyright Â© 2025 CCP ehf.
 
 #include "cmf/uvdensity.h"
 #include "cmf/bufferstreams.h"

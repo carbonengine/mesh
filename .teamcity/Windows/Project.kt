@@ -40,7 +40,7 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String) 
     id(buildName.toId())
     this.name = buildName
 
-    artifactRules = "%env.CMAKE_INSTALL_PREFIX%"
+    artifactRules = "%env.CMAKE_INSTALL_PREFIX% => artifact.zip"
 
     params {
         param("env.GIT_TAG_HASH_OVERRIDE", "")
@@ -194,8 +194,10 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String) 
     triggers {
         vcs {
             triggerRules = "+:root=${DslContext.settingsRootId.id}:."
-
-            param("disabled", "true")
+             branchFilter = """
+                            +:<default>
+                            +pr:*
+                        """.trimIndent()
         }
     }
 
@@ -204,16 +206,19 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String) 
             vcsRootExtId = "${DslContext.settingsRootId.id}"
             provider = github {
                 authType = token {
-                    token = "%GITHUB_TEAMCITY_TOKEN%"
+                    token = "%GITHUB_CARBON_PAT%"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+				filterTargetBranch = """
+                +:refs/heads/*
+                """.trimIndent()
             }
         }
         commitStatusPublisher {
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "%GITHUB_TEAMCITY_TOKEN%"
+                    token = "%GITHUB_CARBON_PAT%"
                 }
             }
         }
