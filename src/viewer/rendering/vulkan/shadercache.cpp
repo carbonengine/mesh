@@ -307,7 +307,7 @@ std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>>
 				auto inputDecl = shaderinputDeclaration;
 				inputDecl.vertexDeclarations.push_back( element );
 
-				if( multiUsageElements.size() > 0 )
+				if( multiUsageElements.size() > 1 )
 				{
 					inputDecl.shaderNameAddition = std::to_string( element.usageIndex );
 				}
