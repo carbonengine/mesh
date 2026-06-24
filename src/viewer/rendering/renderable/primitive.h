@@ -25,6 +25,7 @@ public:
 
 	VkResult Initialize();
 	void Render( GraphicsCommandBuffer& commandBuffer, uint32_t instanceCount = 1 );
+	void Render( GraphicsCommandBuffer& commandBuffer, const Buffer* vertexBuffer, const Buffer* indexBuffer, uint32_t elements, uint32_t instanceCount );
 
 private:
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };

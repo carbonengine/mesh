@@ -5,6 +5,17 @@
 #include "vulkan/shadercache.h"
 #include "vulkan/vulkanerrors.h"
 #include "vulkan/vulkanenums.h"
+#include "vulkan/graphicseffecttypes.h"
+
+namespace
+{
+const std::vector<std::string> DEFAULT_SHADER_ORDER{
+	"Normal",
+	"Packed Normal",
+	"Packed Normal Legacy",
+	"Face Normal"
+};
+}
 
 SceneRenderer::SceneRenderer( std::shared_ptr<Renderer> renderer ) :
 	m_renderer( renderer ),
@@ -106,7 +117,7 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 	}
 
 	// reset the visualization shader if it is not set or not applicable for the current model
-	std::string currentShaderName = appState.modelState.visualizationShader.GetValue();
+	auto [currentShaderName, currentShaderDeclaration] = appState.modelState.activeShader.GetValue();
 	std::vector<cmf::VertexElement> availableVertexElements;
 
 	for( const auto& mesh : data->m_cmfData->meshes )
@@ -115,16 +126,29 @@ void SceneRenderer::SetData( std::shared_ptr<CmfContent> data, AppState& appStat
 		availableVertexElements.insert( availableVertexElements.end(), mesh.decl.begin(), mesh.decl.end() );
 	}
 
-	auto shaderNames = ShaderCache::GetAvailableShaderNames( availableVertexElements );
-	auto foundItem = std::find_if( shaderNames.begin(), shaderNames.end(), [&]( auto name ) {
-		return name == currentShaderName;
+	std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> shaders = ShaderCache::GetAvailableShaders( availableVertexElements );
+	auto foundItem = std::find_if( shaders.begin(), shaders.end(), [name = currentShaderName]( const auto& shaderNameAndDeclarations ) {
+		return shaderNameAndDeclarations.first == name;
 	} );
-
-	if( foundItem == shaderNames.end() && shaderNames.size() > 0 )
+	if( foundItem == shaders.end() && shaders.size() > 0 )
 	{
-		appState.modelState.visualizationShader.SetValue( shaderNames[0] );
+		// pick the shader that best matches our default shader order
+		auto defaultShaderIt = std::find_if( shaders.begin(), shaders.end(), [&]( auto shaderNameAndDeclarations ) {
+			return std::find_if( DEFAULT_SHADER_ORDER.begin(), DEFAULT_SHADER_ORDER.end(), [&]( auto defaultShaderName ) {
+					   return shaderNameAndDeclarations.first == defaultShaderName;
+				   } ) != DEFAULT_SHADER_ORDER.end();
+		} );
+
+		if( defaultShaderIt != shaders.end() )
+		{
+			appState.modelState.activeShader.SetValue( *defaultShaderIt );
+		}
+		else
+		{
+			appState.modelState.activeShader.SetValue( shaders[0] );
+		}
 	}
-	appState.modelState.availableShaders.SetValue( shaderNames );
+	appState.modelState.availableShaders.SetValue( shaders );
 
 	m_model.reset( new ModelRenderable( data, m_renderer ) );
 	m_model->Initialize( appState );

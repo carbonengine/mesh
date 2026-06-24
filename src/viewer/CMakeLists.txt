@@ -84,18 +84,20 @@ foreach( SHADER_PATH ${SHADERS} )
     file( RELATIVE_PATH SHADER_RELATIVE_PATH ${SOURCE_SHADER_DIR} ${SHADER_PATH} )
 
     get_filename_component( SHADER_NAME ${SHADER_RELATIVE_PATH} NAME )
+	get_filename_component( SHADER_EXTENSION ${SHADER_RELATIVE_PATH} EXT )
 
     if( NOT EXISTS ${GENERATED_SHADER_DIR} )
         file( MAKE_DIRECTORY ${GENERATED_SHADER_DIR} )
     endif()
-
-    add_custom_command(
-        OUTPUT "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
-        DEPENDS ${SHADER_PATH} 
-        COMMAND ${GLSLC_EXECUTABLE} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
-        COMMENT "Compiling shader: ${SHADER_PATH} to ${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h"
-    )
-    list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" )
+	if( "${SHADER_EXTENSION}" STREQUAL ".comp" OR "${SHADER_EXTENSION}" STREQUAL ".vert" OR "${SHADER_EXTENSION}" STREQUAL ".frag" )
+		add_custom_command(
+			OUTPUT "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+			DEPENDS ${SHADER_PATH} 
+			COMMAND ${GLSLC_EXECUTABLE} "${SHADER_PATH}" -mfmt=num -o "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" 
+			COMMENT "Compiling shader: ${SHADER_PATH} to ${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h"
+		)
+		list( APPEND COMPILED_SHADERS "${GENERATED_SHADER_DIR}/${SHADER_NAME}.spv.h" )
+    endif()
 endforeach()
 
 add_custom_command( 
