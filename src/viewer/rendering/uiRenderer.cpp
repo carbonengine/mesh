@@ -466,8 +466,8 @@ std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>> UIRenderer::GetAx
 		{
 			auto [index, checked] = axis.GetValue();
 
-			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [&index]( const std::pair<uint32_t, ImGui::CheckBoxTriStateValue>& pair ) {
-				return pair.first == index;
+			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [idx=index]( const std::pair<uint32_t, ImGui::CheckBoxTriStateValue>& pair ) {
+				return pair.first == idx;
 			} );
 
 			if( foundState == combinedStates.end() )
@@ -517,7 +517,7 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 	}
 	ImGui::TableNextRow();
 	ImGui::TableNextColumn();
-	ImGui::Text( label );
+	ImGui::TextUnformatted( label );
 	ImGui::TableNextColumn();
 
 	if( maxUsageIndex >= 0 )
