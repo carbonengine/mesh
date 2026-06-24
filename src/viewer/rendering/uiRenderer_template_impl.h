@@ -79,7 +79,7 @@ void UIRenderer::SetupModelAxisRow( std::vector<std::pair<uint32_t, ImGui::Check
 			{
 				auto value = foundState->second;
 				OnChange( ImGui::CheckBoxTristate( ( std::string( "##tricheckbox" ) + name + std::to_string( i ) ).c_str(), &value ), [changeCallback, i, value]() {
-					changeCallback( value == ImGui::CheckBoxTriStateValue::CHECKED, i );
+					changeCallback( value != ImGui::CheckBoxTriStateValue::CHECKED, i );
 				} );
 				ImGui::SetItemTooltip( "Toggles debug visualization for %s with usage index %d for all meshes (if available)", name.c_str(), i );
 				ImGui::SameLine();
