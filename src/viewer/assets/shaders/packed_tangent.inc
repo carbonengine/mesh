@@ -1,3 +1,5 @@
+// Copyright (c) 2026 CCP ehf.
+
 struct TangentSpace {
 	vec3 tangent;
 	vec3 binormal;

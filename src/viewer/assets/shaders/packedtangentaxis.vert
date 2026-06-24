@@ -1,3 +1,5 @@
+// Copyright (c) 2026 CCP ehf.
+
 #version 450
 #pragma multi_usage inPackedTangents
 
