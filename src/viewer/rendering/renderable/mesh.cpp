@@ -157,6 +157,30 @@ void MeshRenderable::Initialize( AppState& appState )
 	m_initialized = true;
 }
 
+void MeshRenderable::SetAnimation( const cmf::Animation* animation )
+{
+	m_morphCurveToTargetMapping.clear();
+	if( !animation )
+	{
+		return;
+	}
+
+	for( const auto& channel : animation->channels )
+	{
+		if( channel.targetType == cmf::AnimationChannelTargetType::MorphTarget )
+		{
+			auto* morphTarget = std::find_if( m_cmfMesh.morphTargets.targets.begin(), m_cmfMesh.morphTargets.targets.end(), [&channel]( const cmf::MorphTarget& morphTarget ) {
+				return morphTarget.name == channel.target;
+			} );
+			if( morphTarget != m_cmfMesh.morphTargets.targets.end() )
+			{
+				const auto morphIndex = static_cast<uint32_t>( std::distance( m_cmfMesh.morphTargets.targets.begin(), morphTarget ) );
+				m_morphCurveToTargetMapping.emplace_back( channel.curveIndex, morphIndex );
+			}
+		}
+	}
+}
+
 void MeshRenderable::UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState )
 {
 	if( animation )

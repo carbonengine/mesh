@@ -42,6 +42,10 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 
 	// when the active animation owner changes, we need to update the animation state and meshes
 	appState.modelState.activeAnimationOwner.RegisterCallback( [&]( std::shared_ptr<CmfContent> activeAnimationOwner, AppState& appState ) {
+		for( auto& mesh : m_meshes )
+		{
+			mesh.SetAnimation( nullptr );
+		}
 		for( auto& animationState : m_animationStates )
 		{
 			animationState.SetAnimationOwner( activeAnimationOwner );
@@ -69,6 +73,10 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 			{
 				Log::Error( "Animation %s not found in active animation owner.", animationName.c_str() );
 			}
+			for( auto& mesh : m_meshes )
+			{
+				mesh.SetAnimation( nullptr );
+			}
 			for( auto& animationState : m_animationStates )
 			{
 				animationState.SetAnimation( nullptr );
@@ -78,6 +86,10 @@ VkResult ModelRenderable::Initialize( AppState& appState )
 		{
 			const auto& animation = *animationIt;
 
+			for( auto& mesh : m_meshes )
+			{
+				mesh.SetAnimation( &animation );
+			}
 			for( auto& animationState : m_animationStates )
 			{
 				animationState.SetAnimation( &animation );
