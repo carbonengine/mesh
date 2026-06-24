@@ -28,13 +28,13 @@ layout ( location = 0 ) out vec3 outColor;
 
 void main() 
 {
-	vec4 position = vec4(inPosition, 1.0);
+	vec4 position = vec4( inPosition, 1.0 );
 
 	if( gl_VertexIndex == 1 )
 	{
 		position.xyz += axisConfig.scale * inBinormal;
 	}
 
-    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * position ;
+    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * position;
 	outColor = axisConfig.color;
 }

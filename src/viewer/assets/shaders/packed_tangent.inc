@@ -11,7 +11,7 @@ vec2 SinCosFloat( float angle )
     return vec2( sin( angle ), cos( angle ) );
 }
 
-TangentSpace unpackTangentSpaceLegacy( vec4 tangents )
+TangentSpace UnpackTangentSpaceLegacy( vec4 tangents )
 {
 	vec4 angles = tangents * 6.28318530718 - 3.14159265359;
 	vec4 sc0, sc1;
@@ -30,7 +30,7 @@ TangentSpace unpackTangentSpaceLegacy( vec4 tangents )
     return TangentSpace( tangent, binormal, normal );
 }
 
-TangentSpace unpackTangentSpace( vec4 t ) {
+TangentSpace UnpackTangentSpace( vec4 t ) {
 	// Heavily optimized shader code that constructs the TBN matrix.
 
 	// Extract the xyz components and square them

@@ -22,5 +22,5 @@ layout( location = 0 ) out vec3 color;
 void main() 
 {
     color = inColor;
-    gl_Position = perframe.projectionMatrix * perframe.viewMatrix *vec4( inPosition, 1.0 );
+    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * vec4( inPosition, 1.0 );
 }

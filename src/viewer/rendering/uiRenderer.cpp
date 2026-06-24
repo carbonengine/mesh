@@ -554,7 +554,7 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 	}
 	if( vertexAxisStates.empty() )
 	{
-		ImGui::BeginDisabled();
+		ImGui::EndDisabled();
 	}
 }
 

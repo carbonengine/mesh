@@ -30,10 +30,10 @@ layout ( location = 0 ) out vec3 outColor;
 
 void main() 
 {
-	vec4 position = vec4(inPosition, 1.0);
+	vec4 position = vec4( inPosition, 1.0 );
 	if( gl_VertexIndex == 1 )
 	{
-		TangentSpace space = unpackTangentSpaceLegacy( inPackedTangentsLegacy );
+		TangentSpace space = UnpackTangentSpaceLegacy( inPackedTangentsLegacy );
 		vec3 axis = vec3(0.0);
 		if( axisConfig.axisSelector == 0 )
 		{

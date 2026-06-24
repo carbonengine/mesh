@@ -20,21 +20,21 @@ layout( binding = 1 ) uniform AxisConfig
 
 // Inputs
 // inputs are per instance, not per vertex
-layout( location = 0 ) in vec3 inPosition; 
-layout( location = 1 ) in vec3 inTangent; 
+layout( location = 0 ) in vec3 inPosition;
+layout( location = 1 ) in vec3 inTangent;
 
 // Output
 layout ( location = 0 ) out vec3 outColor;
 
-void main() 
+void main()
 {
-	vec4 position = vec4(inPosition, 1.0);
+	vec4 position = vec4( inPosition, 1.0 );
 
 	if( gl_VertexIndex == 1 )
 	{
 		position.xyz += axisConfig.scale * inTangent;
 	}
 
-    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * position ;
+    gl_Position = perframe.projectionMatrix * perframe.viewMatrix * position;
 	outColor = axisConfig.color;
 }

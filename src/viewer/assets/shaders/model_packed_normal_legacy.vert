@@ -15,7 +15,7 @@ layout( binding = 0 ) uniform PerFrame
 
 // Inputs
 layout( location = 0 ) in vec3 inPosition;
-layout( location = 1 ) in vec4 inPackedTangentsLegacy;  
+layout( location = 1 ) in vec4 inPackedTangentsLegacy;
 
 // Outputs
 layout( location = 0 ) out vec3 viewPosition;
@@ -26,6 +26,6 @@ void main()
     viewPosition = ( perframe.viewMatrix * vec4( inPosition, 1.0 ) ).xyz;
     gl_Position = perframe.projectionMatrix * vec4( viewPosition, 1.0 );
 	
-	TangentSpace space = unpackTangentSpaceLegacy( inPackedTangentsLegacy );
+	TangentSpace space = UnpackTangentSpaceLegacy( inPackedTangentsLegacy );
 	normal = ( perframe.viewMatrix * vec4( space.normal, 0.0 ) ).xyz;
 }
