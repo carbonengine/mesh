@@ -221,7 +221,7 @@ void GeometryPrePass::SetupForDynamicMesh( const cmf::MeshLod& lod )
 			vertexDecl.usage == cmf::Usage::Binormal ||
 			vertexDecl.usage == cmf::Usage::PackedTangent ||
 			vertexDecl.usage == cmf::Usage::PackedTangentLegacy;
-		Element element = { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized };
+		Element element = { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized, (uint32_t)vertexDecl.usage };
 		elements.push_back( element );
 
 		if( vertexDecl.usage == cmf::Usage::BoneIndices )
