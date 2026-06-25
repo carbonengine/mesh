@@ -13,7 +13,7 @@ AnimationState::AnimationState( uint8_t m_skeletonIndex, const cmf::Skeleton& sk
 	m_skeletonIndex( m_skeletonIndex ),
 	m_boneRenderable( std::make_unique<PrimitiveRenderable>( Bones::CreateBone( renderer, skeleton ) ) ),
 	m_jointRenderable( std::make_unique<PrimitiveRenderable>( Bones::CreateJoint( renderer, skeleton ) ) ),
-	m_axisRenderable( std::make_unique<PrimitiveRenderable>( Axis::Create( renderer ) ) ),
+	m_axisRenderable( std::make_unique<PrimitiveRenderable>( Axis::CreateOrientationPrimitive( renderer ) ) ),
 	m_skeleton( skeleton )
 {
 	ClearBoneMapping();

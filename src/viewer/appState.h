@@ -5,6 +5,7 @@
 #include <functional>
 
 #include "data/cmfcontent.h"
+#include "rendering/vulkan/graphicseffecttypes.h"
 
 //forwards declaration
 struct AppState;
@@ -31,6 +32,7 @@ class State
 public:
 	State( T initialValue );
 	const T GetValue() const;
+	T& GetValue();
 	void SetValue( T newValue );
 	void ForceSetValue( T newValue );
 	void SetValueNoCallback( T newValue );
@@ -58,6 +60,12 @@ public:
 	size_t AddState();
 	size_t AddState( T initialValue );
 
+	template <typename Callable>
+	size_t AddState( Callable configurator );
+
+	template <typename Callable>
+	size_t AddState( T initialValue, Callable configurator );
+
 	void Clear();
 	void CallCallbacks( AppState& appState );
 
@@ -66,6 +74,7 @@ public:
 	void RemoveAt( size_t index );
 
 	size_t size() const;
+	bool empty() const;
 
 	// Non-const iterators
 	iterator begin();
@@ -100,28 +109,49 @@ enum class CameraTrigger
 	CAMERA_TRIGGER_LOOK_BACK,
 };
 
+struct MeshState
+{
+	State<bool> display{ true };
+	/// the pair is <weight, enabled>
+	StateCollection<std::pair<float, bool>> morphs{ { 0.0f, true } };
+	State<bool> wireframeOverlay{ false };
+	State<bool> audioOcclusionMesh{ false };
+	State<bool> renderBoundingBox{ false };
+	StateCollection<std::pair<uint32_t, bool>> showVertexNormals{ { 0, false } };
+	StateCollection<std::pair<uint32_t, bool>> showVertexTangents{ { 0, false } };
+	StateCollection<std::pair<uint32_t, bool>> showVertexBinormals{ { 0, false } };
+	State<uint32_t> activeLod{ 0 };
+	State<float> meshScreenSize{ 0.0f };
+
+	void CallCallbacks( AppState& appState )
+	{
+		display.CallCallbacks( appState );
+		morphs.CallCallbacks( appState );
+		wireframeOverlay.CallCallbacks( appState );
+		audioOcclusionMesh.CallCallbacks( appState );
+		renderBoundingBox.CallCallbacks( appState );
+		activeLod.CallCallbacks( appState );
+		meshScreenSize.CallCallbacks( appState );
+		showVertexNormals.CallCallbacks( appState );
+		showVertexTangents.CallCallbacks( appState );
+		showVertexBinormals.CallCallbacks( appState );
+	}
+};
+
 struct ModelState
 {
 	/// The lod selected by the user (-1 for auto)
 	State<int32_t> selectedLod{ -1 };
 
-	/// The lod of the mesh that is currently active
-	StateCollection<uint32_t> activeLod{ 0 };
-	StateCollection<float> meshScreenSize{ 0.0f };
+	StateCollection<MeshState> meshes{ {} };
 
-	State<std::string> visualizationShader{ "" };
-	State<std::vector<std::string>> availableShaders{ {} };
+	State<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> activeShader{ {} };
+	State<std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>>> availableShaders{ {} };
 
 	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
 	State<std::string> currentAnimation{ "" };
 	State<float> currentAnimationTime{ 0.0f };
 
-	StateCollection<bool> meshVisibilityStates{ true };
-	StateCollection<float> morphTargetWeight{ 0.0 };
-	StateCollection<bool> morphTargetEnabled{ true };
-	StateCollection<bool> meshWireframeOverlay{ false };
-	StateCollection<bool> audioOcclusionMesh{ false };
-	StateCollection<bool> meshBoundingBox{ false };
 	State<bool> boneDebug{ false };
 	State<bool> jointDebug{ false };
 	State<bool> jointAxisDebug{ false };
@@ -129,6 +159,24 @@ struct ModelState
 	State<std::shared_ptr<CmfContent>> activeAnimationOwner{ nullptr };
 	StateCollection<std::shared_ptr<CmfContent>> animationOverrides{ nullptr };
 	StateCollection<uint32_t> selectedBones{ 0xFF };
+
+	void CallCallbacks( AppState& appState )
+	{
+		selectedLod.CallCallbacks( appState );
+		meshes.CallCallbacks( appState );
+		activeShader.CallCallbacks( appState );
+		availableShaders.CallCallbacks( appState );
+		polygonMode.CallCallbacks( appState );
+		currentAnimation.CallCallbacks( appState );
+		currentAnimationTime.CallCallbacks( appState );
+		boneDebug.CallCallbacks( appState );
+		jointDebug.CallCallbacks( appState );
+		jointAxisDebug.CallCallbacks( appState );
+		modelBoundingBox.CallCallbacks( appState );
+		activeAnimationOwner.CallCallbacks( appState );
+		animationOverrides.CallCallbacks( appState );
+		selectedBones.CallCallbacks( appState );
+	}
 };
 
 struct AppState

@@ -89,7 +89,7 @@ void ShaderCache::ReleaseShaders( const Renderer* renderer )
 	s_initialized = false;
 }
 
-VkResult ShaderCache::CreateGraphicsPipeline( const Renderer* renderer, std::string shaderName, GraphicsEffect::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
+VkResult ShaderCache::CreateGraphicsPipeline( const Renderer* renderer, std::string shaderName, GraphicsEffectTypes::Config config, VkPipelineLayout pipelineLayout, VkPipeline* outPipeline )
 {
 	assert( s_initialized );
 
@@ -166,12 +166,12 @@ VkResult ShaderCache::CreateGraphicsPipeline( const Renderer* renderer, std::str
 	dynamicState.flags = 0;
 
 	std::vector<VkVertexInputAttributeDescription> vertexDescriptions;
-	ShaderCache::GenerateVertexDescriptions( shaderName, config.availableVertexElements, &vertexDescriptions );
+	ShaderCache::GenerateVertexDescriptions( shaderName, config.inputDeclaration.vertexDeclarations, &vertexDescriptions );
 
 	VkVertexInputBindingDescription bindingDecl{};
 	bindingDecl.binding = 0; // expected to be 0 since we only support one vertex buffer
-	bindingDecl.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	bindingDecl.stride = (uint32_t)config.stride;
+	bindingDecl.inputRate = config.inputDeclaration.vertexInputRate;
+	bindingDecl.stride = (uint32_t)config.inputDeclaration.stride;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState{};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -251,60 +251,72 @@ VkResult ShaderCache::CreateComputePipeline( const Renderer* renderer, std::stri
 	return VK_SUCCESS;
 }
 
-std::vector<std::string> ShaderCache::GetAvailableShaderNames( const std::vector<cmf::VertexElement>& availableVertexElements )
+std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> ShaderCache::GetAvailableShaders( const std::vector<cmf::VertexElement>& availableVertexElements )
 {
-	std::vector<std::string> result;
+	std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> result;
 	result.reserve( s_cache.size() );
 
-	std::vector<cmf::Usage> elements;
-	elements.reserve( availableVertexElements.size() );
-	std::transform(
-		availableVertexElements.begin(),
-		availableVertexElements.end(),
-		std::back_inserter( elements ),
-		[]( const cmf::VertexElement& element ) {
-			return element.usage;
-		} );
-
-	std::for_each( s_cache.begin(), s_cache.end(), [&result, &elements]( const auto& keyValue ) {
-		ShaderContainer shaderContainer = keyValue.second;
+	std::for_each( s_cache.begin(), s_cache.end(), [&result, &availableVertexElements]( const auto& keyValue ) {
+		auto& [shaderName, shaderContainer] = keyValue;
 		// only model shaders available
 		if( !shaderContainer.isModelShader )
 		{
 			return;
 		}
 
-		// check if there are any inputs that the shader expects that is not in the cmf vertex declaration
+		// find all the elements that are used
+		std::vector<cmf::VertexElement> elements;
+		std::vector<cmf::VertexElement> multiUsageElements;
+
 		for( const auto& inputLayout : shaderContainer.inputLayout )
 		{
-			if( std::find( elements.begin(), elements.end(), inputLayout.usage ) == elements.end() )
+			std::vector<cmf::VertexElement> foundElements;
+			std::copy_if( availableVertexElements.begin(), availableVertexElements.end(), std::back_inserter( foundElements ), [inputLayout]( const cmf::VertexElement& element ) {
+				return element.usage == inputLayout.usage;
+			} );
+
+			if( foundElements.empty() )
 			{
+				// couldn´t find any element for this usage, so this shader config is not compatible with the available vertex elements
 				return;
+			}
+
+			if( inputLayout.multiUsageIndex )
+			{
+				// this will gather all f.x Color usages, UV usages, etc. and create a shader config for each of them
+				multiUsageElements.insert( multiUsageElements.end(), foundElements.begin(), foundElements.end() );
+			}
+			else
+			{
+				// just take the first one
+				elements.push_back( foundElements.front() );
 			}
 		}
 
-		result.push_back( keyValue.first );
+		GraphicsEffectTypes::ShaderInputDeclaration shaderinputDeclaration{};
+		shaderinputDeclaration.vertexDeclarations = elements;
+
+		if( multiUsageElements.empty() )
+		{
+			result.push_back( { shaderName, shaderinputDeclaration } );
+		}
+		else
+		{
+			for( const auto& element : multiUsageElements )
+			{
+				auto inputDecl = shaderinputDeclaration;
+				inputDecl.vertexDeclarations.push_back( element );
+
+				if( multiUsageElements.size() > 1 )
+				{
+					inputDecl.shaderNameAddition = std::to_string( element.usageIndex );
+				}
+				result.push_back( { shaderName, inputDecl } );
+			}
+		}
 	} );
 	return result;
 }
-
-std::vector<cmf::Usage> ShaderCache::GetShaderUsage( std::string shaderName )
-{
-	std::vector<cmf::Usage> usage{};
-	auto entry = s_cache.find( shaderName );
-
-	if( entry == s_cache.end() )
-	{
-		return usage;
-	}
-	auto shaderContainer = ( *entry ).second;
-	for( const auto& layout : shaderContainer.inputLayout )
-	{
-		usage.push_back( layout.usage );
-	}
-	return usage;
-}
-
 
 void ShaderCache::GenerateVertexDescriptions( std::string shaderName, const std::vector<cmf::VertexElement>& availableVertexElements, std::vector<VkVertexInputAttributeDescription>* outAttributeDescriptions )
 {

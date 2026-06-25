@@ -22,7 +22,7 @@ public:
 	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
-	VkResult SetRenderingMode( std::string shaderName, VkPolygonMode polygonMode );
+	VkResult SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode );
 
 	void UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState );
 	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
@@ -40,19 +40,12 @@ private:
 	};
 	GraphicsEffect GetAudioOcclusionEffect( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& cmfMesh );
 
-	struct VertexUboData
-	{
-		Matrix proj;
-		Matrix view;
-	};
-
 	std::vector<cmf::VertexElement> m_availableVertexElements;
 	std::shared_ptr<const Renderer> m_renderer;
 
 	uint32_t m_stride{ 0 };
 	uint32_t m_currentLod{ std::numeric_limits<uint32_t>::max() };
-	size_t m_activeLodStateIndex{ 0 };
-	size_t m_meshScreenSizeStateIndex{ 0 };
+	size_t m_meshIndex{ 0 };
 	CcpMath::Sphere m_boundingSphere{};
 	VkPolygonMode m_polygonMode{ VK_POLYGON_MODE_FILL };
 	VkPrimitiveTopology m_topology{ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST };
@@ -60,6 +53,8 @@ private:
 
 	bool m_display{ true };
 	bool m_wireframe{ false };
+	bool m_audioOcclusion{ false };
+	bool m_showBoundingBox{ false };
 	bool m_initialized{ false };
 
 	// effects
@@ -77,11 +72,13 @@ private:
 
 	// debug renderables
 	// bounding box
-	bool m_showBoundingBox{ false };
 	PrimitiveRenderable m_boundingBox;
 	Matrix m_boundingBoxTransform{};
 
+	std::vector<PrimitiveRenderable> m_normalAxisRenderables;
+	std::vector<PrimitiveRenderable> m_tangentAxisRenderables;
+	std::vector<PrimitiveRenderable> m_binormalAxisRenderables;
+
 	// audio occlusion
-	bool m_audioOcclusion{ false };
 	PrimitiveRenderable m_audioOcclusionRenderable;
 };

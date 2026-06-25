@@ -9,5 +9,16 @@
 
 namespace Axis
 {
-PrimitiveRenderable Create( std::shared_ptr<const Renderer> renderer );
+
+PrimitiveRenderable CreateOrientationPrimitive( std::shared_ptr<const Renderer> renderer );
+
+PrimitiveRenderable CreateNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreateTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreateBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedLegacyNormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedLegacyTangent( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
+PrimitiveRenderable CreatePackedLegacyBinormal( std::shared_ptr<const Renderer> renderer, const cmf::Mesh& mesh, const uint32_t usageIndex );
 };
