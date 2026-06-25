@@ -24,6 +24,7 @@ public:
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
 	VkResult SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode );
 
+	void SetAnimation( const cmf::Animation* animation );
 	void UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState );
 	void SetSkeletonPose( const std::array<Matrix, 0xFF>& boneTransforms );
 	uint8_t GetSkeletonIndex() const;
