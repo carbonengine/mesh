@@ -341,6 +341,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::Text( "%zu", m_uiState.modelStates.meshes.size() );
 		ImGui::TableNextRow();
 
+		ImGui::BeginDisabled( appState.modelState.meshes.empty() );
 		ImGui::TableNextColumn();
 		ImGui::Text( "Polygon Mode" );
 		ImGui::TableNextColumn();
@@ -391,6 +392,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 			} );
 		} );
 		ImGui::TableNextRow();
+		ImGui::EndDisabled();
 
 		bool hasAudioOcclusionMeshes = std::any_of( m_uiState.modelStates.meshes.begin(), m_uiState.modelStates.meshes.end(), []( const MeshUiState& state ) {
 			return state.hasAudioOcclusionMesh;
@@ -549,10 +551,7 @@ void UIRenderer::SetupVertexAxisRows( MeshState& meshAppState )
 
 void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>& vertexAxisStates, const char* label, int maxUsageIndex )
 {
-	if( vertexAxisStates.empty() )
-	{
-		ImGui::BeginDisabled();
-	}
+	ImGui::BeginDisabled( vertexAxisStates.empty() );
 	ImGui::TableNextRow();
 	ImGui::TableNextColumn();
 	ImGui::TextUnformatted( label );
@@ -590,10 +589,7 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 		}
 		ImGui::NewLine();
 	}
-	if( vertexAxisStates.empty() )
-	{
-		ImGui::EndDisabled();
-	}
+	ImGui::EndDisabled();
 }
 
 void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )

@@ -86,5 +86,10 @@ void UIRenderer::SetupModelAxisRow( std::vector<std::pair<uint32_t, ImGui::Check
 			}
 		}
 	}
+	if( maxIndex < 0 )
+	{
+		bool enabled = false;
+		ImGui::Checkbox( "##", &enabled );
+	}
 	ImGui::EndDisabled();
 }
