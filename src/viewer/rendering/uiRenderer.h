@@ -5,6 +5,7 @@
 // used by the template file
 #include <imgui.h>
 #include <cmf/converters.h>
+#include <faLookup.h>
 
 #include "appState.h"
 #include "rendering/renderer.h"
@@ -152,7 +153,7 @@ private:
 	void SetupPlaybackControls( AppState& appState );
 	void SetupPopupWindows( AppState& appState );
 
-	const char* GetPlaybackButtonLabel() const;
+	const FaIcon& GetPlaybackButtonIcon() const;
 	void HandlePlaybackButtonPressed();
 	void StepAnimation( float amount, AppState& appState );
 

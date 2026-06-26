@@ -15,15 +15,22 @@
 #include "vulkan/vulkanerrors.h"
 
 #include <limits>
+#include <faBinary.h>
+
+
+const float MENU_BAR_HEIGHT = 18.0f;
+const float ANIMATION_PLAYER_HEIGHT = 36.0f;
+const float BUTTON_WIDTH = 19.0f;
+const float BUTTON_HEIGHT = 19.0f;
+const float FONT_AWESOME_SIZE = 13.0f;
 
 // ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
 // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
-//
-// taken from https://github.com/ocornut/imgui/issues/2644
+
 namespace ImGui
 {
 
-// threeway checkbox
+// threeway checkbox taken from https://github.com/ocornut/imgui/issues/2644
 bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate )
 {
 	bool ret;
@@ -49,11 +56,35 @@ bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate )
 	}
 	return ret;
 }
-};
 
-const float MENU_BAR_HEIGHT = 18.0f;
-const float ANIMATION_PLAYER_HEIGHT = 36.0f;
-const float BUTTON_SIZE = 18.0f;
+bool FontAwesomeButton( const FaIcon& icon, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
+{
+	const float faButtonPadding = 4.0f;
+	const float glyphWidth = FONT_AWESOME_SIZE * icon.xyRatio;
+	const float paddingX = std::max( 0.0f, ( width - glyphWidth ) * 0.5f );
+	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( paddingX, faButtonPadding ) );
+	bool ret = ImGui::Button( icon.text, ImVec2( width, height ) );
+	ImGui::PopStyleVar();
+
+	return ret;
+}
+
+bool FontAwesomeSlashedButton( const FaIcon& icon, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
+{
+	bool ret = ImGui::FontAwesomeButton( icon, width, height );
+	ImVec2 min = ImGui::GetItemRectMin();
+	ImVec2 max = ImGui::GetItemRectMax();
+	float slashPadding = 1.5f;
+	ImGui::GetWindowDrawList()->AddLine(
+		ImVec2( min.x + slashPadding, max.y - slashPadding ),
+		ImVec2( max.x - slashPadding, min.y + slashPadding ),
+		ImGui::GetColorU32( ImGuiCol_Text ),
+		2.0f );
+
+	return ret;
+}
+
+}
 
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
@@ -88,7 +119,14 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	io.Fonts->AddFontDefault();
 
+	static const ImWchar iconRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+
+	ImFontConfig config;
+	config.MergeMode = true;
+	// add fontawesome icons
+	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, fa_solid_900_ttf_size, FONT_AWESOME_SIZE, &config, iconRanges );
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
 
@@ -668,7 +706,7 @@ void UIRenderer::SetupMorphTarget( const MorphTargetUiState& morphTarget, size_t
 	{
 		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
 		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
-		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, BUTTON_SIZE );
+		ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, BUTTON_WIDTH );
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
@@ -701,7 +739,7 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 		if( ImGui::CollapsingHeader( header.c_str(), ImGuiTreeNodeFlags_None ) )
 		{
 			ImGui::BeginDisabled();
-			ImGui::Button( "+", ImVec2( BUTTON_SIZE, BUTTON_SIZE ) );
+			ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, ImGui::GetContentRegionAvail().x );
 			ImGui::SetItemTooltip( "Adds an animation override - Disabled since model doesn't have a skeleton" );
 			ImGui::EndDisabled();
 		}
@@ -743,7 +781,8 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 		ImGui::EndTable();
 
 		ImGui::SeparatorText( "Animation Owners" );
-		OnChange( ImGui::Button( "+", ImVec2( ImGui::GetContentRegionAvail().x, BUTTON_SIZE ) ), [this, &appState]() {
+		bool pressed = ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, ImGui::GetContentRegionAvail().x );
+		OnChange( pressed, [this, &appState]() {
 			auto* path = this->FileOpenDialog();
 			if( path != nullptr )
 			{
@@ -754,7 +793,6 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 				}
 			}
 		} );
-
 		ImGui::SetItemTooltip( "Adds an animation owner from a cmf file" );
 
 		for( int32_t index = 0; index < skeletonOwners.size(); ++index )
@@ -788,8 +826,8 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 
 			if( index != 0 )
 			{
-				ImGui::SameLine( ImGui::GetContentRegionAvail().x - BUTTON_SIZE );
-				OnChange( ImGui::Button( "-", ImVec2( BUTTON_SIZE, BUTTON_SIZE ) ), [&appState, skeletonOwner, index]() {
+				ImGui::SameLine( ImGui::GetContentRegionAvail().x - BUTTON_WIDTH );
+				OnChange( ImGui::FontAwesomeButton( ICON_FA_SQUARE_MINUS ), [&appState, skeletonOwner, index]() {
 					appState.modelState.animationOverrides.RemoveAt( index - 1 );
 
 					if( appState.modelState.activeAnimationOwner.GetValue() == skeletonOwner.cmfContent )
@@ -923,13 +961,13 @@ void UIRenderer::ToggleUiVisibility()
 	m_showMainUI = !m_showMainUI;
 }
 
-const char* UIRenderer::GetPlaybackButtonLabel() const
+const FaIcon& UIRenderer::GetPlaybackButtonIcon() const
 {
 	if( m_playback.playing )
 	{
-		return "Pause";
+		return ICON_FA_PAUSE;
 	}
-	return "Play";
+	return ICON_FA_PLAY;
 }
 
 void UIRenderer::HandlePlaybackButtonPressed()
@@ -971,21 +1009,23 @@ void UIRenderer::SetupPlaybackControls( AppState& appState )
 		{
 			ImGui::BeginDisabled();
 		}
-		OnChange( ImGui::Button( "<", ImVec2( 18.0f, 18.0f ) ), [this, &appState]() {
+		OnChange( ImGui::FontAwesomeButton( ICON_FA_CHEVRON_LEFT ), [this, &appState]() {
 			StepAnimation( -0.1f, appState );
 		} );
+		ImGui::SameLine();
+		OnChange( ImGui::FontAwesomeButton( GetPlaybackButtonIcon() ), [this]() { HandlePlaybackButtonPressed(); } );
 
 		ImGui::SameLine();
-		OnChange( ImGui::Button( GetPlaybackButtonLabel(), ImVec2( 64.0f, 18.0f ) ), [this]() { HandlePlaybackButtonPressed(); } );
-
-		ImGui::SameLine();
-		OnChange( ImGui::Button( ">", ImVec2( 18.0f, 18.0f ) ), [this, &appState]() {
+		OnChange( ImGui::FontAwesomeButton( ICON_FA_CHEVRON_RIGHT ), [this, &appState]() {
 			StepAnimation( 0.1f, appState );
 		} );
 
 		ImGui::SameLine();
 		ImGui::PushItemWidth( 30.0f );
-		ImGui::Checkbox( "##repeatanimation", &m_playback.repeat );
+		bool repeatPressed = m_playback.repeat ? ImGui::FontAwesomeButton( ICON_FA_REPEAT ) : ImGui::FontAwesomeSlashedButton( ICON_FA_REPEAT );
+		OnChange( repeatPressed, [this]() {
+			m_playback.repeat = !m_playback.repeat;
+		} );
 		ImGui::SetItemTooltip( "Repeat the animation" );
 
 		ImGui::SameLine();
