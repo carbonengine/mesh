@@ -11,8 +11,9 @@ void Camera::Initialize( AppState& state )
 		SetScreenSize( width, height );
 	} );
 
-	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger, AppState& ) {
-		HandleCameraTriggerChange( trigger );
+	state.cameraTrigger.RegisterCallback( [this]( CameraTrigger trigger, AppState& state ) {
+		CcpMath::Sphere focusSphere = state.cameraFocus.GetValue();
+		HandleCameraTriggerChange( trigger, focusSphere );
 	} );
 
 	state.mouseState.RegisterCallback( [this]( MouseState newMouseState, AppState& ) {
@@ -30,17 +31,25 @@ void Camera::Initialize( AppState& state )
 	SetScreenSize( width, height );
 }
 
-void Camera::HandleCameraTriggerChange( CameraTrigger& trigger )
+void Camera::HandleCameraTriggerChange( CameraTrigger& trigger, const CcpMath::Sphere& focusSphere )
 {
 	if( trigger == CameraTrigger::CAMERA_TRIGGER_NONE )
 	{
 		return;
 	}
+
+	CcpMath::Sphere boundingSphere = m_boundingSphere;
+	if( focusSphere.radius > 0.0f )
+	{
+		boundingSphere = focusSphere;
+	}
+	this->LookAt( boundingSphere.center );
+
+
 	switch( trigger )
 	{
 	case CameraTrigger::CAMERA_TRIGGER_FOCUS:
-		this->LookAt( this->m_boundingSphere.center );
-		m_targetZoom = this->m_boundingSphere.radius * DEFAULT_ZOOM_MULTIPLIER;
+		m_targetZoom = boundingSphere.radius * DEFAULT_ZOOM_MULTIPLIER;
 		break;
 	case CameraTrigger::CAMERA_TRIGGER_LOOK_UP:
 		this->m_targetRotation = RotationQuaternion( 0.0f, -PI / 2.0f, 0.0f );

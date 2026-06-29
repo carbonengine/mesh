@@ -22,6 +22,7 @@ const float MENU_BAR_HEIGHT = 18.0f;
 const float ANIMATION_PLAYER_HEIGHT = 36.0f;
 const float BUTTON_WIDTH = 19.0f;
 const float BUTTON_HEIGHT = 19.0f;
+const ImVec2 BUTTON_SIZE = ImVec2( BUTTON_WIDTH, BUTTON_HEIGHT );
 const float FONT_AWESOME_SIZE = 13.0f;
 
 // ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
@@ -57,21 +58,23 @@ bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate )
 	return ret;
 }
 
-bool FontAwesomeButton( const FaIcon& icon, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
+bool FontAwesomeButton( const FaIcon& icon, int id = 0, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
 {
 	const float faButtonPadding = 4.0f;
 	const float glyphWidth = FONT_AWESOME_SIZE * icon.xyRatio;
 	const float paddingX = std::max( 0.0f, ( width - glyphWidth ) * 0.5f );
 	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( paddingX, faButtonPadding ) );
+	ImGui::PushID( id );
 	bool ret = ImGui::Button( icon.text, ImVec2( width, height ) );
+	ImGui::PopID();
 	ImGui::PopStyleVar();
 
 	return ret;
 }
 
-bool FontAwesomeSlashedButton( const FaIcon& icon, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
+bool FontAwesomeSlashedButton( const FaIcon& icon, int id = 0, float width = BUTTON_WIDTH, float height = BUTTON_HEIGHT )
 {
-	bool ret = ImGui::FontAwesomeButton( icon, width, height );
+	bool ret = ImGui::FontAwesomeButton( icon, id, width, height );
 	ImVec2 min = ImGui::GetItemRectMin();
 	ImVec2 max = ImGui::GetItemRectMax();
 	float slashPadding = 1.5f;
@@ -281,6 +284,7 @@ void UIRenderer::SetupUi( AppState& appState )
 void UIRenderer::CMFInfoWindow( AppState& appState )
 {
 	bool open = true;
+
 	float width = (float)appState.windowSize.GetValue().first;
 	float height = (float)appState.windowSize.GetValue().second;
 
@@ -596,9 +600,9 @@ void UIRenderer::SetupMeshView( const MeshUiState& mesh, AppState& appState )
 {
 	if( ImGui::TreeNode( mesh.name.c_str() ) )
 	{
+		auto& meshAppState = appState.modelState.meshes[mesh.meshIndex].GetValue();
 		if( ImGui::BeginTable( "##table", 2 ) )
 		{
-			auto& meshAppState = appState.modelState.meshes[mesh.meshIndex].GetValue();
 			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
 			ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableNextRow();
@@ -735,7 +739,7 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 		if( ImGui::CollapsingHeader( header.c_str(), ImGuiTreeNodeFlags_None ) )
 		{
 			ImGui::BeginDisabled();
-			ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, ImGui::GetContentRegionAvail().x );
+			ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, 0, ImGui::GetContentRegionAvail().x );
 			ImGui::SetItemTooltip( "Adds an animation override - Disabled since model doesn't have a skeleton" );
 			ImGui::EndDisabled();
 		}
@@ -777,7 +781,7 @@ void UIRenderer::SetupSkeletonOwners( const std::vector<SkeletonOwnerUiState>& s
 		ImGui::EndTable();
 
 		ImGui::SeparatorText( "Animation Owners" );
-		bool pressed = ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, ImGui::GetContentRegionAvail().x );
+		bool pressed = ImGui::FontAwesomeButton( ICON_FA_SQUARE_PLUS, 0, ImGui::GetContentRegionAvail().x );
 		OnChange( pressed, [this, &appState]() {
 			auto* path = this->FileOpenDialog();
 			if( path != nullptr )
@@ -904,14 +908,43 @@ void UIRenderer::SetupMenubar( AppState& appState )
 			}
 			ImGui::EndMenu();
 		}
+		auto content = appState.cmfContent.GetValue();
+
 		if( ImGui::BeginMenu( "View" ) )
 		{
-			if( ImGui::BeginMenu( "Camera" ) )
+			if( ImGui::BeginMenu( "Camera", content != nullptr ) )
 			{
-				if( ImGui::MenuItem( "Focus", "Ctrl+F" ) )
+				std::vector<std::tuple<std::string, CcpMath::Sphere>> focusObjects;
+				if( content != nullptr )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+					const auto& meshes = content->m_cmfData->meshes;
+
+					if( meshes.size() > 1 )
+					{
+						focusObjects.push_back( { "Whole Model", content->GetBoundingSphere() } );
+					}
+					std::for_each( meshes.begin(), meshes.end(), [&focusObjects]( const cmf::Mesh& mesh ) {
+						focusObjects.push_back( { cmf::ToStdString( mesh.name ), CcpMath::Sphere( mesh.bounds ) } );
+					} );
 				}
+
+				uint32_t index = 0;
+				for( const auto& [menuName, sphere] : focusObjects )
+				{
+					std::string menuLabel = "Focus on " + menuName;
+					const char* shortcut = nullptr;
+					if( index == 0 )
+					{
+						shortcut = "Ctrl+F";
+					}
+					if( ImGui::MenuItem( menuLabel.c_str(), shortcut ) )
+					{
+						appState.cameraFocus.ForceSetValue( sphere );
+						appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+					}
+					++index;
+				}
+				ImGui::Separator();
 				if( ImGui::MenuItem( "Look Right (+X)" ) )
 				{
 					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_RIGHT );
@@ -936,7 +969,6 @@ void UIRenderer::SetupMenubar( AppState& appState )
 				{
 					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_BACK );
 				}
-
 				ImGui::EndMenu();
 			}
 			ImGui::Separator();
@@ -1131,10 +1163,15 @@ void UIRenderer::UpdateInputs( AppState& appState )
 			appState.cmfPath.SetValue( std::string( filePath ) );
 		}
 	}
-	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F ) )
+	const auto content = appState.cmfContent.GetValue();
+	if( content != nullptr )
 	{
-		// focus camera on model
-		appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+		if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F ) )
+		{
+			// focus camera on model
+			appState.cameraFocus.ForceSetValue( content->GetBoundingSphere() );
+			appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+		}
 	}
 	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F12 ) )
 	{

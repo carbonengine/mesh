@@ -17,6 +17,7 @@ void AppState::CallStateCallbacks()
 	windowSize.CallCallbacks( *this );
 	mouseState.CallCallbacks( *this );
 	cameraTrigger.CallCallbacks( *this );
+	cameraFocus.CallCallbacks( *this );
 
 	cmfContent.CallCallbacks( *this );
 	cmfPath.CallCallbacks( *this );

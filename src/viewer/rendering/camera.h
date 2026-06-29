@@ -14,7 +14,7 @@ public:
 
 	void Initialize( AppState& state );
 
-	void HandleCameraTriggerChange( CameraTrigger& trigger );
+	void HandleCameraTriggerChange( CameraTrigger& trigger, const CcpMath::Sphere& focusSphere );
 
 	void HandleMouseStateChanged( MouseState& newMouseState );
 

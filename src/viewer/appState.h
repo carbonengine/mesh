@@ -189,6 +189,7 @@ struct AppState
 
 	// camera
 	State<CameraTrigger> cameraTrigger{ CameraTrigger::CAMERA_TRIGGER_NONE };
+	State<CcpMath::Sphere> cameraFocus{ {} };
 
 	// cmf
 	State<std::shared_ptr<CmfContent>> cmfContent{ nullptr };
