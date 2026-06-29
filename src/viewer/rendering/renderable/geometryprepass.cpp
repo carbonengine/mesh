@@ -221,7 +221,7 @@ void GeometryPrePass::SetupForDynamicMesh( const cmf::MeshLod& lod )
 			vertexDecl.usage == cmf::Usage::Binormal ||
 			vertexDecl.usage == cmf::Usage::PackedTangent ||
 			vertexDecl.usage == cmf::Usage::PackedTangentLegacy;
-		Element element = { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized };
+		Element element = { (uint32_t)vertexDecl.type, (uint32_t)vertexDecl.elementCount, vertexDecl.offset / 4, normalized, (uint32_t)vertexDecl.usage };
 		elements.push_back( element );
 
 		if( vertexDecl.usage == cmf::Usage::BoneIndices )
@@ -242,7 +242,7 @@ void GeometryPrePass::SetupForDynamicMesh( const cmf::MeshLod& lod )
 	for( const auto morphTargetDecl : m_cmfMesh.morphTargets.decl )
 	{
 		// no need to normalize the morph target data
-		elements.push_back( { (uint32_t)morphTargetDecl.type, (uint32_t)morphTargetDecl.elementCount, morphTargetDecl.offset / 4, false } );
+		elements.push_back( { (uint32_t)morphTargetDecl.type, (uint32_t)morphTargetDecl.elementCount, morphTargetDecl.offset / 4, false, (uint32_t)morphTargetDecl.usage } );
 	}
 
 	// gather all the morph jobs for this morph target, one job per vertex element
