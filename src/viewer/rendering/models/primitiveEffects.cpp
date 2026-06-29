@@ -93,8 +93,7 @@ GraphicsEffect PrimitiveEffects::CreateFlatColorEffect( std::shared_ptr<const Re
 	effect.RegisterStorageBuffer<uint32_t>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 2, vertexToBoneMapping.data(), vertexToBoneMapping.size() ); // vertex to bone mapping
 	effect.RegisterStorageBuffer<uint32_t>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 3, 0xFF ); // selected bones
 	effect.RegisterUniformData<ColorInfo>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 4, colorInfo );
-	effect.SetConfig( config );
-	effect.SetShaderName( "flatcolor" );
+	effect.Reset( "flatcolor", config );
 	return effect;
 }
 
@@ -120,8 +119,7 @@ GraphicsEffect PrimitiveEffects::CreateOrientationEffect( std::shared_ptr<const 
 	auto effect = GraphicsEffect( renderer );
 	effect.RegisterUniformData<PrimitiveEffects::VertexUBO>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 	effect.RegisterStorageBuffer<Matrix>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 1, 0xFF );
-	effect.SetConfig( config );
-	effect.SetShaderName( "orientationgizmo" );
+	effect.Reset( "orientationgizmo", config );
 	return effect;
 }
 

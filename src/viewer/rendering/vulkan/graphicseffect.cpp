@@ -14,6 +14,16 @@ GraphicsEffect::GraphicsEffect( std::shared_ptr<const Renderer> renderer ) :
 void GraphicsEffect::SetConfig( GraphicsEffectTypes::Config config )
 {
 	m_config = config;
+	if( m_initialized )
+	{
+		m_initialized = RecreatePipeline() == VK_SUCCESS;
+	}
+}
+
+void GraphicsEffect::Reset( std::string name, GraphicsEffectTypes::Config config )
+{
+	m_config = config;
+	m_shaderName = name;
 
 	if( m_initialized )
 	{

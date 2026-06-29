@@ -344,14 +344,7 @@ void UIRenderer::SetupGeneralView( AppState& appState )
 		ImGui::TableNextColumn();
 		ImGui::Text( "%zu", m_uiState.modelStates.meshes.size() );
 		ImGui::TableNextRow();
-
 		ImGui::BeginDisabled( appState.modelState.meshes.empty() );
-		ImGui::TableNextColumn();
-		ImGui::Text( "Polygon Mode" );
-		ImGui::TableNextColumn();
-		ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
-		SetupCombo( "##polygonmode", m_uiState.polygonModeComboBox, appState.modelState.polygonMode );
-		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::Text( "Visualization" );
@@ -592,6 +585,15 @@ void UIRenderer::SetupVertexAxisRow( StateCollection<std::pair<uint32_t, bool>>&
 			}
 		}
 		ImGui::NewLine();
+	}
+	else
+	{
+		ImGui::BeginDisabled( true );
+		bool value = false;
+		ImGui::Checkbox( ( std::string( "##" ) + label ).c_str(), &value );
+		ImGui::SetItemTooltip( "Mesh doesn't have %s", label );
+		ImGui::SameLine();
+		ImGui::EndDisabled();
 	}
 	ImGui::EndDisabled();
 }
@@ -1195,13 +1197,6 @@ void UIRenderer::UpdateUiState( AppState& appState )
 	if( cmfContent != nullptr )
 	{
 		m_uiState.filePath = appState.cmfPath.GetValue();
-		// polygon mode selection
-		m_uiState.polygonModeComboBox.items = {
-			{ "Fill", VK_POLYGON_MODE_FILL },
-			{ "Line", VK_POLYGON_MODE_LINE },
-			{ "Point", VK_POLYGON_MODE_POINT }
-		};
-		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.modelState.polygonMode.GetValue() );
 
 		size_t meshIndex = 0;
 		size_t morphIndex = 0;
@@ -1356,13 +1351,6 @@ void UIRenderer::UpdateUiState( AppState& appState )
 			m_playback.animationComboBox.SetSelectedItemByValue( appState.modelState.currentAnimation.GetValue() );
 		}
 
-		// polygon mode selection
-		m_uiState.polygonModeComboBox.items = {
-			{ "Fill", VK_POLYGON_MODE_FILL },
-			{ "Line", VK_POLYGON_MODE_LINE },
-			{ "Point", VK_POLYGON_MODE_POINT }
-		};
-		m_uiState.polygonModeComboBox.SetSelectedItemByValue( appState.modelState.polygonMode.GetValue() );
 		m_uiState.filePath = "No file loaded";
 
 		// visualization shader selection

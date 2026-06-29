@@ -118,7 +118,6 @@ private:
 		std::string filePath;
 		ModelUiState modelStates{};
 		std::vector<SkeletonOwnerUiState> skeletonOwners{};
-		CmfUiComboBox<VkPolygonMode> polygonModeComboBox;
 		CmfUiComboBox<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> visualizationShaderComboBox;
 		bool boneDebug{ false };
 		bool jointDebug{ false };

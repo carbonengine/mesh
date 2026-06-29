@@ -16,6 +16,7 @@ public:
 		Matrix view;
 	};
 
+	void Reset( std::string name, GraphicsEffectTypes::Config config );
 	void SetConfig( GraphicsEffectTypes::Config config );
 	void Bind( VkCommandBuffer commandBuffer, uint32_t currentFrameIndex ) override;
 	size_t GetStride() const;

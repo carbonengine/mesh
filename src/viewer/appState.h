@@ -148,7 +148,6 @@ struct ModelState
 	State<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> activeShader{ {} };
 	State<std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>>> availableShaders{ {} };
 
-	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
 	State<std::string> currentAnimation{ "" };
 	State<float> currentAnimationTime{ 0.0f };
 
@@ -166,7 +165,6 @@ struct ModelState
 		meshes.CallCallbacks( appState );
 		activeShader.CallCallbacks( appState );
 		availableShaders.CallCallbacks( appState );
-		polygonMode.CallCallbacks( appState );
 		currentAnimation.CallCallbacks( appState );
 		currentAnimationTime.CallCallbacks( appState );
 		boneDebug.CallCallbacks( appState );
