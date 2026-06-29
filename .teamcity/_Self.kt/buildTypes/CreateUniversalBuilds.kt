@@ -75,6 +75,8 @@ class UniversalBuild() : BuildType({
                 cp %system.teamcity.build.workingDir%/bin/* %universal-output-dir%/%universal-bin-path%
                 rm -r %universal-output-dir%/%x64-lib-path%
                 rm -r %universal-output-dir%/%arm64-lib-path%
+                rm -r %universal-output-dir%/%x64-bin-path%
+                rm -r %universal-output-dir%/%arm64-bin-path%
             """.trimIndent()
         }
     }
