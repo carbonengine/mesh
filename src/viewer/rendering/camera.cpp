@@ -110,11 +110,13 @@ void Camera::HandleMouseStateChanged( MouseState& mouseState )
 
 Matrix Camera::GetProjection() const
 {
-	const float ABSOLUTE_MIN_NEAR_PLANE = 0.01f;
+	const float ABSOLUTE_MIN_FAR_PLANE = 1.0f;
 	const float boundingDepth = m_boundingSphere.radius * 2.0f;
 	const float centerDepth = -TransformCoord( m_boundingSphere.center, GetView() ).z;
-	const float nearPlane = std::max( ABSOLUTE_MIN_NEAR_PLANE, centerDepth - boundingDepth );
-	const float farPlane = std::max( nearPlane + ABSOLUTE_MIN_NEAR_PLANE, centerDepth + boundingDepth );
+	const float calculatedFar = centerDepth + boundingDepth;
+	const float farPlane = std::max( ABSOLUTE_MIN_FAR_PLANE, calculatedFar );
+
+	const float nearPlane = std::max( farPlane / 100.0f , centerDepth - boundingDepth );
 
 	return PerspectiveFovMatrix(
 		m_fov,
