@@ -12,7 +12,7 @@
 #include <tinyfiledialogs/tinyfiledialogs.h>
 
 #include "appState.h"
-#include "vulkan/vulkanerrors.h"
+#include "../vulkan/vulkanerrors.h"
 
 #include <limits>
 #include <faBinary.h>

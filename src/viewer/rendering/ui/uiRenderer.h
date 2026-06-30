@@ -10,7 +10,7 @@
 #include "appState.h"
 #include "rendering/renderer.h"
 #include "uiDetailWindow.h"
-#include "vulkan/commandbuffer.h"
+#include "../vulkan/commandbuffer.h"
 
 namespace ImGui
 {
