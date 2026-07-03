@@ -206,7 +206,7 @@ void Application::Run()
 
 			m_sceneRenderer->Render( m_appState, m_camera );
 			m_orientationGizmoRenderer->Render( m_appState, m_camera );
-			
+
 			m_uiRenderer->Update( m_appState );
 
 			m_uiRenderer->Render( m_appState );

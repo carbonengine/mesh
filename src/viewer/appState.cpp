@@ -31,4 +31,3 @@ void AppState::ResetModelState()
 {
 	modelState = {};
 }
-

@@ -22,7 +22,7 @@ int main( int argc, char** argv )
 
 	app.Initialize();
 	if( argc > 1 )
-	{	
+	{
 		for( int i = 1; i < argc; ++i )
 		{
 			std::cout << "Loading file: " << argv[i] << std::endl;
