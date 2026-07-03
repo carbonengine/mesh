@@ -57,6 +57,3 @@ private:
 	UiMenubar m_menubar{};
 	MenuState m_menuState{};
 };
-
-
-#include "uiRenderer_template_impl.h"
