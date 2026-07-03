@@ -196,6 +196,7 @@ struct AppState
 	State<std::string> cmfLoadRequest{ "" };
 
 	State<bool> exitRequested{ false };
+	State<bool> showUi{ true };
 
 	// model
 	ModelState modelState{};

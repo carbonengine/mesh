@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright © 2025 CCP ehf.
+# Copyright © 2026 CCP ehf.
 
 """Generate ImGui-readable Font Awesome headers.
 
@@ -13,8 +11,6 @@ https://github.com/ocornut/imgui/blob/master/misc/fonts/binary_to_compressed_c.c
 by emitting a `unsigned int` data array and explicit byte size.
 """
 
-from __future__ import annotations
-
 import json
 import re
 import sys
@@ -22,13 +18,19 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 
-def _find_repo_root() -> Path:
+def _find_repo_root():
 	"""Resolve repository root from this script location."""
 	return Path(__file__).resolve().parents[3]
 
 
-def _chunked(values: Iterable[int], chunk_size: int) -> Iterable[List[int]]:
-	chunk: List[int] = []
+def _chunked(values, chunk_size):
+	"""
+	Yield successive `chunk_size`-sized chunks from `values`.
+	@param values: An iterable of values to chunk.
+	@param chunk_size: The size of each chunk to yield.
+	@return: An iterator of lists, each containing up to `chunk_size` elements from `values`.
+	"""
+	chunk = []
 	for value in values:
 		chunk.append(value)
 		if len(chunk) == chunk_size:
@@ -38,8 +40,13 @@ def _chunked(values: Iterable[int], chunk_size: int) -> Iterable[List[int]]:
 		yield chunk
 
 
-def _bytes_to_u32_words(data: bytes) -> List[int]:
-	words: List[int] = []
+def _bytes_to_u32_words(data):
+	"""
+	Convert a bytes object into a list of 32-bit unsigned integers (words).
+	@param data: A bytes object to convert.
+	@return: A list of 32-bit unsigned integers representing the input bytes.
+	"""
+	words = []
 	for i in range(0, len(data), 4):
 		block = data[i : i + 4]
 		value = 0
@@ -49,27 +56,49 @@ def _bytes_to_u32_words(data: bytes) -> List[int]:
 	return words
 
 
-def _format_word_array(words: List[int], per_line: int = 12) -> str:
-	formatted_lines: List[str] = []
+def _format_word_array(words, per_line = 12):
+	"""
+	Format a list of 32-bit unsigned integers as a C-style array.
+	@param words: A list of 32-bit unsigned integers to format.
+	@param per_line: The number of elements per line in the output array.
+	@return: A string representing the formatted C-style array.
+	"""
+	formatted_lines = []
 	for chunk in _chunked(words, per_line):
 		joined = ", ".join(f"0x{value:08x}" for value in chunk)
 		formatted_lines.append(f"    {joined},")
 	return "\n".join(formatted_lines)
 
 
-def _sanitize_macro_suffix(icon_name: str) -> str:
+def _sanitize_macro_suffix(icon_name):
+	"""
+	Sanitize an icon name to be used as a C++ macro suffix.
+	@param icon_name: The original icon name.
+	@return: A sanitized string suitable for use as a macro suffix.
+	"""
 	upper = icon_name.upper().replace("-", "_")
 	upper = re.sub(r"[^A-Z0-9_]", "_", upper)
 	upper = re.sub(r"_+", "_", upper).strip("_")
 	return upper if upper else "UNKNOWN"
 
 
-def _codepoint_to_utf8_hex_escapes(codepoint: int) -> str:
+def _codepoint_to_utf8_hex_escapes(codepoint):
+	"""
+	Convert a Unicode codepoint to a string of UTF-8 hex escapes.
+	@param codepoint: The Unicode codepoint to convert.
+	@return: A string of UTF-8 hex escapes representing the codepoint.
+	"""
 	encoded = chr(codepoint).encode("utf-8")
 	return "".join(f"\\x{byte:02x}" for byte in encoded)
 
 
-def _format_ratio(width: int, height: int) -> str:
+def _format_ratio(width, height):
+	"""
+	Format the ratio of width to height as a C-style float literal.
+	@param width: The width value.
+	@param height: The height value.
+	@return: A string representing the ratio as a C-style float literal.
+	"""
 	if height == 0:
 		return "1.0f"
 
@@ -80,7 +109,12 @@ def _format_ratio(width: int, height: int) -> str:
 	return f"{formatted}f"
 
 
-def _read_icon_size(payload: Dict[str, object]) -> Tuple[float, float]:
+def _read_icon_size(payload):
+	"""
+	Read the size of an icon from its payload.
+	@param payload: The icon payload dictionary.
+	@return: A tuple containing the width and height of the icon.
+	"""
 	svg_payload = payload.get("svg")
 	if not isinstance(svg_payload, dict):
 		return 0.0, 0.0
@@ -104,7 +138,12 @@ def _read_icon_size(payload: Dict[str, object]) -> Tuple[float, float]:
 	return 0.0, 0.0
 
 
-def _load_icons(icons_json_path: Path) -> List[Tuple[str, int, float, float]]:
+def _load_icons(icons_json_path):
+	"""
+	Load and filter icons from a Font Awesome icons.json file.
+	@param icons_json_path: The path to the icons.json file.
+	@return: A list of tuples containing icon name, codepoint, width, and height.
+	"""
 	with icons_json_path.open("r", encoding="utf-8") as input_file:
 		icon_data: Dict[str, Dict[str, object]] = json.load(input_file)
 
@@ -123,7 +162,13 @@ def _load_icons(icons_json_path: Path) -> List[Tuple[str, int, float, float]]:
 	return icons
 
 
-def _build_font_header(ttf_bytes: bytes, ttf_path: Path) -> str:
+def _build_font_header(ttf_bytes, ttf_path):
+	"""
+	Build a C++ header string containing the TTF font data as a byte array.
+	@param ttf_bytes: The bytes of the TTF font file.
+	@param ttf_path: The path to the TTF font file.
+	@return: A string representing the C++ header with the font data.
+	"""
 	words = _bytes_to_u32_words(ttf_bytes)
 	array_body = _format_word_array(words)
 
@@ -146,7 +191,13 @@ def _build_font_header(ttf_bytes: bytes, ttf_path: Path) -> str:
 	)
 
 
-def _build_icon_define_header(icons: List[Tuple[str, int, int, int]], icons_path: Path) -> str:
+def _build_icon_define_header(icons, icons_path):
+	"""
+	Build a C++ header string defining Font Awesome icons with their UTF-8 representations and aspect ratios.
+	@param icons: A list of tuples containing icon name, codepoint, width, and height.
+	@param icons_path: The path to the icons.json file.
+	@return: A string representing the C++ header with icon definitions.
+	"""
 	if not icons:
 		raise ValueError("No solid icons were found in the input icons metadata.")
 
@@ -180,7 +231,7 @@ def _build_icon_define_header(icons: List[Tuple[str, int, int, int]], icons_path
 	return "\n".join(lines)
 
 
-def _parse_args(argv: List[str]) -> Tuple[Path, Path, Path, Path]:
+def _parse_args(argv):
 	"""
 	Supported forms:
 	- fontAwesomeCreator.py <input_ttf> <icons_json> <out_font_header> <out_define_header>
@@ -199,7 +250,7 @@ def _parse_args(argv: List[str]) -> Tuple[Path, Path, Path, Path]:
 	raise ValueError(usage)
 
 
-def main(argv: List[str]) -> int:
+def main(argv):
 	try:
 		input_ttf, icons_json, out_font_header, out_define_header = _parse_args(argv)
 

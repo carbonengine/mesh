@@ -23,6 +23,7 @@ void AppState::CallStateCallbacks()
 	cmfPath.CallCallbacks( *this );
 	cmfLoadRequest.CallCallbacks( *this );
 	exitRequested.CallCallbacks( *this );
+	showUi.CallCallbacks( *this );
 
 	modelState.CallCallbacks( *this );
 }

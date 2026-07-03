@@ -4,13 +4,8 @@
 
 #include "../../appState.h"
 
-struct MenuState
-{
-	bool showUi{ true };
-};
-
 class UiMenubar
 {
 public:
-	void Render( AppState& appState, MenuState& menuState );
+	void Render( AppState& appState );
 };

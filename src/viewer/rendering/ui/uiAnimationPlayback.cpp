@@ -11,7 +11,7 @@ void UIAnimationPlayback::Render( AppState& appState )
 {
 	UpdateState( appState );
 
-	const auto& [width, height] = appState.windowSize.GetValue();
+	const auto [width, height] = appState.windowSize.GetValue();
 
 	ImGui::SetNextWindowPos( ImVec2( 0, static_cast<float>( height ) - UiConsts::ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
 	ImGui::SetNextWindowSize( ImVec2( static_cast<float>( width ), UiConsts::ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );

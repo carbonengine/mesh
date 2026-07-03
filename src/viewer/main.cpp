@@ -25,7 +25,7 @@ int main( int argc, char** argv )
 	{
 		for( int i = 1; i < argc; ++i )
 		{
-			std::cout << "Loading file: " << argv[i] << std::endl;
+			Log::Info( "Loading file: %s", argv[i] );
 			app.LoadCmfFile( argv[i] );
 		}
 	}

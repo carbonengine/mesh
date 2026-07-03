@@ -1,12 +1,5 @@
 // Copyright © 2026 CCP ehf.
 
-#include <unordered_map>
-
-// used by the template file
-#include <imgui.h>
-#include <cmf/converters.h>
-#include <faLookup.h>
-
 #include "appState.h"
 #include "rendering/renderer.h"
 #include "uiDetailWindow.h"
@@ -14,7 +7,6 @@
 #include "uiGeneralWindow.h"
 #include "uiAnimationPlayback.h"
 #include "../vulkan/commandbuffer.h"
-#include "uiCustomWidgets.h"
 
 // Handles rendering the UI
 class UIRenderer
@@ -55,5 +47,4 @@ private:
 	UIDetailWindow m_detailWindow{};
 	UIAnimationPlayback m_animationPlayback{};
 	UiMenubar m_menubar{};
-	MenuState m_menuState{};
 };

@@ -16,6 +16,25 @@
 
 namespace
 {
+template <typename Callable>
+void SetupAttribute( const char* name, const char* tooltip, bool disabled, Callable constructor )
+{
+	ImGui::TableNextRow();
+
+	ImGui::BeginDisabled( disabled );
+	ImGui::TableNextColumn();
+
+	ImGui::TextUnformatted( name );
+	ImGui::TableNextColumn();
+	ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x );
+	constructor();
+	if( tooltip )
+	{
+		ImGui::SetItemTooltip( "%s", tooltip );
+	}
+	ImGui::EndDisabled();
+}
+
 using AxisTriCheckboxStates = std::vector<std::pair<uint32_t, ImGui::CheckBoxTriStateValue>>;
 using AxisCheckboxStates = std::vector<std::pair<uint32_t, bool>>;
 

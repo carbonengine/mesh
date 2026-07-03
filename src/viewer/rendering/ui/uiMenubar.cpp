@@ -5,7 +5,7 @@
 
 #include "uiCustomWidgets.h"
 
-void UiMenubar::Render( AppState& appState, MenuState& menuState )
+void UiMenubar::Render( AppState& appState )
 {
 	if( ImGui::BeginMainMenuBar() )
 	{
@@ -111,10 +111,12 @@ void UiMenubar::Render( AppState& appState, MenuState& menuState )
 				ImGui::EndMenu();
 			}
 			ImGui::Separator();
-			const char* toggleUiLabel = menuState.showUi ? "Hide UI" : "Show UI";
+
+			bool uiShown = appState.showUi.GetValue();
+			const char* toggleUiLabel = uiShown ? "Hide UI" : "Show UI";
 			if( ImGui::MenuItem( toggleUiLabel, "Ctrl+F12" ) )
 			{
-				menuState.showUi = !menuState.showUi;
+				appState.showUi.SetValue( !uiShown );
 			}
 			ImGui::EndMenu();
 		}

@@ -3,11 +3,14 @@
 #include "uiRenderer.h"
 
 #include <algorithm>
+#include <faBinary.h>
+#include <faLookup.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include "appState.h"
+#include "uiConsts.h"
+#include "uiCustomWidgets.h"
 #include "../vulkan/vulkanerrors.h"
-#include <faBinary.h>
 
 
 // ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
@@ -150,8 +153,8 @@ void UIRenderer::Render( AppState& appState )
 
 void UIRenderer::SetupUi( AppState& appState )
 {
-	m_menubar.Render( appState, m_menuState );
-	if( m_menuState.showUi )
+	m_menubar.Render( appState );
+	if( appState.showUi.GetValue() )
 	{
 		m_generalWindow.Render( appState, UiConsts::MENU_BAR_HEIGHT, UiConsts::ANIMATION_PLAYER_HEIGHT );
 		m_detailWindow.Render( appState, UiConsts::MENU_BAR_HEIGHT, UiConsts::ANIMATION_PLAYER_HEIGHT );
@@ -239,7 +242,7 @@ void UIRenderer::UpdateInputs( AppState& appState )
 	}
 	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F12 ) )
 	{
-		m_menuState.showUi = !m_menuState.showUi;
+		appState.showUi.SetValue( !appState.showUi.GetValue() );
 	}
 }
 
