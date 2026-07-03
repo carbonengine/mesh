@@ -52,7 +52,8 @@ AxisTriCheckboxStates GetAxisTriCheckboxStates( StateCollection<MeshState>& mesh
 		// combine the states
 		for( const auto& state : axisStatesForMesh )
 		{
-			auto [index, checked] = state;
+			auto index = state.first;
+			auto checked = state.second;
 
 			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [&index]( const auto& existingState ) {
 				return existingState.first == index;
