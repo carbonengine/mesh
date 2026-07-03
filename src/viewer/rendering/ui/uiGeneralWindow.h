@@ -39,7 +39,7 @@ private:
 		constructor();
 		if( tooltip )
 		{
-			ImGui::SetItemTooltip( tooltip );
+			ImGui::SetItemTooltip( "%s", tooltip );
 		}
 		ImGui::EndDisabled();
 	}

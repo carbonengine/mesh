@@ -54,7 +54,7 @@ AxisTriCheckboxStates GetAxisTriCheckboxStates( StateCollection<MeshState>& mesh
 		{
 			auto [index, checked] = state;
 
-			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [&]( const auto& existingState ) {
+			auto foundState = std::find_if( combinedStates.begin(), combinedStates.end(), [&index]( const auto& existingState ) {
 				return existingState.first == index;
 			} );
 			auto stateAsTriState = checked ? ImGui::CheckBoxTriStateValue::CHECKED : ImGui::CheckBoxTriStateValue::UNCHECKED;
@@ -125,7 +125,7 @@ void SetupModelAxisRow( AxisTriCheckboxStates& checkboxStates, const char* name,
 		ImGui::BeginDisabled( true );
 		bool value = false;
 		ImGui::Checkbox( ( std::string( "##" ) + name ).c_str(), &value );
-		ImGui::SetItemTooltip( "Model doesn't have any %s", name.c_str() );
+		ImGui::SetItemTooltip( "Model doesn't have any %s", name );
 		ImGui::SameLine();
 		ImGui::EndDisabled();
 	}
@@ -277,7 +277,7 @@ void UIGeneralWindow::RenderGeneralInfo( AppState& appState )
 		} );
 		SetupAttribute( "Vertices", "Vertex count of all meshes", false, [&]() { ImGui::Text( "%u", vertexCount ); } );
 		SetupAttribute( "Indices", "Index count of all meshes", false, [&]() { ImGui::Text( "%u", indexCount ); } );
-		SetupAttribute( "Meshes", "Number of meshes", false, [&]() { ImGui::Text( "%u", data ? data->m_cmfData->meshes.size() : 0 ); } );
+		SetupAttribute( "Meshes", "Number of meshes", false, [&]() { ImGui::Text( "%zu", data ? data->m_cmfData->meshes.size() : 0 ); } );
 
 		SetupAttribute( "Visualization", "Visualization mode", data == nullptr, [&]() {
 			const auto& availableShaders = appState.modelState.availableShaders.GetValue();
@@ -669,7 +669,7 @@ void UIGeneralWindow::RenderAnimationOverrideList( AppState& appState )
 			ImGui::Text( "Skeletons" );
 			for( const auto& skeleton : animationOwner->m_cmfData->skeletons )
 			{
-				ImGui::BulletText( "%s has %d bones", cmf::ToStdString( skeleton.name ), skeleton.bones.size() );
+				ImGui::BulletText( "%s has %zu bones", cmf::ToStdString( skeleton.name ).c_str(), skeleton.bones.size() );
 			}
 			ImGui::EndTooltip();
 		}

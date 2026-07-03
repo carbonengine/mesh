@@ -77,7 +77,7 @@ void FontAwesomeText( const FaIcon& icon, float width )
 	const float glyphWidth = UiConsts::FONT_AWESOME_SIZE * icon.xyRatio;
 	const float paddingX = std::max( 0.0f, ( width - glyphWidth ) * 0.5f );
 	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( paddingX, faButtonPadding ) );
-	ImGui::Text( icon.text );
+	ImGui::TextUnformatted( icon.text );
 	ImGui::PopStyleVar();
 }
 
