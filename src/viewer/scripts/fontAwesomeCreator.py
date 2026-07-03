@@ -80,19 +80,19 @@ def _format_ratio(width: int, height: int) -> str:
 	return f"{formatted}f"
 
 
-def _read_icon_size(payload: Dict[str, object]) -> Tuple[int, int]:
+def _read_icon_size(payload: Dict[str, object]) -> Tuple[float, float]:
 	svg_payload = payload.get("svg")
 	if not isinstance(svg_payload, dict):
-		return 0, 0
+		return 0.0, 0.0
 
 	solid_payload = svg_payload.get("solid")
 	if not isinstance(solid_payload, dict):
-		return 0, 0
+		return 0.0, 0.0
 
 	width = solid_payload.get("width")
 	height = solid_payload.get("height")
-	if isinstance(width, int) and isinstance(height, int):
-		return width, height
+	if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+		return float(width), float(height)
 
 	view_box = solid_payload.get("viewBox")
 	if isinstance(view_box, list) and len(view_box) >= 4:
@@ -101,14 +101,14 @@ def _read_icon_size(payload: Dict[str, object]) -> Tuple[int, int]:
 
 		return float(view_box_width), float(view_box_height)
 
-	return 0, 0
+	return 0.0, 0.0
 
 
-def _load_icons(icons_json_path: Path) -> List[Tuple[str, int, int, int]]:
+def _load_icons(icons_json_path: Path) -> List[Tuple[str, int, float, float]]:
 	with icons_json_path.open("r", encoding="utf-8") as input_file:
 		icon_data: Dict[str, Dict[str, object]] = json.load(input_file)
 
-	icons: List[Tuple[str, int, int, int]] = []
+	icons: List[Tuple[str, int, float, float]] = []
 	for icon_name, payload in icon_data.items():
 		styles = payload.get("styles", [])
 		unicode_hex = payload.get("unicode")

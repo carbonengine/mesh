@@ -18,8 +18,6 @@ void UIAnimationPlayback::Render( AppState& appState )
 	if( ImGui::Begin( "##animationTitle", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize ) )
 	{
 		// animation selection
-		ImGui::PushItemWidth( ANIMATION_SELECTION_WIDTH );
-
 		std::vector<std::string> animationNames;
 		std::vector<float> animationDuration;
 		const auto& activeAnimationOwner = appState.modelState.activeAnimationOwner.GetValue();
@@ -64,6 +62,7 @@ void UIAnimationPlayback::Render( AppState& appState )
 
 		ImGui::BeginDisabled( animationNames.empty() );
 
+		ImGui::PushItemWidth( ANIMATION_SELECTION_WIDTH );
 		ImGui::ComboBox( "##animation", animationNames, selectedAnimationIndex, [&]( int32_t selectedIndex ) {
 			m_playing = false;
 			m_currentTime = 0.0f;
@@ -79,6 +78,7 @@ void UIAnimationPlayback::Render( AppState& appState )
 			}
 			appState.modelState.currentAnimationTime.SetValue( m_currentTime );
 		} );
+		ImGui::PopItemWidth();
 		ImGui::SetItemTooltip( "Select an animation to play" );
 
 		ImGui::SameLine();

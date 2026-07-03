@@ -53,8 +53,9 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 
 	ImFontConfig config;
 	config.MergeMode = true;
+	config.FontDataOwnedByAtlas = false;
 	// add fontawesome icons
-	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, fa_solid_900_ttf_size, UiConsts::FONT_AWESOME_SIZE, &config, iconRanges );
+	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, static_cast<int>(fa_solid_900_ttf_size), UiConsts::FONT_AWESOME_SIZE, &config, iconRanges );
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
 

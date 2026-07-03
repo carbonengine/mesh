@@ -116,7 +116,7 @@ Matrix Camera::GetProjection() const
 	const float calculatedFar = centerDepth + boundingDepth;
 	const float farPlane = std::max( ABSOLUTE_MIN_FAR_PLANE, calculatedFar );
 
-	const float nearPlane = std::max( farPlane / 100.0f , centerDepth - boundingDepth );
+	const float nearPlane = std::max( farPlane / 100.0f, centerDepth - boundingDepth );
 
 	return PerspectiveFovMatrix(
 		m_fov,
