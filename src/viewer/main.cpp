@@ -22,8 +22,12 @@ int main( int argc, char** argv )
 
 	app.Initialize();
 	if( argc > 1 )
-	{
-		app.LoadCmfFile( argv[1] );
+	{	
+		for( int i = 1; i < argc; ++i )
+		{
+			std::cout << "Loading file: " << argv[i] << std::endl;
+			app.LoadCmfFile( argv[i] );
+		}
 	}
 	app.Run();
 

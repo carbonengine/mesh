@@ -21,6 +21,7 @@ void AppState::CallStateCallbacks()
 
 	cmfContent.CallCallbacks( *this );
 	cmfPath.CallCallbacks( *this );
+	cmfLoadRequest.CallCallbacks( *this );
 	exitRequested.CallCallbacks( *this );
 
 	modelState.CallCallbacks( *this );
@@ -30,3 +31,4 @@ void AppState::ResetModelState()
 {
 	modelState = {};
 }
+

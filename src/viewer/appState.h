@@ -192,6 +192,8 @@ struct AppState
 	// cmf
 	State<std::shared_ptr<CmfContent>> cmfContent{ nullptr };
 	State<std::string> cmfPath{ "" };
+	// requests from ui to load cmf data
+	State<std::string> cmfLoadRequest{ "" };
 
 	State<bool> exitRequested{ false };
 
