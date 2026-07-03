@@ -125,7 +125,7 @@ void SetupModelAxisRow( AxisTriCheckboxStates& checkboxStates, const char* name,
 		ImGui::BeginDisabled( true );
 		bool value = false;
 		ImGui::Checkbox( ( std::string( "##" ) + name ).c_str(), &value );
-		ImGui::SetItemTooltip( "Model doesn't have any %s", name );
+		ImGui::SetItemTooltip( "Model doesn't have any %s", name.c_str() );
 		ImGui::SameLine();
 		ImGui::EndDisabled();
 	}
