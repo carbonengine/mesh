@@ -7,7 +7,7 @@
 #include "rendering/orientationGizmoRenderer.h"
 #include "rendering/sceneRenderer.h"
 #include "rendering/renderer.h"
-#include "rendering/uiRenderer.h"
+#include "rendering/ui/uiRenderer.h"
 
 class Application
 {

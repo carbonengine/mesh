@@ -148,7 +148,6 @@ struct ModelState
 	State<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>> activeShader{ {} };
 	State<std::vector<std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration>>> availableShaders{ {} };
 
-	State<VkPolygonMode> polygonMode{ VK_POLYGON_MODE_FILL };
 	State<std::string> currentAnimation{ "" };
 	State<float> currentAnimationTime{ 0.0f };
 
@@ -166,7 +165,6 @@ struct ModelState
 		meshes.CallCallbacks( appState );
 		activeShader.CallCallbacks( appState );
 		availableShaders.CallCallbacks( appState );
-		polygonMode.CallCallbacks( appState );
 		currentAnimation.CallCallbacks( appState );
 		currentAnimationTime.CallCallbacks( appState );
 		boneDebug.CallCallbacks( appState );
@@ -189,12 +187,16 @@ struct AppState
 
 	// camera
 	State<CameraTrigger> cameraTrigger{ CameraTrigger::CAMERA_TRIGGER_NONE };
+	State<CcpMath::Sphere> cameraFocus{ {} };
 
 	// cmf
 	State<std::shared_ptr<CmfContent>> cmfContent{ nullptr };
 	State<std::string> cmfPath{ "" };
+	// requests from ui to load cmf data
+	State<std::string> cmfLoadRequest{ "" };
 
 	State<bool> exitRequested{ false };
+	State<bool> showUi{ true };
 
 	// model
 	ModelState modelState{};

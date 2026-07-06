@@ -23,7 +23,11 @@ int main( int argc, char** argv )
 	app.Initialize();
 	if( argc > 1 )
 	{
-		app.LoadCmfFile( argv[1] );
+		for( int i = 1; i < argc; ++i )
+		{
+			Log::Info( "Loading file: %s", argv[i] );
+			app.LoadCmfFile( argv[i] );
+		}
 	}
 	app.Run();
 

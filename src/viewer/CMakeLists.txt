@@ -23,6 +23,8 @@ set( SHADER_BINARY_TO_SHADER_CACHE ${CMAKE_CURRENT_SOURCE_DIR}/scripts/shaderCac
 set( SOURCE_SHADER_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/)  
 set( GENERATED_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedShaders)  
 set( GLSLC_EXECUTABLE "${VCPKG_INSTALLED_PATH}/tools/shaderc/glslc.exe")
+set( FONT_AWESOME_GENERATOR ${CMAKE_CURRENT_SOURCE_DIR}/scripts/fontAwesomeCreator.py)  
+set( GENERATED_FONTAWESOME_DIR ${CMAKE_CURRENT_BINARY_DIR}/GeneratedFontAwesome)  
 set( ENV{VK_LAYER_PATH} "${VCPKG_INSTALLED_PATH}/bin")
 set( ENV{VULKAN_SDK} "${VCPKG_INSTALLED_PATH}")
 
@@ -80,6 +82,7 @@ ccp_enable_vs_analizers(CarbonMeshViewer)
 
 set(COMPILED_SHADERS "")
 
+# Compile shaders to SPIR-V and generate header files
 foreach( SHADER_PATH ${SHADERS} )
     file( RELATIVE_PATH SHADER_RELATIVE_PATH ${SOURCE_SHADER_DIR} ${SHADER_PATH} )
 
@@ -100,6 +103,7 @@ foreach( SHADER_PATH ${SHADERS} )
     endif()
 endforeach()
 
+# shader cache generation
 add_custom_command( 
     OUTPUT "${GENERATED_SHADER_DIR}/generatedShaderCache.h"
     DEPENDS ${SHADERS} ${COMPILED_SHADERS} ${SHADER_BINARY_TO_SHADER_CACHE}
@@ -114,9 +118,23 @@ message(STATUS "generated files: ${COMPILED_SHADERS}")
 add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 add_dependencies(CarbonMeshViewer CompileShaders)
 
+# font awesome generation
+get_filename_component(FONT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/github.com/FortAwesome/Font-Awesome" ABSOLUTE)
+
+add_custom_command(
+	OUTPUT "${GENERATED_FONTAWESOME_DIR}/faBinary.h" "${GENERATED_FONTAWESOME_DIR}/faLookup.h"
+    DEPENDS ${FONT_AWESOME_GENERATOR} "${FONT_DIR}/webfonts/fa-solid-900.ttf" "${FONT_DIR}/metadata/icons.json"
+
+	COMMAND ${Python3_EXECUTABLE} ${FONT_AWESOME_GENERATOR} "${FONT_DIR}/webfonts/fa-solid-900.ttf" "${FONT_DIR}/metadata/icons.json" "${GENERATED_FONTAWESOME_DIR}/faBinary.h" "${GENERATED_FONTAWESOME_DIR}/faLookup.h"
+	COMMENT "Generating Font Awesome header ${GENERATED_FONTAWESOME_DIR}/faBinary.h and ${GENERATED_FONTAWESOME_DIR}/faLookup.h from ${CMAKE_CURRENT_SOURCE_DIR} and ${FONT_DIR}."
+)
+add_custom_target(CompileFontAwesome DEPENDS "${GENERATED_FONTAWESOME_DIR}/faBinary.h" "${GENERATED_FONTAWESOME_DIR}/faLookup.h")
+add_dependencies(CarbonMeshViewer CompileFontAwesome)
+
 target_link_libraries(CarbonMeshViewer PUBLIC CarbonMesh CcpMath glfw Vulkan::Vulkan imgui::imgui tinyfiledialogs::tinyfiledialogs)
 target_precompile_headers(CarbonMeshViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stdafx.h)
 target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_SHADER_DIR})
+target_include_directories(CarbonMeshViewer PRIVATE ${GENERATED_FONTAWESOME_DIR})
 
 target_compile_options(CarbonMeshViewer PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fms-extensions>)
 target_compile_features(CarbonMeshViewer PRIVATE cxx_std_17)

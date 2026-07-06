@@ -22,7 +22,7 @@ public:
 	void Render( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void RenderDebug( GraphicsCommandBuffer& commandBuffer, const AppState& appState, const Camera& camera );
 	void PrepareMesh( ComputeCommandBuffer& computeCommandBuffer );
-	VkResult SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode );
+	VkResult SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration );
 
 	void SetAnimation( const cmf::Animation* animation );
 	void UpdateMeshCurves( float animationTime, const cmf::Animation* animation, AppState& appState );

@@ -150,6 +150,14 @@ void Application::Initialize()
 		m_renderer->Resize( width, height );
 	} );
 
+	m_appState.cmfLoadRequest.RegisterCallback( [this]( std::string path, AppState& ) {
+		if( !path.empty() )
+		{
+			LoadCmfFile( path );
+			m_appState.cmfLoadRequest.SetValueNoCallback( "" );
+		}
+	} );
+
 	m_valid = true;
 }
 
@@ -163,6 +171,7 @@ void Application::Run()
 
 	while( !glfwWindowShouldClose( m_window ) && !m_appState.exitRequested.GetValue() )
 	{
+
 		m_appState.CallStateCallbacks();
 
 		// Poll for and process events
@@ -199,6 +208,7 @@ void Application::Run()
 			m_orientationGizmoRenderer->Render( m_appState, m_camera );
 
 			m_uiRenderer->Update( m_appState );
+
 			m_uiRenderer->Render( m_appState );
 
 			if( m_renderer->EndRender() != VK_SUCCESS )
@@ -241,10 +251,10 @@ void Application::LoadCmfFile( const std::string& path )
 	else
 	{
 		Log::Info( "Applying model file %s", path.c_str() );
-		// load the cmf content from the path and set it in the app state
 		m_appState.cmfPath.SetValue( path );
 		m_appState.modelState.activeAnimationOwner.SetValue( data );
 		m_appState.cmfContent.ForceSetValue( data );
+		m_sceneRenderer->SetData( data, m_appState );
 	}
 }
 

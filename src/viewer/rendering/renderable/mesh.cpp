@@ -38,21 +38,19 @@ MeshRenderable::MeshRenderable( std::shared_ptr<CmfContent> data, const cmf::Mes
 			}
 		}
 	}
+
+	m_polygonMode = m_cmfMesh.topology == cmf::MeshTopology::TriangleList ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_POINT;
+	m_topology = m_cmfMesh.topology == cmf::MeshTopology::TriangleList ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST : VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 }
 
 void MeshRenderable::Initialize( AppState& appState )
 {
 	m_prepass.Initialize( appState );
 
-	appState.modelState.polygonMode.RegisterCallback( [this]( VkPolygonMode mode, AppState& appState ) {
-		auto [name, declaration] = appState.modelState.activeShader.GetValue();
-		SetRenderingMode( name, declaration, mode );
-	} );
-
 	appState.modelState.activeShader.RegisterCallback( [this]( std::pair<std::string, GraphicsEffectTypes::ShaderInputDeclaration> shaderInputDeclaration, AppState& appState ) {
 		auto [name, declaration] = shaderInputDeclaration;
 
-		SetRenderingMode( name, declaration, appState.modelState.polygonMode.GetValue() );
+		SetRenderingMode( name, declaration );
 	} );
 
 	m_meshIndex = appState.modelState.meshes.AddState( [this]( MeshState& meshState ) {
@@ -400,24 +398,23 @@ void MeshRenderable::DrawIndexed( GraphicsCommandBuffer& commandBuffer )
 	}
 }
 
-VkResult MeshRenderable::SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration, VkPolygonMode polygonMode )
+VkResult MeshRenderable::SetRenderingMode( std::string shaderName, GraphicsEffectTypes::ShaderInputDeclaration shaderInputDeclaration )
 {
 	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
 
-	m_polygonMode = polygonMode;
 	m_shaderName = shaderName;
 
 	CR_RETURN( vkDeviceWaitIdle( logicalDevice ) );
 
 	auto config = GraphicsEffectTypes::Config();
 	config.topology = m_topology;
-	config.polygonMode = polygonMode;
-	config.cullMode = ( polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	config.polygonMode = m_polygonMode;
+	config.cullMode = ( m_polygonMode == VK_POLYGON_MODE_FILL ) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 	config.inputDeclaration.vertexDeclarations = shaderInputDeclaration.vertexDeclarations;
 	config.inputDeclaration.stride = m_stride;
 
-	m_modelEffect.SetShaderName( m_shaderName );
-	m_modelEffect.SetConfig( config );
+	m_modelEffect.Reset( m_shaderName, config );
+
 	if( !m_modelEffect.IsInitialized() )
 	{
 		m_modelEffect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
@@ -443,8 +440,7 @@ VkResult MeshRenderable::SetRenderingMode( std::string shaderName, GraphicsEffec
 																  3,
 																  0 } };
 
-		m_wireframeEffect.SetShaderName( "wireframeoverlay" );
-		m_wireframeEffect.SetConfig( wireframeConfig );
+		m_wireframeEffect.Reset( "wireframeoverlay", wireframeConfig );
 		m_wireframeEffect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 		m_wireframeEffect.Initialize();
 	}
@@ -469,8 +465,7 @@ GraphicsEffect MeshRenderable::GetAudioOcclusionEffect( std::shared_ptr<const Re
 	};
 
 	GraphicsEffect effect( renderer );
-	effect.SetShaderName( "Face Normal" );
-	effect.SetConfig( config );
+	effect.Reset( "Face Normal", config );
 	effect.RegisterUniformData<GraphicsEffect::VertexUboData>( VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT, 0 );
 	return effect;
 }

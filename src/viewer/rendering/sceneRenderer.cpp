@@ -31,10 +31,6 @@ SceneRenderer::~SceneRenderer()
 
 VkResult SceneRenderer::Initialize( AppState& state )
 {
-	state.cmfContent.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
-		this->SetData( content, appState );
-	} );
-
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
 		this->m_graphicsCommandBuffer.SetRenderSize( width, height );

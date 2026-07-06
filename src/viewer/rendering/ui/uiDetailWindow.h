@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../appState.h"
+#include "../../appState.h"
 
 class UIDetailWindow
 {
