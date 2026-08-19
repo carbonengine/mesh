@@ -3,6 +3,7 @@
 #include "cmffile.h"
 #include "cmf/compression.h"
 #include "cmf/writer.h"
+#include <stdexcept>
 
 // NOLINTBEGIN(cppcoreguidelines-owning-memory)
 std::vector<uint8_t> ReadFile( const char* path )
