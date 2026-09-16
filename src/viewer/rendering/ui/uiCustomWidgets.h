@@ -19,8 +19,8 @@ enum class CheckBoxTriStateValue
 CheckBoxTriStateValue GetCheckedStatus( int64_t checked, int64_t count );
 
 bool CheckBoxTristate( const char* label, CheckBoxTriStateValue* v_tristate );
-bool FontAwesomeButton( const FaIcon& icon, int id = 0, float width = UiConsts::BUTTON_WIDTH, float height = UiConsts::BUTTON_HEIGHT );
-bool FontAwesomeSlashedButton( const FaIcon& icon, int id = 0, float width = UiConsts::BUTTON_WIDTH, float height = UiConsts::BUTTON_HEIGHT );
+bool FontAwesomeButton( const FaIcon& icon, int id = 0, float width = UiConsts::ButtonWidth(), float height = UiConsts::ButtonHeight() );
+bool FontAwesomeSlashedButton( const FaIcon& icon, int id = 0, float width = UiConsts::ButtonWidth(), float height = UiConsts::ButtonHeight() );
 void FontAwesomeText( const FaIcon& icon, float width );
 const char* OpenCmfFileDialog();
 

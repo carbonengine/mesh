@@ -1,6 +1,7 @@
 // Copyright © 2026 CCP ehf.
 
 #include "uiDetailWindow.h"
+#include "uiConsts.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
 #include <imgui.h>
@@ -642,7 +643,7 @@ void UIDetailWindow::RenderAttributeTable( const uint8_t* vbData, uint32_t verte
 							p,
 							ImVec2( p.x + sz, p.y + sz ),
 							ImColor( color.x, color.y, color.z ) );
-						ImGui::Dummy( ImVec2( sz + 4.0f, sz ) );
+						ImGui::Dummy( ImVec2( sz + UiConsts::Scaled( 4.0f ), sz ) );
 						ImGui::SameLine();
 					}
 
@@ -1217,7 +1218,7 @@ void UIDetailWindow::RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOc
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		const float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		const float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), UiConsts::Scaled( 200.0f ) );
 		if( ImGui::BeginTable( "##aomverts", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
@@ -1261,7 +1262,7 @@ void UIDetailWindow::RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOc
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		const float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		const float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), UiConsts::Scaled( 200.0f ) );
 		if( ImGui::BeginTable( "##aomtris", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );

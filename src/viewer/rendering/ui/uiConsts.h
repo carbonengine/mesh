@@ -5,10 +5,47 @@
 
 namespace UiConsts
 {
-const float MENU_BAR_HEIGHT = 18.0f;
-const float ANIMATION_PLAYER_HEIGHT = 36.0f;
-const float BUTTON_WIDTH = 19.0f;
-const float BUTTON_HEIGHT = 19.0f;
-const ImVec2 BUTTON_SIZE = ImVec2( BUTTON_WIDTH, BUTTON_HEIGHT );
-const float FONT_AWESOME_SIZE = 13.0f;
+const float MIN_UI_SCALE = 1.0f;
+const float MAX_UI_SCALE = 3.0f;
+
+// sizes at 1x, use the scaled accessors below
+const float BASE_FONT_SIZE = 13.0f;
+const float BASE_FONT_AWESOME_SIZE = 13.0f;
+const float BASE_MENU_BAR_HEIGHT = 18.0f;
+const float BASE_ANIMATION_PLAYER_HEIGHT = 36.0f;
+const float BASE_BUTTON_WIDTH = 19.0f;
+const float BASE_BUTTON_HEIGHT = 19.0f;
+
+float GetUiScale();
+void SetUiScale( float scale );
+float Scaled( float baseSize );
+
+inline float FontSize()
+{
+	return Scaled( BASE_FONT_SIZE );
+}
+inline float FontAwesomeSize()
+{
+	return Scaled( BASE_FONT_AWESOME_SIZE );
+}
+inline float MenuBarHeight()
+{
+	return Scaled( BASE_MENU_BAR_HEIGHT );
+}
+inline float AnimationPlayerHeight()
+{
+	return Scaled( BASE_ANIMATION_PLAYER_HEIGHT );
+}
+inline float ButtonWidth()
+{
+	return Scaled( BASE_BUTTON_WIDTH );
+}
+inline float ButtonHeight()
+{
+	return Scaled( BASE_BUTTON_HEIGHT );
+}
+inline ImVec2 ButtonSize()
+{
+	return ImVec2( ButtonWidth(), ButtonHeight() );
+}
 }

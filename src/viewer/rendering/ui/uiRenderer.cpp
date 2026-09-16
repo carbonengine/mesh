@@ -10,6 +10,7 @@
 #include "appState.h"
 #include "uiConsts.h"
 #include "uiCustomWidgets.h"
+#include "uiSettings.h"
 #include "../vulkan/vulkanerrors.h"
 
 
@@ -50,17 +51,9 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-	io.Fonts->AddFontDefault();
-
-	static const ImWchar iconRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-
-	ImFontConfig config;
-	config.MergeMode = true;
-	config.FontDataOwnedByAtlas = false;
-	// add fontawesome icons
-	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, static_cast<int>( fa_solid_900_ttf_size ), UiConsts::FONT_AWESOME_SIZE, &config, iconRanges );
-	// Setup Dear ImGui style
-	ImGui::StyleColorsDark();
+	// settings must be loaded before the fonts are built
+	UiSettings::Initialize( state );
+	ApplyUiScale( state.uiScale.GetValue() );
 
 	Device* device = m_renderer->GetDevice();
 	const Swapchain* swapchain = m_renderer->GetSwapchain();
@@ -128,10 +121,47 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 		}
 	} );
 
+	state.uiScale.RegisterCallback( [this]( float scale, AppState& appState ) {
+		ApplyUiScale( scale );
+		ImGui_ImplVulkan_CreateFontsTexture();
+		UiSettings::MarkDirty();
+	} );
+
 	auto [width, height] = state.windowSize.GetValue();
 	m_graphicsCommandBuffer.SetRenderSize( width, height );
 }
 
+
+void UIRenderer::ApplyUiScale( float scale )
+{
+	scale = std::clamp( scale, UiConsts::MIN_UI_SCALE, UiConsts::MAX_UI_SCALE );
+	Log::Info( "Applying ui scale %.2fx", scale );
+	UiConsts::SetUiScale( scale );
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->Clear();
+
+	ImFontConfig defaultConfig;
+	defaultConfig.SizePixels = UiConsts::FontSize();
+	defaultConfig.OversampleH = 1;
+	defaultConfig.OversampleV = 1;
+	defaultConfig.PixelSnapH = true;
+	io.Fonts->AddFontDefault( &defaultConfig );
+
+	// add fontawesome icons
+	static const ImWchar iconRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+	ImFontConfig iconConfig;
+	iconConfig.MergeMode = true;
+	iconConfig.FontDataOwnedByAtlas = false;
+	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, static_cast<int>( fa_solid_900_ttf_size ), UiConsts::FontAwesomeSize(), &iconConfig, iconRanges );
+	io.Fonts->Build();
+
+	// ScaleAllSizes is cumulative, so always start from a fresh style
+	ImGuiStyle& style = ImGui::GetStyle();
+	style = ImGuiStyle();
+	ImGui::StyleColorsDark( &style );
+	style.ScaleAllSizes( scale );
+}
 
 void UIRenderer::BeginFrame()
 {
@@ -156,8 +186,8 @@ void UIRenderer::SetupUi( AppState& appState )
 	m_menubar.Render( appState );
 	if( appState.showUi.GetValue() )
 	{
-		m_generalWindow.Render( appState, UiConsts::MENU_BAR_HEIGHT, UiConsts::ANIMATION_PLAYER_HEIGHT );
-		m_detailWindow.Render( appState, UiConsts::MENU_BAR_HEIGHT, UiConsts::ANIMATION_PLAYER_HEIGHT );
+		m_generalWindow.Render( appState, UiConsts::MenuBarHeight(), UiConsts::AnimationPlayerHeight() );
+		m_detailWindow.Render( appState, UiConsts::MenuBarHeight(), UiConsts::AnimationPlayerHeight() );
 		m_animationPlayback.Render( appState );
 	}
 	SetupPopupWindows( appState );
@@ -182,9 +212,10 @@ void UIRenderer::SetupPopupWindows( AppState& appState )
 			ImGui::Separator();
 			ImGui::NewLine();
 			ImVec2 availableSize = ImGui::GetContentRegionAvail();
-			ImGui::SameLine( availableSize.x / 2.0f - 50.0f );
+			const ImVec2 buttonSize( UiConsts::Scaled( 100.0f ), UiConsts::Scaled( 24.0f ) );
+			ImGui::SameLine( ( availableSize.x - buttonSize.x ) / 2.0f );
 
-			if( ImGui::Button( "Ok", ImVec2( 100.0, 24 ) ) )
+			if( ImGui::Button( "Ok", buttonSize ) )
 			{
 				m_loadStatus = LoadStatus::NOTHING_LOADED;
 			}
