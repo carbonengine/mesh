@@ -151,4 +151,8 @@ void UiMenubar::RenderUiScaleMenu( AppState& appState )
 		}
 		ImGui::EndMenu();
 	}
+	else
+	{
+		m_uiScaleSliderActive = false;
+	}
 }

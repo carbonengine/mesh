@@ -3,6 +3,7 @@
 #include "uiSettings.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <imgui.h>
@@ -35,7 +36,7 @@ void ReadLine( ImGuiContext*, ImGuiSettingsHandler* handler, void*, const char* 
 	{
 		char* end = nullptr;
 		const float uiScale = std::strtof( line + keyLength, &end );
-		if( end != line + keyLength )
+		if( end != line + keyLength && std::isfinite( uiScale ) )
 		{
 			GetAppState( handler ).uiScale.SetValueNoCallback( std::clamp( uiScale, UiConsts::MIN_UI_SCALE, UiConsts::MAX_UI_SCALE ) );
 		}
