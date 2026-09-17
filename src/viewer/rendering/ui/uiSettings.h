@@ -10,5 +10,4 @@ namespace UiSettings
 void Initialize( AppState& appState );
 void MarkDirty();
 void Save();
-const std::string& GetIniFilePath();
 }
