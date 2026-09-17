@@ -136,13 +136,12 @@ void UIRenderer::ApplyUiScale( float scale )
 {
 	scale = std::clamp( scale, UiConsts::MIN_UI_SCALE, UiConsts::MAX_UI_SCALE );
 	Log::Info( "Applying ui scale %.2fx", scale );
-	UiConsts::SetUiScale( scale );
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();
 
 	ImFontConfig defaultConfig;
-	defaultConfig.SizePixels = UiConsts::FontSize();
+	defaultConfig.SizePixels = UiConsts::BASE_FONT_SIZE * scale;
 	defaultConfig.OversampleH = 1;
 	defaultConfig.OversampleV = 1;
 	defaultConfig.PixelSnapH = true;
@@ -153,7 +152,7 @@ void UIRenderer::ApplyUiScale( float scale )
 	ImFontConfig iconConfig;
 	iconConfig.MergeMode = true;
 	iconConfig.FontDataOwnedByAtlas = false;
-	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, static_cast<int>( fa_solid_900_ttf_size ), UiConsts::FontAwesomeSize(), &iconConfig, iconRanges );
+	io.Fonts->AddFontFromMemoryTTF( (void*)fa_solid_900_ttf_data, static_cast<int>( fa_solid_900_ttf_size ), UiConsts::BASE_FONT_AWESOME_SIZE * scale, &iconConfig, iconRanges );
 	io.Fonts->Build();
 
 	// ScaleAllSizes is cumulative, so always start from a fresh style

@@ -16,14 +16,12 @@ const float BASE_ANIMATION_PLAYER_HEIGHT = 36.0f;
 const float BASE_BUTTON_WIDTH = 19.0f;
 const float BASE_BUTTON_HEIGHT = 19.0f;
 
-float GetUiScale();
-void SetUiScale( float scale );
-float Scaled( float baseSize );
-
-inline float FontSize()
+// the applied scale is whatever the font atlas was built with, so it is derived from the current font rather than stored
+inline float Scaled( float baseSize )
 {
-	return Scaled( BASE_FONT_SIZE );
+	return baseSize * ImGui::GetFontSize() / BASE_FONT_SIZE;
 }
+
 inline float FontAwesomeSize()
 {
 	return Scaled( BASE_FONT_AWESOME_SIZE );
