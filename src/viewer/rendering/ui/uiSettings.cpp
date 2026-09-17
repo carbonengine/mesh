@@ -55,7 +55,7 @@ namespace UiSettings
 {
 void Initialize( AppState& appState )
 {
-	ImGuiSettingsHandler handler;
+	ImGuiSettingsHandler handler{};
 	handler.TypeName = SETTINGS_TYPE_NAME;
 	handler.TypeHash = ImHashStr( SETTINGS_TYPE_NAME );
 	handler.ReadOpenFn = ReadOpen;
