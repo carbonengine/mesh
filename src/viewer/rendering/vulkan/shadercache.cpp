@@ -4,6 +4,8 @@
 
 #include <cmf/declutils.h>
 
+#include <iterator>
+
 #include "vulkanerrors.h"
 #include "vulkanenums.h"
 

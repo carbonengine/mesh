@@ -3,6 +3,8 @@
 #pragma once
 
 #include <cmf/cmf.h>
+#include <memory>
+#include <vector>
 
 
 // Simple owner class for the cmf data

@@ -5,6 +5,7 @@
 #include "cmf/declutils.h"
 #include "rendering/vulkan/vulkanerrors.h"
 #include <numeric>
+#include <stdexcept>
 
 GeometryPrePass::GeometryPrePass( std::shared_ptr<const Renderer> renderer, std::shared_ptr<CmfContent> cmfContent, const cmf::Mesh& cmfMesh ) :
 	m_cmfMesh( cmfMesh ),

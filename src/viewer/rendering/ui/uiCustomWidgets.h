@@ -4,6 +4,7 @@
 
 #include <faLookup.h>
 #include <vector>
+#include <string>
 
 #include "uiConsts.h"
 

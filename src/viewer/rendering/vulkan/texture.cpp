@@ -1,6 +1,7 @@
 // Copyright © 2025 CCP ehf.
 
 #include "texture.h"
+#include <stdexcept>
 
 Texture::Texture() :
 	m_image( VK_NULL_HANDLE ),
