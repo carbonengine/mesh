@@ -1,6 +1,7 @@
 // Copyright © 2026 CCP ehf.
 
 #include "uiDetailWindow.h"
+#include "uiConsts.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
 #include <imgui.h>
@@ -598,7 +599,7 @@ void UIDetailWindow::RenderAttributeTable( const uint8_t* vbData, uint32_t verte
 		}
 
 		ImGui::TableSetupScrollFreeze( 1, 1 );
-		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 48.0f ) );
 		for( const auto& attr : attributes )
 		{
 			ImGui::TableSetupColumn( GetUsageFlagLabel( attr.usage, attr.usageIndex ).c_str(), ImGuiTableColumnFlags_WidthStretch );
@@ -642,7 +643,7 @@ void UIDetailWindow::RenderAttributeTable( const uint8_t* vbData, uint32_t verte
 							p,
 							ImVec2( p.x + sz, p.y + sz ),
 							ImColor( color.x, color.y, color.z ) );
-						ImGui::Dummy( ImVec2( sz + 4.0f, sz ) );
+						ImGui::Dummy( ImVec2( sz + UiConsts::Scaled( 4.0f ), sz ) );
 						ImGui::SameLine();
 					}
 
@@ -713,7 +714,7 @@ void UIDetailWindow::RenderIndexData( const CmfContent& cmfContent, const cmf::M
 	if( ImGui::BeginTable( "##indexdata", areas.empty() ? 4 : 5, tableFlags, outerSize ) )
 	{
 		ImGui::TableSetupScrollFreeze( 0, 1 );
-		ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, 72.0f );
+		ImGui::TableSetupColumn( "Triangle", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 72.0f ) );
 		ImGui::TableSetupColumn( "V0", ImGuiTableColumnFlags_WidthStretch );
 		ImGui::TableSetupColumn( "V1", ImGuiTableColumnFlags_WidthStretch );
 		ImGui::TableSetupColumn( "V2", ImGuiTableColumnFlags_WidthStretch );
@@ -808,7 +809,7 @@ void UIDetailWindow::RenderSkeleton( const cmf::Skeleton& skeleton )
 		}
 
 		ImGui::TableSetupScrollFreeze( 1, 1 );
-		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+		ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 48.0f ) );
 		for( const int ci : activeColIndices )
 		{
 			ImGui::TableSetupColumn( m_boneColumnFilter[ci].first.c_str(), ImGuiTableColumnFlags_WidthStretch );
@@ -927,7 +928,7 @@ void UIDetailWindow::RenderBoneBindings( const CmfContent& cmfContent, const cmf
 		if( ImGui::BeginTable( "##bonebindingstable", 2, tableFlags ) )
 		{
 			ImGui::TableSetupScrollFreeze( 0, 1 );
-			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, 48.0f );
+			ImGui::TableSetupColumn( "Index", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 48.0f ) );
 			ImGui::TableSetupColumn( "Name", ImGuiTableColumnFlags_WidthStretch );
 			ImGui::TableHeadersRow();
 
@@ -1134,8 +1135,8 @@ void UIDetailWindow::RenderAnimationCurves( const cmf::AnimationCurve& curve, co
 	if( ImGui::BeginTable( "##curvestable", 3, tableFlags, ImVec2( 0.0f, ImGui::GetContentRegionAvail().y ) ) )
 	{
 		ImGui::TableSetupScrollFreeze( 1, 1 );
-		ImGui::TableSetupColumn( "Knot", ImGuiTableColumnFlags_WidthFixed, 48.0f );
-		ImGui::TableSetupColumn( "Time", ImGuiTableColumnFlags_WidthFixed, 80.0f );
+		ImGui::TableSetupColumn( "Knot", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 48.0f ) );
+		ImGui::TableSetupColumn( "Time", ImGuiTableColumnFlags_WidthFixed, UiConsts::Scaled( 80.0f ) );
 		ImGui::TableSetupColumn( "Value", ImGuiTableColumnFlags_WidthFixed );
 		ImGui::TableHeadersRow();
 
@@ -1205,8 +1206,8 @@ void UIDetailWindow::RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOc
 
 	ImGui::Spacing();
 
-	const float indexColumnWidth = 60.0f;
-	const float columnWidth = 80.0f;
+	const float indexColumnWidth = UiConsts::Scaled( 60.0f );
+	const float columnWidth = UiConsts::Scaled( 80.0f );
 
 	if( ImGui::CollapsingHeader( "Vertices", ImGuiTreeNodeFlags_DefaultOpen ) )
 	{
@@ -1217,7 +1218,7 @@ void UIDetailWindow::RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOc
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		const float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		const float tableHeight = std::min( (float)vertexCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), UiConsts::Scaled( 200.0f ) );
 		if( ImGui::BeginTable( "##aomverts", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );
@@ -1261,7 +1262,7 @@ void UIDetailWindow::RenderAudioOccluder( const cmf::AudioOcclusionMesh& audioOc
 			ImGuiTableFlags_ScrollY |
 			ImGuiTableFlags_SizingFixedFit;
 
-		const float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), 200.0f );
+		const float tableHeight = std::min( (float)triCount * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing(), UiConsts::Scaled( 200.0f ) );
 		if( ImGui::BeginTable( "##aomtris", 4, tableFlags, ImVec2( 0.0f, tableHeight ) ) )
 		{
 			ImGui::TableSetupScrollFreeze( 1, 1 );

@@ -5,7 +5,7 @@
 
 #include "uiCustomWidgets.h"
 
-const float ANIMATION_SELECTION_WIDTH = 120.0f;
+const float BASE_ANIMATION_SELECTION_WIDTH = 120.0f;
 
 void UIAnimationPlayback::Render( AppState& appState )
 {
@@ -13,8 +13,9 @@ void UIAnimationPlayback::Render( AppState& appState )
 
 	const auto [width, height] = appState.windowSize.GetValue();
 
-	ImGui::SetNextWindowPos( ImVec2( 0, static_cast<float>( height ) - UiConsts::ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
-	ImGui::SetNextWindowSize( ImVec2( static_cast<float>( width ), UiConsts::ANIMATION_PLAYER_HEIGHT ), ImGuiCond_Always );
+	const float playerHeight = UiConsts::AnimationPlayerHeight();
+	ImGui::SetNextWindowPos( ImVec2( 0, static_cast<float>( height ) - playerHeight ), ImGuiCond_Always );
+	ImGui::SetNextWindowSize( ImVec2( static_cast<float>( width ), playerHeight ), ImGuiCond_Always );
 	if( ImGui::Begin( "##animationTitle", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize ) )
 	{
 		// animation selection
@@ -62,7 +63,7 @@ void UIAnimationPlayback::Render( AppState& appState )
 
 		ImGui::BeginDisabled( animationNames.empty() );
 
-		ImGui::PushItemWidth( ANIMATION_SELECTION_WIDTH );
+		ImGui::PushItemWidth( UiConsts::Scaled( BASE_ANIMATION_SELECTION_WIDTH ) );
 		ImGui::ComboBox( "##animation", animationNames, selectedAnimationIndex, [&]( int32_t selectedIndex ) {
 			m_playing = false;
 			m_currentTime = 0.0f;

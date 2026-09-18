@@ -27,6 +27,7 @@ public:
 private:
 	void SetupPopupWindows( AppState& appState );
 	void UpdateInputs( AppState& state );
+	void ApplyUiScale( float scale );
 
 	enum LoadStatus
 	{

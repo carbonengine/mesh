@@ -24,6 +24,7 @@ void AppState::CallStateCallbacks()
 	cmfLoadRequest.CallCallbacks( *this );
 	exitRequested.CallCallbacks( *this );
 	showUi.CallCallbacks( *this );
+	uiScale.CallCallbacks( *this );
 
 	modelState.CallCallbacks( *this );
 }

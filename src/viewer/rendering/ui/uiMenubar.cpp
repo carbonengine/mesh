@@ -3,6 +3,7 @@
 #include "uiMenubar.h"
 #include <imgui.h>
 
+#include "uiConsts.h"
 #include "uiCustomWidgets.h"
 
 void UiMenubar::Render( AppState& appState )
@@ -112,6 +113,8 @@ void UiMenubar::Render( AppState& appState )
 			}
 			ImGui::Separator();
 
+			RenderUiScaleMenu( appState );
+
 			bool uiShown = appState.showUi.GetValue();
 			const char* toggleUiLabel = uiShown ? "Hide UI" : "Show UI";
 			if( ImGui::MenuItem( toggleUiLabel, "Ctrl+F12" ) )
@@ -122,5 +125,34 @@ void UiMenubar::Render( AppState& appState )
 		}
 
 		ImGui::EndMainMenuBar();
+	}
+}
+
+void UiMenubar::RenderUiScaleMenu( AppState& appState )
+{
+	if( ImGui::BeginMenu( "UI Scale" ) )
+	{
+		if( !m_uiScaleSliderActive )
+		{
+			m_uiScaleSliderValue = appState.uiScale.GetValue();
+		}
+		ImGui::SetNextItemWidth( UiConsts::Scaled( 160.0f ) );
+		ImGui::SliderFloat( "##uiScale", &m_uiScaleSliderValue, UiConsts::MIN_UI_SCALE, UiConsts::MAX_UI_SCALE, "%.2fx", ImGuiSliderFlags_AlwaysClamp );
+		m_uiScaleSliderActive = ImGui::IsItemActive();
+		// rebuilding the fonts is expensive, only apply once the slider is released
+		if( ImGui::IsItemDeactivatedAfterEdit() )
+		{
+			appState.uiScale.SetValue( m_uiScaleSliderValue );
+		}
+		ImGui::SameLine();
+		if( ImGui::SmallButton( "Reset" ) )
+		{
+			appState.uiScale.SetValue( appState.defaultUiScale );
+		}
+		ImGui::EndMenu();
+	}
+	else
+	{
+		m_uiScaleSliderActive = false;
 	}
 }

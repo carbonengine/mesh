@@ -3,6 +3,8 @@
 #include "application.h"
 
 #include <algorithm>
+#include "rendering/ui/uiConsts.h"
+#include "rendering/ui/uiSettings.h"
 #include "rendering/vulkan/shadercache.h"
 #include "rendering/vulkan/vulkanerrors.h"
 #include "viewerIcon.h"
@@ -40,6 +42,13 @@ void Application::Initialize()
 		return;
 	}
 	SetCarbonMeshViewerWindowIcon( m_window );
+
+	float contentScaleX = 1.0f;
+	float contentScaleY = 1.0f;
+	glfwGetWindowContentScale( m_window, &contentScaleX, &contentScaleY );
+	m_appState.defaultUiScale = std::clamp( contentScaleX, UiConsts::MIN_UI_SCALE, UiConsts::MAX_UI_SCALE );
+	m_appState.uiScale.SetValueNoCallback( m_appState.defaultUiScale );
+	Log::Info( "Monitor content scale is %.2f, initial ui scale %.2fx", contentScaleX, m_appState.defaultUiScale );
 
 	// we may ask for a given size (see above) but it is not guaranteed to be the actual framebuffer size
 	int actualHeight, actualWidth;
@@ -222,6 +231,7 @@ void Application::Run()
 	}
 	auto logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
 	vkDeviceWaitIdle( logicalDevice );
+	UiSettings::Save();
 	m_orientationGizmoRenderer.release();
 
 	m_sceneRenderer.release();
