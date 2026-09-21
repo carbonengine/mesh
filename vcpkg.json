@@ -33,7 +33,7 @@
 	  "dependencies": [
 		{
 		  "name": "simplygon",
-		  "version>=": "10.4.338#2"
+		  "version>=": "10.4.338"
 		}
 	  ]
 	},
