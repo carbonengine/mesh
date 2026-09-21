@@ -547,7 +547,7 @@ void UIGeneralWindow::RenderMorphList( const cmf::Mesh& mesh, MeshState& meshSta
 			{
 				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
 				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
-				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, UiConsts::BUTTON_WIDTH );
+				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed, UiConsts::ButtonWidth() );
 				ImGui::TableNextRow();
 
 				ImGui::TableNextColumn();
@@ -626,7 +626,7 @@ void UIGeneralWindow::RenderAnimationOverrideList( AppState& appState )
 	ImGui::BeginDisabled( disabled );
 
 	//  button to add an animation owner from a cmf file
-	if( ImGui::Button( "+", ImVec2( ImGui::GetContentRegionAvail().x, UiConsts::BUTTON_HEIGHT ) ) )
+	if( ImGui::Button( "+", ImVec2( ImGui::GetContentRegionAvail().x, UiConsts::ButtonHeight() ) ) )
 	{
 		auto* path = ImGui::OpenCmfFileDialog();
 		if( path != nullptr )
@@ -696,7 +696,7 @@ void UIGeneralWindow::RenderAnimationOverrideList( AppState& appState )
 
 		if( index != 0 )
 		{
-			ImGui::SameLine( ImGui::GetContentRegionAvail().x - UiConsts::BUTTON_WIDTH );
+			ImGui::SameLine( ImGui::GetContentRegionAvail().x - UiConsts::ButtonWidth() );
 			std::string label = "-##" + std::to_string( index );
 			if( ImGui::Button( label.c_str() ) )
 			{

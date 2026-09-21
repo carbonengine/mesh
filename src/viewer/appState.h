@@ -197,6 +197,9 @@ struct AppState
 
 	State<bool> exitRequested{ false };
 	State<bool> showUi{ true };
+	/// ui scale factor (see UiConsts::MIN_UI_SCALE / MAX_UI_SCALE)
+	State<float> uiScale{ 1.0f };
+	float defaultUiScale{ 1.0f };
 
 	// model
 	ModelState modelState{};

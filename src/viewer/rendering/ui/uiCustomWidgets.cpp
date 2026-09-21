@@ -59,8 +59,8 @@ CheckBoxTriStateValue GetCheckedStatus( int64_t checked, int64_t count )
 
 bool FontAwesomeButton( const FaIcon& icon, int id, float width, float height )
 {
-	const float faButtonPadding = 4.0f;
-	const float glyphWidth = UiConsts::FONT_AWESOME_SIZE * icon.xyRatio;
+	const float faButtonPadding = UiConsts::Scaled( 4.0f );
+	const float glyphWidth = UiConsts::FontAwesomeSize() * icon.xyRatio;
 	const float paddingX = std::max( 0.0f, ( width - glyphWidth ) * 0.5f );
 	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( paddingX, faButtonPadding ) );
 	ImGui::PushID( id );
@@ -73,8 +73,8 @@ bool FontAwesomeButton( const FaIcon& icon, int id, float width, float height )
 
 void FontAwesomeText( const FaIcon& icon, float width )
 {
-	const float faButtonPadding = -4.0f;
-	const float glyphWidth = UiConsts::FONT_AWESOME_SIZE * icon.xyRatio;
+	const float faButtonPadding = UiConsts::Scaled( -4.0f );
+	const float glyphWidth = UiConsts::FontAwesomeSize() * icon.xyRatio;
 	const float paddingX = std::max( 0.0f, ( width - glyphWidth ) * 0.5f );
 	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( paddingX, faButtonPadding ) );
 	ImGui::TextUnformatted( icon.text );
@@ -86,12 +86,12 @@ bool FontAwesomeSlashedButton( const FaIcon& icon, int id, float width, float he
 	bool ret = ImGui::FontAwesomeButton( icon, id, width, height );
 	ImVec2 min = ImGui::GetItemRectMin();
 	ImVec2 max = ImGui::GetItemRectMax();
-	float slashPadding = 1.5f;
+	const float slashPadding = UiConsts::Scaled( 1.5f );
 	ImGui::GetWindowDrawList()->AddLine(
 		ImVec2( min.x + slashPadding, max.y - slashPadding ),
 		ImVec2( max.x - slashPadding, min.y + slashPadding ),
 		ImGui::GetColorU32( ImGuiCol_Text ),
-		2.0f );
+		UiConsts::Scaled( 2.0f ) );
 
 	return ret;
 }
