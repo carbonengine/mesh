@@ -47,6 +47,7 @@ Inspection and Debugging
    dumpjson
    validate
    hash
+   versioninfo
 
 Metadata Management
 ^^^^^^^^^^^^^^^^^^^
@@ -89,6 +90,8 @@ Command Summary
      - Validates a CMF file to ensure structural integrity and format compliance
    * - :doc:`hash <hash>`
      - Computes and prints the MD5 hash of any file for integrity verification
+   * - :doc:`versioninfo <versioninfo>`
+     - Prints current version information for the CMF Processor tool and CMF file format version
    * - :doc:`metadata <metadata>`
      - Adds, modifies, or removes metadata key-value pairs in CMF files
    * - :doc:`gltfconverter <gltfconverter>`

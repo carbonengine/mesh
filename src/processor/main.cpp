@@ -5,7 +5,7 @@
 #include <nlohmann/json.hpp>
 #include "cmffile.h"
 
-const char* CMF_PROCESSOR_VERSION = "1.0.0";
+const char* CMF_PROCESSOR_VERSION = "1.1.0";
 
 
 int main( int argc, char** argv )
