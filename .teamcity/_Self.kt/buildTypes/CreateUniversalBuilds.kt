@@ -20,7 +20,7 @@ class UniversalBuild() : BuildType({
         param("x64-bin-path", "bin/macOS/x64")
         param("arm64-bin-path", "bin/macOS/arm64")
         text("file-matchers",
-            "-m '*.so:%system.teamcity.build.workingDir%/lib' -m '*.dylib:%system.teamcity.build.workingDir%/lib' -m '*.a:%system.teamcity.build.workingDir%/lib' -m 'cmfprocessor*:%system.teamcity.build.workingDir%/bin' -m 'CarbonMeshViewer*:%system.teamcity.build.workingDir%/bin'",
+            "-m '*.so:%system.teamcity.build.workingDir%/lib' -m '*.dylib:%system.teamcity.build.workingDir%/lib' -m '*.a:%system.teamcity.build.workingDir%/lib' -m 'cmfprocessor_*:%system.teamcity.build.workingDir%/bin' -m 'cmfprocessor:%system.teamcity.build.workingDir%/bin' -m 'CarbonMeshViewer*:%system.teamcity.build.workingDir%/bin'",
             label = "lipo-build matchers",
             description = """
             -m '*.so:lib' to tell the tool to lipo together .so files and output the fat binaries to lib/.
