@@ -32,6 +32,7 @@ public:
 private:
 	void Draw( GraphicsCommandBuffer& commandBuffer );
 	void DrawIndexed( GraphicsCommandBuffer& commandBuffer );
+	bool IsAreaVisible( size_t areaIndex ) const;
 	void SetLod( uint32_t lodLevel );
 
 	struct Area
@@ -67,6 +68,7 @@ private:
 
 	cmf::Mesh m_cmfMesh{};
 	std::vector<Area> m_areas{};
+	std::vector<bool> m_areaDisplay{};
 
 	std::vector<std::pair<uint32_t, uint32_t>> m_morphCurveToTargetMapping{};
 	std::vector<size_t> m_boneBindingToBoneIndexMapping{};

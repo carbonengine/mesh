@@ -516,7 +516,68 @@ void UIGeneralWindow::RenderMeshInfo( const cmf::Mesh& mesh, MeshState& meshStat
 			} );
 
 			ImGui::EndTable();
+			RenderAreaList( mesh, meshState );
 			RenderMorphList( mesh, meshState );
+		}
+		ImGui::TreePop();
+	}
+}
+
+void UIGeneralWindow::RenderAreaList( const cmf::Mesh& mesh, MeshState& meshState )
+{
+	if( ImGui::TreeNode( "##areas", "Mesh Areas (%zu)", mesh.areas.size() ) )
+	{
+		ImGui::BeginDisabled( meshState.areaDisplay.empty() );
+		const float buttonWidth = ( ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x ) * 0.5f;
+		if( ImGui::Button( "Show all##areas", ImVec2( buttonWidth, UiConsts::ButtonHeight() ) ) )
+		{
+			for( auto& areaState : meshState.areaDisplay )
+			{
+				areaState.SetValue( true );
+			}
+		}
+		ImGui::SetItemTooltip( "Show all areas of this mesh" );
+		ImGui::SameLine();
+		if( ImGui::Button( "Hide all##areas", ImVec2( buttonWidth, UiConsts::ButtonHeight() ) ) )
+		{
+			for( auto& areaState : meshState.areaDisplay )
+			{
+				areaState.SetValue( false );
+			}
+		}
+		ImGui::SetItemTooltip( "Hide all areas of this mesh" );
+		ImGui::EndDisabled();
+
+		const auto& currentLod = mesh.lods[meshState.activeLod.GetValue()];
+		for( size_t areaIndex = 0; areaIndex < mesh.areas.size() && areaIndex < meshState.areaDisplay.size(); ++areaIndex )
+		{
+			std::string areaName = cmf::ToStdString( mesh.areas[areaIndex].name );
+			if( areaName.empty() )
+			{
+				areaName = "Area " + std::to_string( areaIndex );
+			}
+			ImGui::SeparatorText( areaName.c_str() );
+
+			if( ImGui::BeginTable( ( std::string( "##areatable" ) + std::to_string( areaIndex ) ).c_str(), 2 ) )
+			{
+				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthFixed );
+				ImGui::TableSetupColumn( "", ImGuiTableColumnFlags_WidthStretch );
+
+				std::string tooltip = "Toggle display of this mesh area";
+				if( areaIndex < currentLod.areas.size() )
+				{
+					tooltip += " (" + std::to_string( currentLod.areas[areaIndex].elementCount ) + " triangles in the active LOD)";
+				}
+				SetupAttribute( "Display", tooltip.c_str(), false, [&]() {
+					auto& areaState = meshState.areaDisplay[areaIndex];
+					bool checked = areaState.GetValue();
+					if( ImGui::Checkbox( ( std::string( "##areadisplaycheckbox" ) + std::to_string( areaIndex ) ).c_str(), &checked ) )
+					{
+						areaState.SetValue( checked );
+					}
+				} );
+				ImGui::EndTable();
+			}
 		}
 		ImGui::TreePop();
 	}
