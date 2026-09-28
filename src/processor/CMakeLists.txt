@@ -14,6 +14,7 @@ set(PROCESSOR_SOURCES
     main.cpp
     metadata.cpp
     validate.cpp
+	versioninfo.cpp
     gltfconverter.cpp
 )
 
