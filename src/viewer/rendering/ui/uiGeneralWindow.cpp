@@ -566,7 +566,8 @@ void UIGeneralWindow::RenderAreaList( const cmf::Mesh& mesh, MeshState& meshStat
 				std::string tooltip = "Toggle display of this mesh area";
 				if( areaIndex < currentLod.areas.size() )
 				{
-					tooltip += " (" + std::to_string( currentLod.areas[areaIndex].elementCount ) + " triangles in the active LOD)";
+					const char* elementUnit = mesh.topology == cmf::MeshTopology::PointList ? " points" : " triangles";
+					tooltip += " (" + std::to_string( currentLod.areas[areaIndex].elementCount ) + elementUnit + " in the active LOD)";
 				}
 				SetupAttribute( "Display", tooltip.c_str(), false, [&]() {
 					auto& areaState = meshState.areaDisplay[areaIndex];
