@@ -136,7 +136,7 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
                 DOXYGEN_SRC_FILES ${CARBON_MESH_SOURCE_FILES}
                 SPHINX_TARGET_NAME Sphinx
                 DOXYGEN_TARGET_NAME Doxygen
-                INSTALL_DESTINATION documentation
+                INSTALL_DESTINATION documentation/mesh
         )
 
         add_dependencies(Sphinx CarbonMesh)
