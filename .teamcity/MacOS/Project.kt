@@ -154,7 +154,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
                 authType = token {
                     token = "%GITHUB_CARBON_PAT%"
                 }
-                filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+                filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
 				filterTargetBranch = """
                 +:refs/heads/*
                 """.trimIndent()
@@ -180,7 +180,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
             failBuild = true
         }
         sshAgent {
-            teamcitySshKey = "ccpgames-evetech GitHub"
+            teamcitySshKey = "ccpgames-carbon"
         }
         provideAwsCredentials {
             awsConnectionId = "Carbon_AwsVcpkgBinaryCacheServiceAccount"
