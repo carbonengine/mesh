@@ -10,16 +10,17 @@ By default, cmake will only build the library, without tools (cmfprocessor, view
 configure the project with ``-DBUILD_TOOLS=ON``.
 
 ## 🤝 Contributing
-Contribution follows the standard GIT PR model.
 
-By submitting a pull request or otherwise contributing to this project, you agree to license your contribution under the [MIT License](LICENSE.md) License, and you confirm that you have the right to do so.
+Contributions are welcome. Please read the Carbon Engine [contributing guide](https://github.com/carbonengine/.github/blob/main/CONTRIBUTING.md) before opening an issue or pull request. It covers the workflow, the CLA and the pull request template, and applies to every `carbonengine` repository. Please also follow the [Code of Conduct](https://github.com/carbonengine/.github/blob/main/CODE_OF_CONDUCT.md), and report security issues privately as described in the [Security Policy](https://github.com/carbonengine/.github/blob/main/SECURITY.md) rather than in a public issue.
+
+By submitting a pull request or otherwise contributing to this project, you agree to license your contribution under the [MIT License](LICENSE.md), and you confirm that you have the right to do so.
 
 ## 📄 License and Legal Notices
 
-© 2025 CCP Games 
+© 2026 Fenris Creations 
 
-This software is provided by CCP Games and does not include or distribute any third-party libraries or frameworks. 
+This software is provided by Fenris Creations. See [NOTICE](NOTICE.md) for included 3rd party code. 
 
-Trademark Notice: CCP Games is a trademark of CCP ehf. 
+Trademark Notice: Fenris Creations is a trademark of CCP ehf. 
 
-This project is licensed under the [MIT License](LICENSE.md) License. 
+This project is licensed under the [MIT License](LICENSE.md). 
