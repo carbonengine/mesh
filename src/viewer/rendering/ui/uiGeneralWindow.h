@@ -15,6 +15,7 @@ private:
 	void RenderMeshList( AppState& appState );
 	void RenderMeshInfo( const cmf::Mesh& mesh, MeshState& meshState );
 	void RenderMorphList( const cmf::Mesh& mesh, MeshState& meshState );
+	void RenderAreaList( const cmf::Mesh& mesh, MeshState& meshState );
 	void RenderSkeletonList( AppState& appState );
 	void RenderAnimationOverrideList( AppState& appState );
 

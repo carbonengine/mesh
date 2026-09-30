@@ -112,6 +112,8 @@ enum class CameraTrigger
 struct MeshState
 {
 	State<bool> display{ true };
+	/// one entry per mesh area, true when the area is drawn
+	StateCollection<bool> areaDisplay{ true };
 	/// the pair is <weight, enabled>
 	StateCollection<std::pair<float, bool>> morphs{ { 0.0f, true } };
 	State<bool> wireframeOverlay{ false };
@@ -126,6 +128,7 @@ struct MeshState
 	void CallCallbacks( AppState& appState )
 	{
 		display.CallCallbacks( appState );
+		areaDisplay.CallCallbacks( appState );
 		morphs.CallCallbacks( appState );
 		wireframeOverlay.CallCallbacks( appState );
 		audioOcclusionMesh.CallCallbacks( appState );

@@ -57,6 +57,14 @@ void MeshRenderable::Initialize( AppState& appState )
 		meshState.display.RegisterCallback( [this]( bool visible, AppState& ) {
 			m_display = visible;
 		} );
+		m_areaDisplay.assign( m_cmfMesh.areas.size(), true );
+		for( size_t i = 0; i < m_cmfMesh.areas.size(); ++i )
+		{
+			meshState.areaDisplay.AddState();
+			meshState.areaDisplay[i].RegisterCallback( [this, i]( bool visible, AppState& ) {
+				m_areaDisplay[i] = visible;
+			} );
+		}
 		meshState.wireframeOverlay.RegisterCallback( [this]( bool enabled, AppState& ) {
 			m_wireframe = enabled;
 		} );
@@ -119,9 +127,11 @@ void MeshRenderable::Initialize( AppState& appState )
 	} );
 
 	appState.modelState.selectedLod.RegisterCallback( [this]( int32_t lodIndex, AppState& appState ) {
-		if( lodIndex != -1 )
+		if( lodIndex != -1 && !m_cmfMesh.lods.empty() )
 		{
-			appState.modelState.meshes[m_meshIndex].GetValue().activeLod.SetValue( lodIndex );
+			// the selected lod applies to all meshes, clamp it to the lods this mesh actually has
+			const auto clampedLod = std::min( static_cast<uint32_t>( lodIndex ), static_cast<uint32_t>( m_cmfMesh.lods.size() - 1 ) );
+			appState.modelState.meshes[m_meshIndex].GetValue().activeLod.SetValue( clampedLod );
 		}
 	} );
 
@@ -384,15 +394,28 @@ void MeshRenderable::Draw( GraphicsCommandBuffer& commandBuffer )
 {
 	for( uint32_t i = 0; i < m_areas.size(); i++ )
 	{
+		if( !IsAreaVisible( i ) )
+		{
+			continue;
+		}
 		auto area = m_areas[i];
 		commandBuffer.Draw( area.firstElement, area.elementCount );
 	}
+}
+
+bool MeshRenderable::IsAreaVisible( size_t areaIndex ) const
+{
+	return areaIndex >= m_areaDisplay.size() || m_areaDisplay[areaIndex];
 }
 
 void MeshRenderable::DrawIndexed( GraphicsCommandBuffer& commandBuffer )
 {
 	for( uint32_t i = 0; i < m_areas.size(); i++ )
 	{
+		if( !IsAreaVisible( i ) )
+		{
+			continue;
+		}
 		auto area = m_areas[i];
 		commandBuffer.DrawIndexed( area.firstElement, area.elementCount );
 	}
