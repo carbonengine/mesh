@@ -9,7 +9,7 @@ on:
 
 jobs:
   lint:
-    runs-on: windows
+    runs-on: windows-latest
 
     # Set required permissions if using thread comments or PR reviews
     permissions:
