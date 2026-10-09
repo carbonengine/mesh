@@ -22,8 +22,6 @@ jobs:
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: 'latest'
 
       - name: Configure CMake
         # -DCMAKE_EXPORT_COMPILE_COMMANDS=ON tells CMake to create compile_commands.json
