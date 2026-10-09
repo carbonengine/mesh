@@ -8,7 +8,7 @@ on:
     # paths: ['**.c', '**.cpp', '**.h', '**.hpp', '**.cxx', '**.hxx', '**.cc', '**.hh', '**CMakeLists.txt', '**.cmake']
 
 jobs:
-  lint:
+  clang-tidy:
     runs-on: windows-latest
 
     # Set required permissions if using thread comments or PR reviews
@@ -19,6 +19,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'latest'
 
       - name: Configure CMake
         # -DCMAKE_EXPORT_COMPILE_COMMANDS=ON tells CMake to create compile_commands.json
