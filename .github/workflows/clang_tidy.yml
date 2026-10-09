@@ -25,7 +25,7 @@ jobs:
 
       - name: Configure CMake
         # -DCMAKE_EXPORT_COMPILE_COMMANDS=ON tells CMake to create compile_commands.json
-        run: cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        run: cmake -B build -S . --preset x64-windows-release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy
         uses: cpp-linter/cpp-linter-action@v2
