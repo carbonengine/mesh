@@ -107,7 +107,7 @@ void to_json( nlohmann::json& j, const AudioOcclusionMeshGenerationMethod& p );
 
 struct AudioOcclusionMeshOptions
 {
-	bool generate = false;
+	bool generate = true;
 	AudioOcclusionMeshGenerationMethod method = AudioOcclusionMeshGenerationMethod::Simplygon;
 	SimplygonAudioOcclusionMeshOptions simplygon;
 };
