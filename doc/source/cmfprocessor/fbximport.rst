@@ -181,7 +181,7 @@ Mesh settings
   The program will set the locked flag based on the contents of the red channel in the vertex color: the vertex is locked if the red channel is not black.
 
 ``mesh.audioOcclusionMesh.generate``
-  Type ``boolean``, default ``false``. Whether to generate an audio occlusion mesh for the mesh. The audio occlusion mesh is a simplified version of the original mesh 
+  Type ``boolean``, default ``true``. Whether to generate an audio occlusion mesh for the mesh. The audio occlusion mesh is a simplified version of the original mesh 
   that can be used for audio occlusion calculations in games. Audio occlusion mesh is an extremely low polygon mesh with just vertex positions. The mesh
   may not have any degenerate triangles or T-junctions.
 
