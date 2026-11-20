@@ -1,3 +1,5 @@
+// Copyright © 2026 CCP ehf.
+
 import jetbrains.buildServer.configs.kotlin.*
 import jetbrains.buildServer.configs.kotlin.Project
 
