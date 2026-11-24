@@ -2,8 +2,10 @@
 Checks: |
   cppcoreguidelines-*,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   clang-analyzer-*,
   bugprone-*,
+  -bugprone-easily-swappable-parameters,
   google-default-arguments,
   google-runtime-int,
   misc-*,
