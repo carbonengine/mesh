@@ -18,3 +18,4 @@ carbon-mesh Documentation
     :caption: Tools
 
     cmfprocessor/cmfprocessor
+    canedit/canedit
