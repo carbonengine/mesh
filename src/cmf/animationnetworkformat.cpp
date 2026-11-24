@@ -15,14 +15,42 @@ namespace cmf::detail
 namespace
 {
 
-constexpr uint32_t SAMPLE_INPUT_COUNT = 3;
-constexpr uint32_t BLEND_INPUT_COUNT = 4;
-constexpr uint32_t ADDITIVE_INPUT_COUNT = 5;
 constexpr uint32_t SECTION_ALIGNMENT = 8;
 
-constexpr std::array<const char*, SAMPLE_INPUT_COUNT> SAMPLE_INPUT_NAMES = { "time", "loop", "speed" };
-constexpr std::array<const char*, BLEND_INPUT_COUNT> BLEND_INPUT_NAMES = { "poseA", "poseB", "alpha", "weights" };
-constexpr std::array<const char*, ADDITIVE_INPUT_COUNT> ADDITIVE_INPUT_NAMES = { "pose", "base", "additive", "alpha", "weights" };
+// Fixed input sockets of the node types, in socket index order (see the *_INPUT constants in the header)
+constexpr std::array<SocketInfo, 1> OUTPUT_INPUTS = { { { "pose", can::SocketType::Pose, 0.f } } };
+constexpr std::array<SocketInfo, 3> SAMPLE_INPUTS = { {
+	{ "time", can::SocketType::Float, 0.f },
+	{ "loop", can::SocketType::Float, 1.f },
+	{ "speed", can::SocketType::Float, 1.f },
+} };
+constexpr std::array<SocketInfo, 4> BLEND_INPUTS = { {
+	{ "poseA", can::SocketType::Pose, 0.f },
+	{ "poseB", can::SocketType::Pose, 0.f },
+	{ "alpha", can::SocketType::Float, 0.f },
+	{ "weights", can::SocketType::BoneWeights, 0.f },
+} };
+constexpr std::array<SocketInfo, 5> ADDITIVE_INPUTS = { {
+	{ "pose", can::SocketType::Pose, 0.f },
+	{ "base", can::SocketType::Pose, 0.f },
+	{ "additive", can::SocketType::Pose, 0.f },
+	{ "alpha", can::SocketType::Float, 1.f },
+	{ "weights", can::SocketType::BoneWeights, 0.f },
+} };
+constexpr std::array<SocketInfo, 1> SWITCH_INPUTS = { { { "selector", can::SocketType::Float, 0.f } } };
+
+static_assert( SAMPLE_INPUTS.size() == SAMPLE_SPEED_INPUT + 1 && BLEND_INPUTS.size() == BLEND_WEIGHTS_INPUT + 1 && ADDITIVE_INPUTS.size() == ADDITIVE_WEIGHTS_INPUT + 1, "Socket tables must match the socket index constants" );
+
+template <size_t Count>
+NodeTypeInfo MakeInfo( const char* name, SocketLayout layout, const std::array<SocketInfo, Count>& inputs, can::SocketType outputType, const char* outputName, bool hasData ) // NOLINT(readability-identifier-naming): clang-tidy classifies function templates as Default (camelBack); name follows FunctionCase
+{
+	return { name, layout, inputs.data(), static_cast<uint32_t>( Count ), true, outputType, outputName, hasData };
+}
+
+NodeTypeInfo MakeInfo( const char* name, SocketLayout layout, can::SocketType outputType, const char* outputName, bool hasData )
+{
+	return { name, layout, nullptr, 0, true, outputType, outputName, hasData };
+}
 
 const can::Header& GetHeader( const void* file )
 {
@@ -37,7 +65,7 @@ const can::InterfaceNode& GetInterfaceNode( const can::Graph& graph, uint32_t no
 // Checks that every node has a valid type and that nodes with type specific data reference their own table entry
 std::string ValidateNodeData( const can::Graph& graph )
 {
-	std::vector<std::vector<bool>> used( static_cast<size_t>( can::NodeType::Expression ) + 1 );
+	std::vector<std::vector<bool>> used( static_cast<size_t>( can::NodeType::Count ) );
 	for( uint32_t n = 0; n < graph.nodes.size(); ++n )
 	{
 		const auto& node = graph.nodes[n];
@@ -241,31 +269,21 @@ std::string ValidateInterface( const can::Graph& graph, bool root )
 
 std::string ValidateNode( const can::NetworkData& data, const can::Graph& graph, const can::Node& node )
 {
-	switch( node.type )
+	if( node.type == can::NodeType::Parameter && GetNodeData<can::ParameterNode>( graph, node ).parameterIndex >= data.parameters.size() )
 	{
-	case can::NodeType::Parameter:
-		if( GetNodeData<can::ParameterNode>( graph, node ).parameterIndex >= data.parameters.size() )
-		{
-			return "invalid parameter index";
-		}
-		break;
-	case can::NodeType::AnimationSample: {
+		return "invalid parameter index";
+	}
+	if( node.type == can::NodeType::AnimationSample )
+	{
 		const auto assetIndex = GetNodeData<can::AnimationSampleNode>( graph, node ).assetIndex;
 		if( assetIndex != can::NO_INDEX && assetIndex >= data.assets.size() )
 		{
 			return "invalid asset index";
 		}
-		break;
 	}
-	case can::NodeType::Switch:
-	case can::NodeType::RandomSwitch:
-		if( GetShape( graph, node ).poseInputCount == 0 )
-		{
-			return "no pose inputs";
-		}
-		break;
-	default:
-		break;
+	if( GetNodeTypeInfo( node.type ).layout == SocketLayout::Switch && GetShape( graph, node ).poseInputCount == 0 )
+	{
+		return "no pose inputs";
 	}
 	if( node.inputConstants.size() != GetInputCount( data, graph, node ) )
 	{
@@ -382,43 +400,54 @@ std::string ValidateNetworkData( const can::NetworkData& data, const can::Header
 
 }
 
-const char* GetNodeTypeName( can::NodeType type )
+NodeTypeInfo GetNodeTypeInfo( can::NodeType type )
 {
+	// Every node type needs a case; there is deliberately no default case
 	switch( type )
 	{
-	case can::NodeType::Output:
-		return "Output";
-	case can::NodeType::SubgraphInput:
-		return "SubgraphInput";
-	case can::NodeType::Parameter:
-		return "Parameter";
-	case can::NodeType::AnimationSample:
-		return "AnimationSample";
-	case can::NodeType::RestPose:
-		return "RestPose";
-	case can::NodeType::Blend:
-		return "Blend";
-	case can::NodeType::Switch:
-		return "Switch";
-	case can::NodeType::RandomSwitch:
-		return "RandomSwitch";
-	case can::NodeType::AdditiveBlend:
-		return "AdditiveBlend";
-	case can::NodeType::NamedBoneWeights:
-		return "NamedBoneWeights";
-	case can::NodeType::BoneWeights:
-		return "BoneWeights";
-	case can::NodeType::Subgraph:
-		return "Subgraph";
-	case can::NodeType::Expression:
-		return "Expression";
+	case can::NodeType::Output: {
+		auto info = MakeInfo( "Output", SocketLayout::Interface, OUTPUT_INPUTS, can::SocketType::Pose, "", true );
+		info.hasOutput = false;
+		return info;
 	}
-	return "Unknown";
+	case can::NodeType::SubgraphInput:
+		return MakeInfo( "SubgraphInput", SocketLayout::Interface, can::SocketType::Pose, "", true );
+	case can::NodeType::Parameter:
+		return MakeInfo( "Parameter", SocketLayout::Fixed, can::SocketType::Float, "value", true );
+	case can::NodeType::AnimationSample:
+		return MakeInfo( "AnimationSample", SocketLayout::Fixed, SAMPLE_INPUTS, can::SocketType::Pose, "pose", true );
+	case can::NodeType::RestPose:
+		return MakeInfo( "RestPose", SocketLayout::Fixed, can::SocketType::Pose, "pose", false );
+	case can::NodeType::Blend:
+		return MakeInfo( "Blend", SocketLayout::Fixed, BLEND_INPUTS, can::SocketType::Pose, "pose", false );
+	case can::NodeType::Switch:
+		return MakeInfo( "Switch", SocketLayout::Switch, SWITCH_INPUTS, can::SocketType::Pose, "pose", true );
+	case can::NodeType::RandomSwitch:
+		return MakeInfo( "RandomSwitch", SocketLayout::Switch, can::SocketType::Pose, "pose", true );
+	case can::NodeType::AdditiveBlend:
+		return MakeInfo( "AdditiveBlend", SocketLayout::Fixed, ADDITIVE_INPUTS, can::SocketType::Pose, "pose", false );
+	case can::NodeType::NamedBoneWeights:
+		return MakeInfo( "NamedBoneWeights", SocketLayout::Fixed, can::SocketType::BoneWeights, "weights", true );
+	case can::NodeType::BoneWeights:
+		return MakeInfo( "BoneWeights", SocketLayout::Fixed, can::SocketType::BoneWeights, "weights", true );
+	case can::NodeType::Subgraph:
+		return MakeInfo( "Subgraph", SocketLayout::Subgraph, can::SocketType::Pose, "", true );
+	case can::NodeType::Expression:
+		return MakeInfo( "Expression", SocketLayout::Expression, can::SocketType::Float, "value", true );
+	case can::NodeType::Count:
+		break;
+	}
+	return MakeInfo( "Unknown", SocketLayout::Fixed, can::SocketType::Pose, "", false );
+}
+
+const char* GetNodeTypeName( can::NodeType type )
+{
+	return GetNodeTypeInfo( type ).name;
 }
 
 bool IsValidNodeType( can::NodeType type )
 {
-	return static_cast<uint8_t>( type ) <= static_cast<uint8_t>( can::NodeType::Expression );
+	return static_cast<uint8_t>( type ) < static_cast<uint8_t>( can::NodeType::Count );
 }
 
 bool IsValidSocketType( can::SocketType type )
@@ -428,139 +457,93 @@ bool IsValidSocketType( can::SocketType type )
 
 uint32_t GetFirstSwitchPoseInput( can::NodeType type )
 {
-	return type == can::NodeType::Switch ? SWITCH_SELECTOR_INPUT + 1 : 0;
+	return GetNodeTypeInfo( type ).inputCount;
 }
 
 uint32_t GetInputCount( const NodeShape& shape )
 {
-	switch( shape.type )
+	const auto info = GetNodeTypeInfo( shape.type );
+	switch( info.layout )
 	{
-	case can::NodeType::Output:
-		return 1;
-	case can::NodeType::AnimationSample:
-		return SAMPLE_INPUT_COUNT;
-	case can::NodeType::Blend:
-		return BLEND_INPUT_COUNT;
-	case can::NodeType::Switch:
-	case can::NodeType::RandomSwitch:
-		return GetFirstSwitchPoseInput( shape.type ) + shape.poseInputCount;
-	case can::NodeType::AdditiveBlend:
-		return ADDITIVE_INPUT_COUNT;
-	case can::NodeType::Expression:
+	case SocketLayout::Fixed:
+	case SocketLayout::Interface:
+		return info.inputCount;
+	case SocketLayout::Switch:
+		return info.inputCount + shape.poseInputCount;
+	case SocketLayout::Expression:
 		return shape.expressionInputCount;
-	default:
+	case SocketLayout::Subgraph:
 		return 0;
 	}
+	return 0;
 }
 
 uint32_t GetOutputCount( can::NodeType type )
 {
-	return type == can::NodeType::Output ? 0 : 1;
+	return GetNodeTypeInfo( type ).hasOutput ? 1 : 0;
 }
 
 can::SocketType GetInputType( const NodeShape& shape, uint32_t socket )
 {
-	switch( shape.type )
+	const auto info = GetNodeTypeInfo( shape.type );
+	switch( info.layout )
 	{
-	case can::NodeType::Output:
+	case SocketLayout::Fixed:
+		return info.inputs[socket].type;
+	case SocketLayout::Interface:
 		return shape.interfaceType;
-	case can::NodeType::Blend:
-		if( socket == BLEND_POSE_A_INPUT || socket == BLEND_POSE_B_INPUT )
-		{
-			return can::SocketType::Pose;
-		}
-		return socket == BLEND_ALPHA_INPUT ? can::SocketType::Float : can::SocketType::BoneWeights;
-	case can::NodeType::Switch:
-		return socket == SWITCH_SELECTOR_INPUT ? can::SocketType::Float : can::SocketType::Pose;
-	case can::NodeType::RandomSwitch:
-		return can::SocketType::Pose;
-	case can::NodeType::AdditiveBlend:
-		if( socket < ADDITIVE_ALPHA_INPUT )
-		{
-			return can::SocketType::Pose;
-		}
-		return socket == ADDITIVE_ALPHA_INPUT ? can::SocketType::Float : can::SocketType::BoneWeights;
-	default:
-		// AnimationSample and Expression inputs are all Float
+	case SocketLayout::Switch:
+		return socket < info.inputCount ? info.inputs[socket].type : can::SocketType::Pose;
+	case SocketLayout::Expression:
+	case SocketLayout::Subgraph:
 		return can::SocketType::Float;
 	}
+	return can::SocketType::Float;
 }
 
 can::SocketType GetOutputType( const NodeShape& shape )
 {
-	switch( shape.type )
-	{
-	case can::NodeType::SubgraphInput:
-		return shape.interfaceType;
-	case can::NodeType::Parameter:
-	case can::NodeType::Expression:
-		return can::SocketType::Float;
-	case can::NodeType::NamedBoneWeights:
-	case can::NodeType::BoneWeights:
-		return can::SocketType::BoneWeights;
-	default:
-		return can::SocketType::Pose;
-	}
+	const auto info = GetNodeTypeInfo( shape.type );
+	return info.layout == SocketLayout::Interface ? shape.interfaceType : info.outputType;
 }
 
 std::string GetInputName( const NodeShape& shape, uint32_t socket )
 {
-	switch( shape.type )
+	const auto info = GetNodeTypeInfo( shape.type );
+	switch( info.layout )
 	{
-	case can::NodeType::AnimationSample:
-		return SAMPLE_INPUT_NAMES.at( socket );
-	case can::NodeType::Blend:
-		return BLEND_INPUT_NAMES.at( socket );
-	case can::NodeType::Switch:
-		return socket == SWITCH_SELECTOR_INPUT ? "selector" : "pose" + std::to_string( socket - 1 );
-	case can::NodeType::RandomSwitch:
-		return "pose" + std::to_string( socket );
-	case can::NodeType::AdditiveBlend:
-		return ADDITIVE_INPUT_NAMES.at( socket );
-	default:
+	case SocketLayout::Fixed:
+	case SocketLayout::Interface:
+		return info.inputs[socket].name;
+	case SocketLayout::Switch:
+		return socket < info.inputCount ? info.inputs[socket].name : "pose" + std::to_string( socket - info.inputCount );
+	case SocketLayout::Expression:
+	case SocketLayout::Subgraph:
 		return {};
 	}
+	return {};
 }
 
 std::string GetOutputName( can::NodeType type )
 {
-	switch( type )
-	{
-	case can::NodeType::SubgraphInput:
-		return {};
-	case can::NodeType::Parameter:
-	case can::NodeType::Expression:
-		return "value";
-	case can::NodeType::NamedBoneWeights:
-	case can::NodeType::BoneWeights:
-		return "weights";
-	default:
-		return "pose";
-	}
+	return GetNodeTypeInfo( type ).outputName;
 }
 
 float GetDefaultInputConstant( can::NodeType type, uint32_t socket )
 {
-	const bool sampleLoopOrSpeed = type == can::NodeType::AnimationSample && ( socket == SAMPLE_LOOP_INPUT || socket == SAMPLE_SPEED_INPUT );
-	const bool additiveAlpha = type == can::NodeType::AdditiveBlend && socket == ADDITIVE_ALPHA_INPUT;
-	return sampleLoopOrSpeed || additiveAlpha ? 1.f : 0.f;
+	const auto info = GetNodeTypeInfo( type );
+	const bool listed = info.layout != SocketLayout::Interface && socket < info.inputCount;
+	return listed ? info.inputs[socket].defaultValue : 0.f;
 }
 
 bool HasNodeData( can::NodeType type )
 {
-	switch( type )
-	{
-	case can::NodeType::RestPose:
-	case can::NodeType::Blend:
-	case can::NodeType::AdditiveBlend:
-		return false;
-	default:
-		return true;
-	}
+	return GetNodeTypeInfo( type ).hasData;
 }
 
 size_t GetNodeTableSize( const can::Graph& graph, can::NodeType type )
 {
+	// Every node type needs a case; there is deliberately no default case
 	switch( type )
 	{
 	case can::NodeType::Output:
@@ -582,31 +565,32 @@ size_t GetNodeTableSize( const can::Graph& graph, can::NodeType type )
 		return graph.subgraphNodes.size();
 	case can::NodeType::Expression:
 		return graph.expressionNodes.size();
-	default:
+	case can::NodeType::RestPose:
+	case can::NodeType::Blend:
+	case can::NodeType::AdditiveBlend:
+	case can::NodeType::Count:
 		return 0;
 	}
+	return 0;
 }
 
 NodeShape GetShape( const can::Graph& graph, const can::Node& node )
 {
 	NodeShape shape;
 	shape.type = node.type;
-	switch( node.type )
+	switch( GetNodeTypeInfo( node.type ).layout )
 	{
-	case can::NodeType::Output:
-	case can::NodeType::SubgraphInput:
+	case SocketLayout::Interface:
 		shape.interfaceType = GetNodeData<can::InterfaceNode>( graph, node ).type;
 		break;
-	case can::NodeType::Switch:
-		shape.poseInputCount = GetNodeData<can::SwitchNode>( graph, node ).poseInputCount;
+	case SocketLayout::Switch:
+		shape.poseInputCount = node.type == can::NodeType::Switch ? GetNodeData<can::SwitchNode>( graph, node ).poseInputCount : GetNodeData<can::RandomSwitchNode>( graph, node ).poseInputCount;
 		break;
-	case can::NodeType::RandomSwitch:
-		shape.poseInputCount = GetNodeData<can::RandomSwitchNode>( graph, node ).poseInputCount;
-		break;
-	case can::NodeType::Expression:
+	case SocketLayout::Expression:
 		shape.expressionInputCount = static_cast<uint32_t>( GetNodeData<can::ExpressionNode>( graph, node ).inputNames.size() );
 		break;
-	default:
+	case SocketLayout::Fixed:
+	case SocketLayout::Subgraph:
 		break;
 	}
 	return shape;
@@ -657,21 +641,23 @@ can::SocketType GetOutputType( const can::NetworkData& data, const can::Graph& g
 
 std::string GetInputName( const can::NetworkData& data, const can::Graph& graph, const can::Node& node, uint32_t socket )
 {
-	switch( node.type )
+	switch( GetNodeTypeInfo( node.type ).layout )
 	{
-	case can::NodeType::Subgraph: {
+	case SocketLayout::Subgraph: {
 		const auto& subgraph = GetSubgraph( data, graph, node );
 		return ToStdString( GetInterfaceNode( subgraph, subgraph.interfaceInputs[socket] ).name );
 	}
-	case can::NodeType::Expression:
+	case SocketLayout::Expression:
 		return ToStdString( GetNodeData<can::ExpressionNode>( graph, node ).inputNames[socket] );
-	case can::NodeType::Output: {
+	case SocketLayout::Interface: {
 		const auto& name = GetNodeData<can::InterfaceNode>( graph, node ).name;
-		return name.empty() ? "pose" : ToStdString( name );
+		return name.empty() ? GetInputName( GetShape( graph, node ), socket ) : ToStdString( name );
 	}
-	default:
+	case SocketLayout::Fixed:
+	case SocketLayout::Switch:
 		return GetInputName( GetShape( graph, node ), socket );
 	}
+	return {};
 }
 
 ValidationResult ValidateCanFile( const void* data, size_t size )

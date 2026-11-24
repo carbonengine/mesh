@@ -61,6 +61,10 @@ enum class SocketType : uint8_t
 * | Subgraph         | one per SubgraphInput node of the subgraph                        | one per Output node of the subgraph  |
 * | Expression       | one Float input per expression input name                         | value (Float)                        |
 *
+* When adding a node type, the compiler reports every switch statement that needs a new case: switch statements
+* over node types have no default case, and the library is built with missing enum cases reported as errors
+* (MSVC C4062, clang/GCC -Wswitch).
+*
 * Pose inputs must be connected. Float inputs that are not connected use a per-input constant value. BoneWeights
 * inputs are optional: when not connected, the blend applies to all bones uniformly. The time input of
 * AnimationSample uses the node's playhead (advanced by speed) unless an edge is connected to it.
@@ -80,6 +84,8 @@ enum class NodeType : uint8_t
 	BoneWeights,
 	Subgraph,
 	Expression,
+	/** Number of node types; not a valid node type. */
+	Count,
 };
 
 // NOLINTBEGIN(readability-identifier-naming,cppcoreguidelines-missing-std-forward): TypeName and EnumerateMembers follow the CMF reflection pattern used by cmf::EnumerateMembers

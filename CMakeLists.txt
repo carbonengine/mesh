@@ -32,6 +32,7 @@ set(PUBLIC_HEADER_FILES
     include/cmf/animation.h
     include/cmf/animationnetwork.h
     include/cmf/animationnetworkbuilder.h
+    include/cmf/animationnetworkinstance.h
     include/cmf/bounds.h
     include/cmf/bufferstreams.h
     include/cmf/bufferutils.h
@@ -55,7 +56,9 @@ set(CARBON_MESH_SOURCE_FILES
     src/cmf/animation.cpp
     src/cmf/animationnetwork.cpp
     src/cmf/animationnetworkbuilder.cpp
+    src/cmf/animationnetworkcompiler.cpp
     src/cmf/animationnetworkformat.cpp
+    src/cmf/animationnetworkinstance.cpp
     src/cmf/bounds.cpp
     src/cmf/bufferutils.cpp
     src/cmf/compression.cpp
@@ -112,6 +115,13 @@ target_include_directories(CarbonMesh PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_property(TARGET CarbonMesh PROPERTY COMPILE_WARNING_AS_ERROR ON)
+# Report switch statements over enums that miss cases, so that new enum values (such as animation network node
+# types) can't be forgotten
+if(MSVC)
+	target_compile_options(CarbonMesh PRIVATE /w34062)
+else()
+	target_compile_options(CarbonMesh PRIVATE -Wswitch)
+endif()
 ccp_enable_vs_analizers(CarbonMesh)
 
 # Provide an install target if this is the top level project only

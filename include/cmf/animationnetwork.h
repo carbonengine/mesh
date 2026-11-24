@@ -16,6 +16,13 @@
 namespace cmf
 {
 
+namespace detail
+{
+struct CompiledNetwork; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
+}
+
+class AnimationNetworkInstance; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase class
+
 /** @brief Type of an animation network node. See can::v1::NodeType for the sockets of each type. */
 using AnimationNodeType = can::NodeType;
 
@@ -102,7 +109,8 @@ public:
 	* still loading are not reported as errors. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetErrors() const;
 
-	/** @brief Returns true if a network is loaded, all its assets are loaded and it has no errors. */
+	/** @brief Returns true if a network is loaded, all its assets are loaded and it has no errors, so that
+	* AnimationNetworkInstance objects can be created. The network is prepared for evaluation when it becomes ready. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool IsReady() const;
 
 private:
@@ -119,7 +127,10 @@ private:
 		AssetState state = AssetState::Pending;
 	};
 
+	friend class AnimationNetworkInstance;
+
 	void Unload();
+	void CompileIfReady();
 	void OnAssetLoaded( uint32_t loadId, uint32_t assetIndex, const cmf::Data* data );
 	void ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors ) const;
 	void ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& errors ) const;
@@ -132,6 +143,10 @@ private:
 	std::vector<uint8_t> m_file;
 	const can::NetworkData* m_data = nullptr;
 	std::vector<AssetEntry> m_assets;
+	/** Evaluation data shared by all instances; created when the network becomes ready. */
+	std::unique_ptr<detail::CompiledNetwork> m_compiled;
+	/** Problems found while preparing the network for evaluation. */
+	std::vector<std::string> m_compileErrors;
 };
 
 }

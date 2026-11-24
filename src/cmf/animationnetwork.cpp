@@ -2,6 +2,7 @@
 
 #include "cmf/animationnetwork.h"
 
+#include "animationnetworkcompiled.h"
 #include "animationnetworkformat.h"
 
 #include <algorithm>
@@ -109,6 +110,7 @@ ValidationResult AnimationNetwork::Load( std::vector<uint8_t> file )
 			}
 		} );
 	}
+	CompileIfReady();
 	return result;
 }
 
@@ -128,6 +130,8 @@ void AnimationNetwork::Unload()
 		}
 	}
 	m_data = nullptr;
+	m_compiled.reset();
+	m_compileErrors.clear();
 	m_assets.clear();
 	m_file.clear();
 }
@@ -139,6 +143,17 @@ void AnimationNetwork::OnAssetLoaded( uint32_t loadId, uint32_t assetIndex, cons
 		return;
 	}
 	m_assets[assetIndex] = { data, data ? AssetState::Loaded : AssetState::Failed };
+	CompileIfReady();
+}
+
+void AnimationNetwork::CompileIfReady()
+{
+	// Callbacks may arrive while Load is still requesting assets, before all entries are set up
+	if( !m_data || m_compiled || HasPendingAssets() || !m_compileErrors.empty() || !GetErrors().empty() )
+	{
+		return;
+	}
+	m_compiled = detail::CompileNetwork( *this, m_compileErrors );
 }
 
 const can::NetworkData* AnimationNetwork::GetData() const
@@ -214,11 +229,13 @@ std::vector<std::string> AnimationNetwork::GetErrors() const
 			ValidateNode( graph, node, skeleton, prefix, errors );
 		}
 	}
+	errors.insert( errors.end(), m_compileErrors.begin(), m_compileErrors.end() );
 	return errors;
 }
 
 void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors ) const
 {
+	// Every node type needs a case; there is deliberately no default case
 	switch( node.type )
 	{
 	case can::NodeType::AnimationSample:
@@ -239,7 +256,16 @@ void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& n
 	case can::NodeType::RandomSwitch:
 		ValidateRandomSwitch( detail::GetNodeData<can::RandomSwitchNode>( graph, node ), prefix, errors );
 		break;
-	default:
+	case can::NodeType::Output:
+	case can::NodeType::SubgraphInput:
+	case can::NodeType::Parameter:
+	case can::NodeType::RestPose:
+	case can::NodeType::Blend:
+	case can::NodeType::Switch:
+	case can::NodeType::AdditiveBlend:
+	case can::NodeType::Subgraph:
+	case can::NodeType::Count:
+		// Unconnected pose inputs are reported for all node types by GetErrors
 		break;
 	}
 }
@@ -266,7 +292,7 @@ void AnimationNetwork::ValidateAnimationSample( const can::AnimationSampleNode& 
 
 bool AnimationNetwork::IsReady() const
 {
-	return m_data && !HasPendingAssets() && GetErrors().empty();
+	return m_compiled != nullptr;
 }
 
 }

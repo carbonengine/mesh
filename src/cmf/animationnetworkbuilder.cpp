@@ -71,6 +71,7 @@ void ValidateRandomWeights( const AnimationRandomSwitchSettings& settings, const
 
 AnimationNodeSettings CreateSettings( AnimationNodeType type )
 {
+	// Every node type needs a case; there is deliberately no default case
 	switch( type )
 	{
 	case AnimationNodeType::Output:
@@ -90,9 +91,14 @@ AnimationNodeSettings CreateSettings( AnimationNodeType type )
 		return AnimationBoneWeightsSettings{};
 	case AnimationNodeType::Expression:
 		return AnimationExpressionSettings{};
-	default:
-		return std::monostate{};
+	case AnimationNodeType::RestPose:
+	case AnimationNodeType::Blend:
+	case AnimationNodeType::AdditiveBlend:
+	case AnimationNodeType::Subgraph:
+	case AnimationNodeType::Count:
+		break;
 	}
+	return std::monostate{};
 }
 
 // Returns the asset path of an AnimationSample node, or nullptr for other nodes
@@ -227,19 +233,17 @@ AnimationNodeId AnimationGraphBuilder::AddNode( AnimationNodeType type )
 	slot.node.type = type;
 	slot.node.settings = CreateSettings( type );
 
-	switch( type )
+	if( type == AnimationNodeType::Subgraph )
 	{
-	case AnimationNodeType::Subgraph:
 		slot.subgraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *m_network, this, id ) ); // NOLINT(modernize-make-unique): the constructor is private
-		break;
-	case AnimationNodeType::SubgraphInput:
+	}
+	else if( type == AnimationNodeType::SubgraphInput )
+	{
 		m_interfaceInputs.push_back( id );
-		break;
-	case AnimationNodeType::Output:
+	}
+	else if( type == AnimationNodeType::Output )
+	{
 		m_interfaceOutputs.push_back( id );
-		break;
-	default:
-		break;
 	}
 	ResizeInputConstants( slot.node, GetInputCount( id ) );
 	for( uint32_t socket = 0; socket < slot.node.inputConstants.size(); ++socket )
@@ -417,19 +421,22 @@ std::string AnimationGraphBuilder::GetInputName( AnimationSocketRef input ) cons
 		return {};
 	}
 	const auto& node = slot->node;
-	switch( node.type )
+	switch( detail::GetNodeTypeInfo( node.type ).layout )
 	{
-	case AnimationNodeType::Output:
-		return m_parent ? GetInterface( node ).name : "pose";
-	case AnimationNodeType::Subgraph: {
+	case detail::SocketLayout::Interface:
+		// Only Output nodes have an input; the one of the root graph keeps its fixed name
+		return m_parent ? GetInterface( node ).name : detail::GetInputName( GetShape( node ), input.socket );
+	case detail::SocketLayout::Subgraph: {
 		const auto& graph = *slot->subgraph;
 		return GetInterface( graph.FindSlot( graph.m_interfaceInputs[input.socket] )->node ).name;
 	}
-	case AnimationNodeType::Expression:
+	case detail::SocketLayout::Expression:
 		return std::get<AnimationExpressionSettings>( node.settings ).inputNames[input.socket];
-	default:
+	case detail::SocketLayout::Fixed:
+	case detail::SocketLayout::Switch:
 		return detail::GetInputName( GetShape( node ), input.socket );
 	}
+	return {};
 }
 
 std::string AnimationGraphBuilder::GetOutputName( AnimationSocketRef output ) const
@@ -439,17 +446,21 @@ std::string AnimationGraphBuilder::GetOutputName( AnimationSocketRef output ) co
 	{
 		return {};
 	}
-	switch( slot->node.type )
+	switch( detail::GetNodeTypeInfo( slot->node.type ).layout )
 	{
-	case AnimationNodeType::SubgraphInput:
+	case detail::SocketLayout::Interface:
+		// Only SubgraphInput nodes have an output
 		return GetInterface( slot->node ).name;
-	case AnimationNodeType::Subgraph: {
+	case detail::SocketLayout::Subgraph: {
 		const auto& graph = *slot->subgraph;
 		return GetInterface( graph.FindSlot( graph.m_interfaceOutputs[output.socket] )->node ).name;
 	}
-	default:
+	case detail::SocketLayout::Fixed:
+	case detail::SocketLayout::Switch:
+	case detail::SocketLayout::Expression:
 		return detail::GetOutputName( slot->node.type );
 	}
+	return {};
 }
 
 bool AnimationGraphBuilder::IsReachable( AnimationNodeId from, AnimationNodeId to ) const
@@ -1648,9 +1659,14 @@ private:
 			const auto& source = detail::GetNodeData<can::ExpressionNode>( graph, node );
 			return AnimationExpressionSettings{ ToStdString( source.expression ), ReadStrings( source.inputNames ) };
 		}
-		default:
-			return std::monostate{};
+		case AnimationNodeType::RestPose:
+		case AnimationNodeType::Blend:
+		case AnimationNodeType::AdditiveBlend:
+		case AnimationNodeType::Subgraph:
+		case AnimationNodeType::Count:
+			break;
 		}
+		return std::monostate{};
 	}
 };
 

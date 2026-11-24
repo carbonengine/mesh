@@ -44,6 +44,49 @@ constexpr uint32_t ADDITIVE_ADDITIVE_INPUT = 2;
 constexpr uint32_t ADDITIVE_ALPHA_INPUT = 3;
 constexpr uint32_t ADDITIVE_WEIGHTS_INPUT = 4;
 
+/** How the sockets of a node type are defined. */
+enum class SocketLayout : uint8_t
+{
+	/** The inputs and the output are listed in NodeTypeInfo. */
+	Fixed,
+	/** SubgraphInput and Output: like Fixed, but the socket type is declared by the node. */
+	Interface,
+	/** Switch and RandomSwitch: the listed inputs followed by a configurable number of pose inputs. */
+	Switch,
+	/** Expression: one Float input per expression input name. */
+	Expression,
+	/** Subgraph: the sockets are the interface of the contained graph. */
+	Subgraph,
+};
+
+/** Description of an input socket with a fixed name and type. */
+struct SocketInfo
+{
+	const char* name = "";
+	can::SocketType type = can::SocketType::Float;
+	/** Constant of the input in a newly created node. */
+	float defaultValue = 0.f;
+};
+
+/** Description of a node type: its name, sockets and data. All socket queries are derived from it. */
+struct NodeTypeInfo
+{
+	const char* name = "";
+	SocketLayout layout = SocketLayout::Fixed;
+	/** Fixed inputs; for the Switch layout, the inputs preceding the pose inputs. */
+	const SocketInfo* inputs = nullptr;
+	uint32_t inputCount = 0;
+	/** The node has an output socket (all except Output; Subgraph sockets come from its graph). */
+	bool hasOutput = true;
+	can::SocketType outputType = can::SocketType::Pose;
+	const char* outputName = "pose";
+	/** The node has type specific data in a table of the graph. */
+	bool hasData = false;
+};
+
+/** Returns the description of a node type. Not valid for NodeType::Count. */
+NodeTypeInfo GetNodeTypeInfo( can::NodeType type );
+
 /** Returns the name of a node type. */
 const char* GetNodeTypeName( can::NodeType type );
 
