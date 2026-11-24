@@ -30,9 +30,12 @@ include(GenerateExportHeader)
 
 set(PUBLIC_HEADER_FILES
     include/cmf/animation.h
+    include/cmf/animationnetwork.h
+    include/cmf/animationnetworkbuilder.h
     include/cmf/bounds.h
     include/cmf/bufferstreams.h
     include/cmf/bufferutils.h
+    include/cmf/can.h
     include/cmf/cmf.h
     include/cmf/compression.h
     include/cmf/converters.h
@@ -50,6 +53,9 @@ set(PUBLIC_HEADER_FILES
 set(CARBON_MESH_SOURCE_FILES
     ${PUBLIC_HEADER_FILES}
     src/cmf/animation.cpp
+    src/cmf/animationnetwork.cpp
+    src/cmf/animationnetworkbuilder.cpp
+    src/cmf/animationnetworkformat.cpp
     src/cmf/bounds.cpp
     src/cmf/bufferutils.cpp
     src/cmf/compression.cpp

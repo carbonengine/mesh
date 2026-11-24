@@ -2,6 +2,9 @@
 
 set(CMF_TEST_SOURCES
     animation.cpp
+    animationnetwork.cpp
+    animationnetworkbuilder.cpp
+    networktestutils.h
     main.cpp
     transforms.cpp
     writer.cpp
