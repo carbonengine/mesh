@@ -212,21 +212,57 @@ The following network blends between an idle and a walk animation based on a ``s
     {
         for( const auto& error : builder.GetErrors() )
         {
-            // Report the problem, for example an unconnected input or a missing animation
+            // Report the problem, for example an unconnected input
         }
+    }
+    for( const auto& warning : builder.GetWarnings() )
+    {
+        // Report problems that don't prevent evaluation, for example a missing animation
     }
     std::vector<uint8_t> file = builder.Save();
 
 Editing operations return a ``cmf::ValidationResult`` describing why an operation failed, for example a connection
 between sockets of different types or a connection that would create a cycle. ``GetErrors`` lists problems that
-prevent the network from being evaluated, such as unconnected pose inputs or animations missing from their files.
-Networks with such problems can still be saved and loaded again for editing.
+prevent the network from being evaluated, such as unconnected pose inputs. ``GetWarnings`` lists problems that the
+network works around, such as animations missing from their files. Networks with errors can still be saved and
+loaded again for editing.
 
 The type specific settings of a node are returned by ``GetSettings``, for example
 ``graph.GetSettings<cmf::AnimationSampleSettings>( idle )``.
 
 ``AnimationNetworkBuilder::Load`` reads a saved network for further editing. Node handles are not stored in the
-file: nodes are renumbered without removed nodes when saved.
+file: nodes are renumbered without removed nodes when saved. ``GetSaveLayout`` returns the graphs and nodes in the
+order they are saved, which lets tools associate their own data with nodes. Such data can be stored in the file with
+``SetEditorData``, see :doc:`animationNetworkFormat`:
+
+.. code-block:: cpp
+
+    // Store a position per node, keyed by its location in the saved file
+    std::string positions;
+    const auto layout = builder.GetSaveLayout();
+    for( size_t graphIndex = 0; graphIndex < layout.size(); ++graphIndex )
+    {
+        for( size_t nodeIndex = 0; nodeIndex < layout[graphIndex].nodes.size(); ++nodeIndex )
+        {
+            positions += FormatPosition( graphIndex, nodeIndex, GetPosition( layout[graphIndex].nodes[nodeIndex] ) );
+        }
+    }
+    builder.SetEditorData( { positions.begin(), positions.end() } );
+    std::vector<uint8_t> file = builder.Save();
+
+Node Types
+^^^^^^^^^^
+
+``cmf::GetAnimationNodeTypeInfo`` describes a node type: its name, how its sockets are defined and the names, types
+and default constants of its fixed inputs. Tools use it to list node types without creating nodes:
+
+.. code-block:: cpp
+
+    for( uint32_t type = 0; type < static_cast<uint32_t>( cmf::AnimationNodeType::Count ); ++type )
+    {
+        const auto info = cmf::GetAnimationNodeTypeInfo( static_cast<cmf::AnimationNodeType>( type ) );
+        // info.name, info.inputs[0 .. info.inputCount), info.outputType, ...
+    }
 
 Embedding Assets
 ^^^^^^^^^^^^^^^^
@@ -258,7 +294,7 @@ Malformed files are rejected, see `Errors`_.
 
 Assets may load asynchronously. ``IsReady`` returns true once all assets are loaded and the network has no errors;
 at that point the network prepares itself for evaluation. ``HasPendingAssets`` and ``GetErrors`` tell why a network
-isn't ready yet.
+isn't ready yet. A network with warnings is ready; ``GetWarnings`` lists what it works around.
 
 Instances
 ^^^^^^^^^
@@ -333,8 +369,11 @@ Problems are reported in two ways:
   invalid indices or node types, edges between sockets of different types, inputs with more than one incoming edge,
   cycles, or subgraphs that don't form a tree.
 * **Incomplete networks** load, but aren't ready: ``GetErrors`` lists problems such as a missing skeleton, a missing
-  Output node, unconnected pose inputs, assets that failed to load, animations, bone masks or bones that don't
-  exist, and invalid expressions or random weights.
+  Output node, unconnected pose inputs, and invalid expressions or random weights.
+* **Missing assets** are worked around, so that networks can be evaluated while assets are missing or being
+  authored: an AnimationSample node whose animation is not set, failed to load or doesn't exist plays the rest pose,
+  a NamedBoneWeights node whose bone mask doesn't exist weights all bones fully, and BoneWeights entries of bones
+  that don't exist are ignored. ``GetWarnings`` lists these problems.
 
 Memory and Threads
 ------------------

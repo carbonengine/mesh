@@ -16,6 +16,7 @@ A CAN file consists of:
 #. A ``Header`` with the section table.
 #. The Network section, holding a ``NetworkData`` structure. It is always the first section.
 #. Zero or more EmbeddedCmf sections, each holding a complete CMF file.
+#. Optionally one EditorData section with data of editing tools, see `Editor Data`_.
 
 Sections start at offsets aligned to 8 bytes.
 
@@ -43,7 +44,7 @@ Header
       - CRC32 of the rest of the file, starting after this field
     * - ``sections``
       - ``Span<Section>``
-      - Section table: offset, size and type (``Network`` or ``EmbeddedCmf``) of each section
+      - Section table: offset, size and type (``Network``, ``EmbeddedCmf`` or ``EditorData``) of each section
 
 Network Data
 ------------
@@ -57,6 +58,20 @@ Network Data
 * ``parameters``: the control parameters, with name, default value and range.
 * ``graphs``: the graphs of the network. ``graphs[0]`` is the root graph; the others are subgraphs, each referenced
   by exactly one Subgraph node.
+
+Editor Data
+-----------
+
+The EditorData section holds data that only editing tools use, for example the positions of nodes in a graph view.
+Its contents are opaque to the library: ``cmf::AnimationNetwork`` ignores the section, and
+``cmf::AnimationNetworkBuilder`` keeps its bytes (``SetEditorData`` / ``GetEditorData``) and writes it as the last
+section of the file. A file has at most one EditorData section, and assets can't be embedded in it.
+
+Tools that store per-node data refer to nodes by their position in the file: graph index and node index. The order
+in which ``AnimationNetworkBuilder::Save`` stores graphs and nodes is returned by ``GetSaveLayout``.
+
+The section was added without changing ``FILE_VERSION``. Versions of the library from before it was introduced
+reject files that contain it.
 
 Graphs
 ^^^^^^
@@ -120,7 +135,8 @@ Validation
 They check:
 
 * The signature, version, header size and CRC.
-* That sections don't overlap and lie within the file, and that the first section is the Network section.
+* That sections don't overlap and lie within the file, that the first section is the Network section and that there
+  is at most one EditorData section.
 * That all spans are aligned and lie within their section, and that embedded CMF files are valid.
 * That all indices are in range: assets, sections, parameters, graphs and node data. Each node data entry belongs to
   one node.
@@ -131,7 +147,8 @@ They check:
   the edges of each graph form no cycle.
 
 Well-formed files may still describe incomplete networks, for example with unconnected pose inputs. Such networks
-load, but are not ready for evaluation; ``GetErrors`` describes the problems.
+load, but are not ready for evaluation; ``GetErrors`` describes the problems. Problems the network works around,
+such as missing animations, are described by ``GetWarnings``.
 
 Versioning
 ----------

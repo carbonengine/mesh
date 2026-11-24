@@ -29,6 +29,56 @@ using AnimationNodeType = can::NodeType;
 /** @brief Type of data that flows through an animation network edge. */
 using AnimationSocketType = can::SocketType;
 
+/** @brief How the sockets of an animation network node type are defined. */
+enum class AnimationSocketLayout : uint8_t
+{
+	/** The inputs and the output are listed in AnimationNodeTypeInfo. */
+	Fixed,
+	/** SubgraphInput and Output nodes: like Fixed, but the socket type and name are declared by the node. */
+	Interface,
+	/** Switch and RandomSwitch nodes: the listed inputs followed by a configurable number of pose inputs. */
+	Switch,
+	/** Expression nodes: one Float input per expression input name. */
+	Expression,
+	/** Subgraph nodes: the sockets are the interface of the contained graph. */
+	Subgraph,
+};
+
+/** @brief Description of an input socket with a fixed name and type. */
+struct AnimationSocketInfo
+{
+	/** Name of the socket. */
+	const char* name = "";
+	/** Type of data the socket accepts. */
+	AnimationSocketType type = AnimationSocketType::Float;
+	/** Constant of a Float input in a newly created node. */
+	float defaultValue = 0.f;
+};
+
+/** @brief Description of an animation network node type, for example for listing node types in an editor. */
+struct AnimationNodeTypeInfo
+{
+	/** Name of the node type. */
+	const char* name = "";
+	/** How the sockets of the node type are defined. */
+	AnimationSocketLayout layout = AnimationSocketLayout::Fixed;
+	/** Fixed inputs; for the Switch layout, the inputs preceding the pose inputs. */
+	const AnimationSocketInfo* inputs = nullptr;
+	/** Number of entries in inputs. */
+	uint32_t inputCount = 0;
+	/** True if the node type has an output socket. Subgraph sockets come from their graph. */
+	bool hasOutput = true;
+	/** Type of the output socket. */
+	AnimationSocketType outputType = AnimationSocketType::Pose;
+	/** Name of the output socket, empty if the node declares it. */
+	const char* outputName = "";
+	/** True if nodes of the type have settings (see AnimationNodeSettings). Subgraph nodes have a graph instead. */
+	bool hasSettings = false;
+};
+
+/** @brief Returns the description of a node type. Not valid for AnimationNodeType::Count. */
+[[nodiscard]] CARBON_MESH_EXPORT AnimationNodeTypeInfo GetAnimationNodeTypeInfo( AnimationNodeType type );
+
 /** @brief Resolves asset paths referenced by an animation network to loaded CMF data.
 *
 * Threading contract: networks call RequestLoad and Release from a single thread, and the loader must invoke the
@@ -109,7 +159,13 @@ public:
 	* still loading are not reported as errors. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetErrors() const;
 
-	/** @brief Returns true if a network is loaded, all its assets are loaded and it has no errors, so that
+	/** @brief Returns descriptions of problems the network works around when it is evaluated: animations that are
+	* not set, failed to load or are missing play the rest pose, missing bone masks weight all bones fully and weights
+	* of unknown bones are ignored. */
+	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetWarnings() const;
+
+	/** @brief Returns true if a network is loaded, all its assets are loaded and it has no errors (it may have
+	* warnings), so that
 	* AnimationNetworkInstance objects can be created. The network is prepared for evaluation when it becomes ready. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool IsReady() const;
 
@@ -132,8 +188,9 @@ private:
 	void Unload();
 	void CompileIfReady();
 	void OnAssetLoaded( uint32_t loadId, uint32_t assetIndex, const cmf::Data* data );
-	void ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors ) const;
-	void ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& errors ) const;
+	void CollectProblems( std::vector<std::string>* errors, std::vector<std::string>* warnings ) const;
+	void ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors, std::vector<std::string>& warnings ) const;
+	void ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& warnings ) const;
 
 	AnimationAssetLoader* m_loader = nullptr;
 	/** Expires when the network is destroyed, so that late loader callbacks are ignored. */

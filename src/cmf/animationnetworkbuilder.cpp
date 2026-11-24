@@ -1048,6 +1048,21 @@ bool AnimationNetworkBuilder::HasPendingAssets() const
 std::vector<std::string> AnimationNetworkBuilder::GetErrors() const
 {
 	std::vector<std::string> errors;
+	CollectProblems( &errors, nullptr );
+	return errors;
+}
+
+std::vector<std::string> AnimationNetworkBuilder::GetWarnings() const
+{
+	std::vector<std::string> warnings;
+	CollectProblems( nullptr, &warnings );
+	return warnings;
+}
+
+void AnimationNetworkBuilder::CollectProblems( std::vector<std::string>* errorsOut, std::vector<std::string>* warningsOut ) const
+{
+	std::vector<std::string> errors;
+	std::vector<std::string> warnings;
 	if( m_skeletonPath.empty() )
 	{
 		errors.emplace_back( "No skeleton is set" );
@@ -1076,14 +1091,21 @@ std::vector<std::string> AnimationNetworkBuilder::GetErrors() const
 		for( const auto id : graph->GetNodes() )
 		{
 			const auto label = graphName + ": " + GetNodeLabel( *graph->GetNode( id ), id );
-			ValidateNode( *graph, id, label + ": ", errors );
+			ValidateNode( *graph, id, label + ": ", errors, warnings );
 			if( const auto* subgraph = graph->GetSubgraph( id ) )
 			{
 				graphs.emplace_back( subgraph, graphName + "/" + GetNodeLabel( *graph->GetNode( id ), id ) );
 			}
 		}
 	}
-	return errors;
+	if( errorsOut != nullptr )
+	{
+		*errorsOut = std::move( errors );
+	}
+	if( warningsOut != nullptr )
+	{
+		*warningsOut = std::move( warnings );
+	}
 }
 
 bool AnimationNetworkBuilder::IsReady() const
@@ -1171,7 +1193,7 @@ void AnimationNetworkBuilder::OnAssetLoaded( uint32_t requestId, const cmf::Data
 	MarkModified();
 }
 
-void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, AnimationNodeId id, const std::string& prefix, std::vector<std::string>& errors ) const
+void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, AnimationNodeId id, const std::string& prefix, std::vector<std::string>& errors, std::vector<std::string>& warnings ) const
 {
 	const auto& node = *graph.GetNode( id );
 	for( uint32_t socket = 0; socket < graph.GetInputCount( id ); ++socket )
@@ -1186,17 +1208,17 @@ void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, 
 	const auto* skeleton = GetSkeleton();
 	if( const auto* sample = std::get_if<AnimationSampleSettings>( &node.settings ) )
 	{
-		ValidateAnimationSample( *sample, prefix, errors );
+		ValidateAnimationSample( *sample, prefix, warnings );
 	}
 	else if( const auto* mask = std::get_if<AnimationNamedBoneWeightsSettings>( &node.settings ) )
 	{
 		if( mask->maskName.empty() )
 		{
-			errors.push_back( prefix + "no bone mask is set" );
+			warnings.push_back( prefix + "no bone mask is set" );
 		}
 		else if( skeleton && !detail::FindBoneMask( *skeleton, mask->maskName ) )
 		{
-			errors.push_back( prefix + "bone mask '" + mask->maskName + "' not found in the skeleton" );
+			warnings.push_back( prefix + "bone mask '" + mask->maskName + "' not found in the skeleton" );
 		}
 	}
 	else if( const auto* weights = std::get_if<AnimationBoneWeightsSettings>( &node.settings ) )
@@ -1205,7 +1227,7 @@ void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, 
 		{
 			if( skeleton && detail::FindBone( *skeleton, weight.bone ) == can::NO_INDEX )
 			{
-				errors.push_back( prefix + "bone '" + weight.bone + "' not found in the skeleton" );
+				warnings.push_back( prefix + "bone '" + weight.bone + "' not found in the skeleton" );
 			}
 		}
 	}
@@ -1229,21 +1251,21 @@ void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, 
 	}
 }
 
-void AnimationNetworkBuilder::ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& errors ) const
+void AnimationNetworkBuilder::ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& warnings ) const
 {
 	if( settings.assetPath.empty() )
 	{
-		errors.push_back( prefix + "no animation asset is set" );
+		warnings.push_back( prefix + "no animation asset is set" );
 		return;
 	}
 	const auto& entry = m_assets.find( settings.assetPath )->second;
 	if( entry.state == AssetState::Failed )
 	{
-		errors.push_back( prefix + "failed to load animation asset '" + settings.assetPath + "'" );
+		warnings.push_back( prefix + "failed to load animation asset '" + settings.assetPath + "'" );
 	}
 	else if( entry.state == AssetState::Loaded && !detail::FindAnimation( *entry.data, settings.animationName ) )
 	{
-		errors.push_back( prefix + "animation '" + settings.animationName + "' not found in '" + settings.assetPath + "'" );
+		warnings.push_back( prefix + "animation '" + settings.animationName + "' not found in '" + settings.assetPath + "'" );
 	}
 }
 
@@ -1310,6 +1332,57 @@ public:
 			builder.m_parameters.push_back( { ToStdString( parameter.name ), parameter.defaultValue, parameter.minValue, parameter.maxValue } );
 		}
 		ReadGraphs( *builder.m_rootGraph, data );
+		const auto editorSection = detail::FindSection( file, can::SectionType::EditorData );
+		if( editorSection != can::NO_INDEX )
+		{
+			const auto [bytes, size] = detail::GetSectionBytes( file, editorSection );
+			builder.m_editorData.assign( bytes, bytes + size );
+		}
+	}
+
+	/** A graph in save order with the indices assigned to its subgraphs. */
+	struct OrderedGraph
+	{
+		const AnimationGraphBuilder* graph = nullptr;
+		/** Graph index of the subgraph of each slot, NO_INDEX for slots without a live subgraph. */
+		std::vector<uint32_t> subgraphIndices;
+	};
+
+	// Numbers the graphs in the order they are saved: the root graph is 0, and the subgraphs of a graph get the next
+	// free indices in slot order when the graph is visited. Graphs are visited depth first, last subgraph first.
+	static std::vector<OrderedGraph> OrderGraphs( const AnimationGraphBuilder& root )
+	{
+		std::vector<OrderedGraph> graphs( 1 );
+		graphs[0].graph = &root;
+		std::vector<uint32_t> pending = { 0 };
+		while( !pending.empty() )
+		{
+			const auto graphIndex = pending.back();
+			pending.pop_back();
+			const auto& slots = graphs[graphIndex].graph->m_slots;
+			std::vector<uint32_t> subgraphIndices( slots.size(), can::NO_INDEX );
+			for( uint32_t i = 0; i < slots.size(); ++i )
+			{
+				if( slots[i].alive && slots[i].subgraph )
+				{
+					subgraphIndices[i] = static_cast<uint32_t>( graphs.size() );
+					pending.push_back( subgraphIndices[i] );
+					graphs.push_back( { slots[i].subgraph.get(), {} } );
+				}
+			}
+			graphs[graphIndex].subgraphIndices = std::move( subgraphIndices );
+		}
+		return graphs;
+	}
+
+	static std::vector<AnimationGraphLayout> GetLayout( const AnimationGraphBuilder& root )
+	{
+		std::vector<AnimationGraphLayout> layout;
+		for( const auto& ordered : OrderGraphs( root ) )
+		{
+			layout.push_back( { ordered.graph, ordered.graph->GetNodes() } );
+		}
+		return layout;
 	}
 
 private:
@@ -1334,7 +1407,7 @@ private:
 		}
 		WriteGraphs( *builder.m_rootGraph );
 		Modify( m_data.graphs, m_allocator ) = m_graphs;
-		return WriteFile( embeddedFiles );
+		return WriteFile( embeddedFiles, builder.m_editorData );
 	}
 
 	uint32_t GetAssetIndex( const std::string& path )
@@ -1354,26 +1427,33 @@ private:
 		return index;
 	}
 
-	using PendingGraphs = std::vector<std::pair<const AnimationGraphBuilder*, uint32_t>>;
-
 	// Writes the root graph and all subgraphs to m_graphs
 	void WriteGraphs( const AnimationGraphBuilder& root )
 	{
-		m_graphs.emplace_back();
-		PendingGraphs pending = { { &root, 0 } };
+		const auto graphs = OrderGraphs( root );
+		m_graphs.resize( graphs.size() );
+		// Graphs are written in the order they were numbered, which determines the order of the asset table
+		std::vector<uint32_t> pending = { 0 };
 		while( !pending.empty() )
 		{
-			const auto [graph, graphIndex] = pending.back();
+			const auto graphIndex = pending.back();
 			pending.pop_back();
-			WriteGraph( *graph, graphIndex, pending );
+			const auto& ordered = graphs[graphIndex];
+			WriteGraph( *ordered.graph, graphIndex, ordered.subgraphIndices );
+			for( const auto subgraphIndex : ordered.subgraphIndices )
+			{
+				if( subgraphIndex != can::NO_INDEX )
+				{
+					pending.push_back( subgraphIndex );
+				}
+			}
 		}
 	}
 
-	// Writes a graph to m_graphs[graphIndex]; its subgraphs get new indices and are added to pending
-	void WriteGraph( const AnimationGraphBuilder& graph, uint32_t graphIndex, PendingGraphs& pending )
+	// Writes a graph to m_graphs[graphIndex]
+	void WriteGraph( const AnimationGraphBuilder& graph, uint32_t graphIndex, const std::vector<uint32_t>& subgraphIndices )
 	{
 		// Nodes are stored without the slots of removed nodes
-		// m_graphs grows while subgraphs are added, so the graph is assembled here and stored at the end
 		can::Graph result;
 		std::vector<uint32_t> nodeIndices( graph.m_slots.size(), can::NO_INDEX );
 		std::vector<can::Node> nodes;
@@ -1388,10 +1468,7 @@ private:
 			nodes.push_back( WriteNode( slot.node, result ) );
 			if( slot.subgraph )
 			{
-				const auto subgraphIndex = static_cast<uint32_t>( m_graphs.size() );
-				m_graphs.emplace_back();
-				pending.emplace_back( slot.subgraph.get(), subgraphIndex );
-				nodes.back().dataIndex = AddNodeData( result.subgraphNodes, can::SubgraphNode{ subgraphIndex } );
+				nodes.back().dataIndex = AddNodeData( result.subgraphNodes, can::SubgraphNode{ subgraphIndices[i] } );
 			}
 		}
 
@@ -1516,7 +1593,7 @@ private:
 		return ( offset + alignment - 1 ) / alignment * alignment;
 	}
 
-	std::vector<uint8_t> WriteFile( const std::vector<const std::vector<uint8_t>*>& embeddedFiles )
+	std::vector<uint8_t> WriteFile( const std::vector<const std::vector<uint8_t>*>& embeddedFiles, const std::vector<uint8_t>& editorData )
 	{
 		auto network = Flatten( m_data );
 		PointersToOffsets( *reinterpret_cast<can::NetworkData*>( network.data.get() ) ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
@@ -1526,6 +1603,10 @@ private:
 		for( const auto* file : embeddedFiles )
 		{
 			Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( file->size() ), can::SectionType::EmbeddedCmf } );
+		}
+		if( !editorData.empty() )
+		{
+			Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( editorData.size() ), can::SectionType::EditorData } );
 		}
 		auto flattenedHeader = Flatten( header );
 		auto& fileHeader = *reinterpret_cast<can::Header*>( flattenedHeader.data.get() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
@@ -1542,6 +1623,10 @@ private:
 		for( uint32_t i = 0; i < embeddedFiles.size(); ++i )
 		{
 			std::memcpy( result.data() + sections[i + 1].offset, embeddedFiles[i]->data(), embeddedFiles[i]->size() );
+		}
+		if( !editorData.empty() )
+		{
+			std::memcpy( result.data() + sections[sections.size() - 1].offset, editorData.data(), editorData.size() );
 		}
 		PointersToOffsets( fileHeader );
 		std::memcpy( result.data(), flattenedHeader.data.get(), flattenedHeader.size );
@@ -1675,6 +1760,21 @@ std::vector<uint8_t> AnimationNetworkBuilder::Save() const
 	return Serializer::Save( *this );
 }
 
+std::vector<AnimationGraphLayout> AnimationNetworkBuilder::GetSaveLayout() const
+{
+	return Serializer::GetLayout( *m_rootGraph );
+}
+
+void AnimationNetworkBuilder::SetEditorData( std::vector<uint8_t> data )
+{
+	m_editorData = std::move( data );
+}
+
+const std::vector<uint8_t>& AnimationNetworkBuilder::GetEditorData() const
+{
+	return m_editorData;
+}
+
 ValidationResult AnimationNetworkBuilder::Load( const void* file, size_t size )
 {
 	// Copy the file so that it is aligned and can be read in place
@@ -1703,6 +1803,7 @@ void AnimationNetworkBuilder::Clear()
 	m_rootGraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *this, nullptr, {} ) ); // NOLINT(modernize-make-unique): the constructor is private
 	m_parameters.clear();
 	m_embeddedAssets.clear();
+	m_editorData.clear();
 	MarkModified();
 }
 

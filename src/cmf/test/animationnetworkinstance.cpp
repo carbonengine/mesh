@@ -156,6 +156,53 @@ TEST_F( InstanceFixture, RestPoseNetworkOutputsRestPose )
 	EXPECT_EQ( pose.boneTransforms.size(), BONE_COUNT );
 }
 
+TEST_F( InstanceFixture, MissingAnimationsPlayTheRestPose )
+{
+	// A missing animation, a missing file and a sample without an animation are blended together
+	const auto blend = graph.AddNode( cmf::AnimationNodeType::Blend );
+	const auto inner = graph.AddNode( cmf::AnimationNodeType::Blend );
+	Connect( AddSample( "Missing" ), inner, 0 );
+	const auto missingFile = graph.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ExpectOk( graph.SetAnimation( missingFile, "missing.cmf", MOVE_ANIMATION ) );
+	Connect( missingFile, inner, 1 );
+	Connect( inner, blend, 0 );
+	Connect( graph.AddNode( cmf::AnimationNodeType::AnimationSample ), blend, 1 );
+	ExpectOk( graph.SetInputConstant( { blend, 2 }, HALF ) );
+	LoadNetwork( blend );
+	EXPECT_EQ( network.GetWarnings().size(), 3u );
+
+	cmf::AnimationNetworkInstance instance( network );
+	ASSERT_TRUE( instance.IsValid() );
+	instance.Update( 1.f );
+	ASSERT_TRUE( instance.Evaluate() );
+	ExpectPose( instance, RestPose() );
+}
+
+TEST_F( InstanceFixture, MissingBoneMaskWeightsAllBones )
+{
+	const auto blend = graph.AddNode( cmf::AnimationNodeType::Blend );
+	const auto mask = graph.AddNode( cmf::AnimationNodeType::NamedBoneWeights );
+	ExpectOk( graph.SetBoneMask( mask, "Lower" ) );
+	const auto weights = graph.AddNode( cmf::AnimationNodeType::BoneWeights );
+	ExpectOk( graph.SetBoneWeights( weights, { { "Tail", 0.f } }, 1.f ) );
+	const auto additive = graph.AddNode( cmf::AnimationNodeType::Blend );
+	Connect( graph.AddNode( cmf::AnimationNodeType::RestPose ), blend, 0 );
+	Connect( AddSample( MOVE_ANIMATION ), blend, 1 );
+	Connect( mask, blend, 3 );
+	ExpectOk( graph.SetInputConstant( { blend, 2 }, 1.f ) );
+	Connect( blend, additive, 0 );
+	Connect( AddSample( MOVE_ANIMATION ), additive, 1 );
+	Connect( weights, additive, 3 );
+	ExpectOk( graph.SetInputConstant( { additive, 2 }, 1.f ) );
+	LoadNetwork( additive );
+	EXPECT_EQ( network.GetWarnings().size(), 2u );
+
+	cmf::AnimationNetworkInstance instance( network );
+	instance.Update( 1.f );
+	instance.Evaluate();
+	ExpectPose( instance, Sample( MOVE_INDEX, 1.f ) );
+}
+
 TEST_F( InstanceFixture, SamplePlayheadAdvancesWithSpeed )
 {
 	const auto speed = AddParameter( "speed", 1.f );

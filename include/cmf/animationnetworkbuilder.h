@@ -351,6 +351,15 @@ private:
 	std::vector<AnimationNodeId> m_interfaceOutputs;
 };
 
+/** @brief A graph of a network and its nodes in the order AnimationNetworkBuilder::Save stores them. */
+struct AnimationGraphLayout
+{
+	/** The graph. */
+	const AnimationGraphBuilder* graph = nullptr;
+	/** Live nodes of the graph; the position of a node is its index in the saved graph. */
+	std::vector<AnimationNodeId> nodes;
+};
+
 /** @brief Editable animation network: a graph of nodes that combines skeleton poses, a set of control parameters
 * and references to the skeleton and animations it uses.
 *
@@ -426,7 +435,11 @@ public:
 	/** @brief Returns descriptions of all problems that prevent the network from being evaluated. Assets that are
 	* still loading are not reported as errors. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetErrors() const;
-	/** @brief Returns true if all assets are loaded and the network has no errors. */
+	/** @brief Returns descriptions of problems the network works around when it is evaluated: animations that are
+	* not set, failed to load or are missing play the rest pose, missing bone masks weight all bones fully and weights
+	* of unknown bones are ignored. */
+	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetWarnings() const;
+	/** @brief Returns true if all assets are loaded and the network has no errors. It may have warnings. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool IsReady() const;
 
 	/** @brief Returns the loaded data of a referenced asset, or nullptr if it isn't referenced, loaded or failed. */
@@ -441,7 +454,18 @@ public:
 	*/
 	CARBON_MESH_EXPORT ValidationResult Load( const void* file, size_t size );
 
-	/** @brief Removes all nodes, parameters, embedded assets and the skeleton reference. */
+	/** @brief Returns all graphs in the order Save stores them, starting with the root graph, with their live nodes
+	* in stored order. Use it to associate data with nodes of a saved file. Right after Load of a file written by Save,
+	* the layout matches the file. */
+	[[nodiscard]] CARBON_MESH_EXPORT std::vector<AnimationGraphLayout> GetSaveLayout() const;
+
+	/** @brief Sets data of an editing tool, stored in the EditorData section of saved files. The data is opaque to
+	* the network; changing it does not change the generation. Empty data omits the section. */
+	CARBON_MESH_EXPORT void SetEditorData( std::vector<uint8_t> data );
+	/** @brief Returns the editor data set with SetEditorData or read by Load. */
+	[[nodiscard]] CARBON_MESH_EXPORT const std::vector<uint8_t>& GetEditorData() const;
+
+	/** @brief Removes all nodes, parameters, embedded assets, editor data and the skeleton reference. */
 	CARBON_MESH_EXPORT void Clear();
 
 	/** @brief Returns a counter that changes whenever the network or one of its assets changes, for example to
@@ -481,8 +505,9 @@ private:
 	void ReleaseAsset( const std::string& assetPath );
 	void RequestFromLoader( const std::string& assetPath, AssetEntry& entry );
 	void OnAssetLoaded( uint32_t requestId, const cmf::Data* data );
-	void ValidateNode( const AnimationGraphBuilder& graph, AnimationNodeId id, const std::string& prefix, std::vector<std::string>& errors ) const;
-	void ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& errors ) const;
+	void CollectProblems( std::vector<std::string>* errors, std::vector<std::string>* warnings ) const;
+	void ValidateNode( const AnimationGraphBuilder& graph, AnimationNodeId id, const std::string& prefix, std::vector<std::string>& errors, std::vector<std::string>& warnings ) const;
+	void ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& warnings ) const;
 	[[nodiscard]] bool IsParameterReferenced( uint32_t index ) const;
 	void ShiftParameterReferences( uint32_t removedIndex );
 	void MarkModified();
@@ -496,6 +521,7 @@ private:
 	std::string m_skeletonName;
 	std::vector<AnimationParameter> m_parameters;
 	uint64_t m_generation = 1;
+	std::vector<uint8_t> m_editorData;
 	std::unique_ptr<AnimationGraphBuilder> m_rootGraph;
 };
 

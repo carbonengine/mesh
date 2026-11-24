@@ -23,12 +23,46 @@ struct NetworkFixture : public ::testing::Test
 	}
 };
 
-bool HasErrorContaining( const cmf::AnimationNetworkBuilder& network, const std::string& text )
+/** Checks a fixed input of a new node against its description. */
+void ExpectInputMatches( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, uint32_t socket, const cmf::AnimationSocketInfo& info )
 {
-	const auto errors = network.GetErrors();
-	return std::any_of( errors.begin(), errors.end(), [&text]( const std::string& error ) { return error.find( text ) != std::string::npos; } );
+	EXPECT_EQ( graph.GetInputName( { id, socket } ), info.name );
+	EXPECT_EQ( graph.GetInputType( { id, socket } ), info.type );
+	EXPECT_EQ( graph.GetNode( id )->inputConstants[socket], info.defaultValue );
 }
 
+/** Checks the fixed sockets of a new node against the description of its type. */
+void ExpectSocketsMatch( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, const cmf::AnimationNodeTypeInfo& info )
+{
+	constexpr uint32_t defaultPoseInputs = 2;
+	const auto extra = info.layout == cmf::AnimationSocketLayout::Switch ? defaultPoseInputs : 0;
+	ASSERT_EQ( graph.GetInputCount( id ), info.inputCount + extra );
+	for( uint32_t i = 0; i < info.inputCount; ++i )
+	{
+		ExpectInputMatches( graph, id, i, info.inputs[i] );
+	}
+	ASSERT_EQ( graph.GetOutputCount( id ), info.hasOutput ? 1u : 0u );
+	if( info.hasOutput )
+	{
+		EXPECT_EQ( graph.GetOutputType( { id, 0 } ), info.outputType );
+		EXPECT_EQ( graph.GetOutputName( { id, 0 } ), info.outputName );
+	}
+}
+
+bool ContainsText( const std::vector<std::string>& messages, const std::string& text )
+{
+	return std::any_of( messages.begin(), messages.end(), [&text]( const std::string& message ) { return message.find( text ) != std::string::npos; } );
+}
+
+bool HasErrorContaining( const cmf::AnimationNetworkBuilder& network, const std::string& text )
+{
+	return ContainsText( network.GetErrors(), text );
+}
+
+bool HasWarningContaining( const cmf::AnimationNetworkBuilder& network, const std::string& text )
+{
+	return ContainsText( network.GetWarnings(), text );
+}
 }
 
 // Editing
@@ -53,6 +87,29 @@ TEST_F( NetworkFixture, NodesHaveSocketsOfTheirType )
 
 	const auto weights = graph.AddNode( cmf::AnimationNodeType::NamedBoneWeights );
 	EXPECT_EQ( graph.GetOutputType( { weights, 0 } ), cmf::AnimationSocketType::BoneWeights );
+}
+
+TEST_F( NetworkFixture, NodeTypeInfoDescribesTheSocketsOfNewNodes )
+{
+	cmf::AnimationNetworkBuilder network( loader );
+	auto& root = network.GetRootGraph();
+	// A subgraph accepts every node type, including interface nodes
+	auto& graph = *root.GetSubgraph( root.AddNode( cmf::AnimationNodeType::Subgraph ) );
+	for( uint32_t t = 0; t < static_cast<uint32_t>( cmf::AnimationNodeType::Count ); ++t )
+	{
+		const auto type = static_cast<cmf::AnimationNodeType>( t );
+		const auto info = cmf::GetAnimationNodeTypeInfo( type );
+		SCOPED_TRACE( info.name );
+		const auto id = graph.AddNode( type );
+		ASSERT_TRUE( id.IsSet() );
+		if( info.layout == cmf::AnimationSocketLayout::Fixed || info.layout == cmf::AnimationSocketLayout::Switch )
+		{
+			ExpectSocketsMatch( graph, id, info );
+		}
+		EXPECT_EQ( std::holds_alternative<std::monostate>( graph.GetNode( id )->settings ), !info.hasSettings );
+	}
+	EXPECT_EQ( cmf::GetAnimationNodeTypeInfo( cmf::AnimationNodeType::Output ).hasOutput, false );
+	EXPECT_EQ( cmf::GetAnimationNodeTypeInfo( cmf::AnimationNodeType::Subgraph ).layout, cmf::AnimationSocketLayout::Subgraph );
 }
 
 TEST_F( NetworkFixture, RootGraphAllowsOnlyOneOutputAndNoSubgraphInputs )
@@ -316,20 +373,22 @@ TEST_F( NetworkFixture, ErrorsDescribeProblems )
 
 	const auto sample = graph.AddNode( cmf::AnimationNodeType::AnimationSample );
 	ASSERT_TRUE( graph.Connect( { sample, 0 }, { output, 0 } ) );
-	EXPECT_TRUE( HasErrorContaining( network, "no animation asset" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "no animation asset" ) );
 	ASSERT_TRUE( graph.SetAnimation( sample, ASSET_PATH, "Missing" ) );
-	EXPECT_TRUE( HasErrorContaining( network, "animation 'Missing' not found" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "animation 'Missing' not found" ) );
 	ASSERT_TRUE( graph.SetAnimation( sample, ASSET_PATH, MOVE_ANIMATION ) );
 
 	const auto mask = graph.AddNode( cmf::AnimationNodeType::NamedBoneWeights );
 	ASSERT_TRUE( graph.SetBoneMask( mask, "Lower" ) );
-	EXPECT_TRUE( HasErrorContaining( network, "bone mask 'Lower' not found" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "bone mask 'Lower' not found" ) );
 	ASSERT_TRUE( graph.SetBoneMask( mask, MASK_NAME ) );
 
 	const auto weights = graph.AddNode( cmf::AnimationNodeType::BoneWeights );
 	ASSERT_TRUE( graph.SetBoneWeights( weights, { { "Tail", 1.f } }, 0.f ) );
-	EXPECT_TRUE( HasErrorContaining( network, "bone 'Tail' not found" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "bone 'Tail' not found" ) );
 	ASSERT_TRUE( graph.SetBoneWeights( weights, { { "Leaf", 1.f } }, 0.f ) );
+	// Warnings don't prevent evaluation
+	EXPECT_FALSE( HasErrorContaining( network, "not found" ) );
 
 	const auto random = graph.AddNode( cmf::AnimationNodeType::RandomSwitch );
 	ASSERT_TRUE( graph.SetRandomWeights( random, { 1.f } ) );
@@ -338,6 +397,7 @@ TEST_F( NetworkFixture, ErrorsDescribeProblems )
 	ASSERT_TRUE( graph.RemoveNode( random ) );
 
 	EXPECT_TRUE( network.GetErrors().empty() );
+	EXPECT_TRUE( network.GetWarnings().empty() );
 	EXPECT_TRUE( network.IsReady() );
 }
 

@@ -327,8 +327,14 @@ private:
 	{
 		const auto& data = GetNodeData<can::NamedBoneWeightsNode>( GetGraph( ref ), GetNode( ref ) );
 		const auto index = static_cast<uint32_t>( m_boneWeights.size() / m_boneCount );
-		m_boneWeights.resize( m_boneWeights.size() + m_boneCount, 0.f );
 		const auto* mask = FindBoneMask( *m_skeleton, ToStdStringView( data.maskName ) );
+		if( mask == nullptr )
+		{
+			// A missing mask weights all bones fully, like an unconnected weights input
+			m_boneWeights.resize( m_boneWeights.size() + m_boneCount, 1.f );
+			return index;
+		}
+		m_boneWeights.resize( m_boneWeights.size() + m_boneCount, 0.f );
 		for( const auto& weight : mask->weights )
 		{
 			if( weight.index < m_boneCount )
@@ -347,7 +353,11 @@ private:
 		for( const auto& weight : data.weights )
 		{
 			const auto bone = FindBone( *m_skeleton, ToStdStringView( weight.bone ) );
-			m_boneWeights[index * m_boneCount + bone] = weight.weight;
+			// Weights of bones that are not in the skeleton are ignored
+			if( bone != can::NO_INDEX )
+			{
+				m_boneWeights[index * m_boneCount + bone] = weight.weight;
+			}
 		}
 		return index;
 	}
@@ -360,6 +370,13 @@ private:
 
 	uint32_t AddSampleOp( const NodeRef& ref )
 	{
+		const auto& data = GetNodeData<can::AnimationSampleNode>( GetGraph( ref ), GetNode( ref ) );
+		const auto* asset = data.assetIndex == can::NO_INDEX ? nullptr : m_network->GetAssetData( data.assetIndex );
+		if( asset == nullptr || FindAnimation( *asset, ToStdStringView( data.animationName ) ) == nullptr )
+		{
+			// Animations that are not set, failed to load or are missing play the rest pose
+			return AddRestPoseOp( ref );
+		}
 		PoseOp op;
 		op.type = PoseOpType::Sample;
 		op.data = AddSample( ref );

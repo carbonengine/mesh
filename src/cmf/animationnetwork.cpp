@@ -44,25 +44,25 @@ void ValidateRandomSwitch( const can::RandomSwitchNode& node, const std::string&
 	}
 }
 
-void ValidateBoneMask( const can::NamedBoneWeightsNode& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors )
+void ValidateBoneMask( const can::NamedBoneWeightsNode& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& warnings )
 {
 	if( node.maskName.empty() )
 	{
-		errors.push_back( prefix + "no bone mask is set" );
+		warnings.push_back( prefix + "no bone mask is set" );
 	}
 	else if( skeleton && !detail::FindBoneMask( *skeleton, ToStdStringView( node.maskName ) ) )
 	{
-		errors.push_back( prefix + "bone mask '" + ToStdString( node.maskName ) + "' not found in the skeleton" );
+		warnings.push_back( prefix + "bone mask '" + ToStdString( node.maskName ) + "' not found in the skeleton" );
 	}
 }
 
-void ValidateBoneWeights( const can::BoneWeightsNode& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors )
+void ValidateBoneWeights( const can::BoneWeightsNode& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& warnings )
 {
 	for( const auto& weight : node.weights )
 	{
 		if( skeleton && detail::FindBone( *skeleton, ToStdStringView( weight.bone ) ) == can::NO_INDEX )
 		{
-			errors.push_back( prefix + "bone '" + ToStdString( weight.bone ) + "' not found in the skeleton" );
+			warnings.push_back( prefix + "bone '" + ToStdString( weight.bone ) + "' not found in the skeleton" );
 		}
 	}
 }
@@ -188,10 +188,28 @@ bool AnimationNetwork::HasPendingAssets() const
 std::vector<std::string> AnimationNetwork::GetErrors() const
 {
 	std::vector<std::string> errors;
+	CollectProblems( &errors, nullptr );
+	return errors;
+}
+
+std::vector<std::string> AnimationNetwork::GetWarnings() const
+{
+	std::vector<std::string> warnings;
+	CollectProblems( nullptr, &warnings );
+	return warnings;
+}
+
+void AnimationNetwork::CollectProblems( std::vector<std::string>* errorsOut, std::vector<std::string>* warningsOut ) const
+{
+	std::vector<std::string> errors;
+	std::vector<std::string> warnings;
 	if( !m_data )
 	{
-		errors.emplace_back( "No network is loaded" );
-		return errors;
+		if( errorsOut != nullptr )
+		{
+			*errorsOut = { "No network is loaded" };
+		}
+		return;
 	}
 	const auto& data = *m_data;
 	if( data.skeletonAsset == can::NO_INDEX )
@@ -226,26 +244,33 @@ std::vector<std::string> AnimationNetwork::GetErrors() const
 					errors.push_back( prefix + "input '" + detail::GetInputName( data, graph, node, socket ) + "' is not connected" );
 				}
 			}
-			ValidateNode( graph, node, skeleton, prefix, errors );
+			ValidateNode( graph, node, skeleton, prefix, errors, warnings );
 		}
 	}
 	errors.insert( errors.end(), m_compileErrors.begin(), m_compileErrors.end() );
-	return errors;
+	if( errorsOut != nullptr )
+	{
+		*errorsOut = std::move( errors );
+	}
+	if( warningsOut != nullptr )
+	{
+		*warningsOut = std::move( warnings );
+	}
 }
 
-void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors ) const
+void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& node, const Skeleton* skeleton, const std::string& prefix, std::vector<std::string>& errors, std::vector<std::string>& warnings ) const
 {
 	// Every node type needs a case; there is deliberately no default case
 	switch( node.type )
 	{
 	case can::NodeType::AnimationSample:
-		ValidateAnimationSample( detail::GetNodeData<can::AnimationSampleNode>( graph, node ), prefix, errors );
+		ValidateAnimationSample( detail::GetNodeData<can::AnimationSampleNode>( graph, node ), prefix, warnings );
 		break;
 	case can::NodeType::NamedBoneWeights:
-		ValidateBoneMask( detail::GetNodeData<can::NamedBoneWeightsNode>( graph, node ), skeleton, prefix, errors );
+		ValidateBoneMask( detail::GetNodeData<can::NamedBoneWeightsNode>( graph, node ), skeleton, prefix, warnings );
 		break;
 	case can::NodeType::BoneWeights:
-		ValidateBoneWeights( detail::GetNodeData<can::BoneWeightsNode>( graph, node ), skeleton, prefix, errors );
+		ValidateBoneWeights( detail::GetNodeData<can::BoneWeightsNode>( graph, node ), skeleton, prefix, warnings );
 		break;
 	case can::NodeType::Expression:
 		if( detail::GetNodeData<can::ExpressionNode>( graph, node ).expression.empty() )
@@ -270,23 +295,23 @@ void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& n
 	}
 }
 
-void AnimationNetwork::ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& errors ) const
+void AnimationNetwork::ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& warnings ) const
 {
 	const auto& data = *m_data;
 	if( node.assetIndex == can::NO_INDEX )
 	{
-		errors.push_back( prefix + "no animation asset is set" );
+		warnings.push_back( prefix + "no animation asset is set" );
 		return;
 	}
 	const auto& asset = m_assets[node.assetIndex];
 	const auto path = ToStdString( data.assets[node.assetIndex].path );
 	if( asset.state == AssetState::Failed )
 	{
-		errors.push_back( prefix + "failed to load animation asset '" + path + "'" );
+		warnings.push_back( prefix + "failed to load animation asset '" + path + "'" );
 	}
 	else if( asset.state == AssetState::Loaded && !detail::FindAnimation( *asset.data, ToStdStringView( node.animationName ) ) )
 	{
-		errors.push_back( prefix + "animation '" + ToStdString( node.animationName ) + "' not found in '" + path + "'" );
+		warnings.push_back( prefix + "animation '" + ToStdString( node.animationName ) + "' not found in '" + path + "'" );
 	}
 }
 
@@ -295,4 +320,22 @@ bool AnimationNetwork::IsReady() const
 	return m_compiled != nullptr;
 }
 
+AnimationNodeTypeInfo GetAnimationNodeTypeInfo( AnimationNodeType type )
+{
+	// The public socket description mirrors the internal one, so that the internal socket tables can be exposed
+	static_assert( sizeof( AnimationSocketInfo ) == sizeof( detail::SocketInfo ) && alignof( AnimationSocketInfo ) == alignof( detail::SocketInfo ) );
+	static_assert( offsetof( AnimationSocketInfo, name ) == offsetof( detail::SocketInfo, name ) && offsetof( AnimationSocketInfo, type ) == offsetof( detail::SocketInfo, type ) && offsetof( AnimationSocketInfo, defaultValue ) == offsetof( detail::SocketInfo, defaultValue ) );
+	const auto info = detail::GetNodeTypeInfo( type );
+	AnimationNodeTypeInfo result;
+	result.name = info.name;
+	result.layout = static_cast<AnimationSocketLayout>( info.layout );
+	result.inputs = reinterpret_cast<const AnimationSocketInfo*>( info.inputs ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the layouts are checked by the static_asserts above
+	result.inputCount = info.inputCount;
+	result.hasOutput = info.hasOutput;
+	result.outputType = info.outputType;
+	result.outputName = info.outputName;
+	// Subgraph nodes reference their graph instead of having settings
+	result.hasSettings = info.hasData && type != AnimationNodeType::Subgraph;
+	return result;
+}
 }

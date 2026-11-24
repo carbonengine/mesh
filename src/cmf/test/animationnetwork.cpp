@@ -117,6 +117,43 @@ void UpdateCrc( std::vector<uint8_t>& file )
 	GetHeader( file ).crc32 = cmf::ComputeCrc32( file.data() + crcEnd, file.size() - crcEnd );
 }
 
+/** Checks that the nodes of a graph layout are stored in the graph in layout order. */
+void ExpectGraphMatchesFile( const cmf::AnimationGraphLayout& layout, const cmf::can::Graph& graph )
+{
+	ASSERT_EQ( graph.nodes.size(), layout.nodes.size() );
+	for( size_t n = 0; n < layout.nodes.size(); ++n )
+	{
+		const auto& node = *layout.graph->GetNode( layout.nodes[n] );
+		EXPECT_EQ( graph.nodes[n].type, node.type ) << "node " << n;
+		EXPECT_EQ( cmf::ToStdString( graph.nodes[n].name ), node.name ) << "node " << n;
+	}
+}
+
+/** Checks that the nodes of a save layout are stored in the file in layout order. */
+void ExpectLayoutMatchesFile( const std::vector<cmf::AnimationGraphLayout>& layout, const cmf::can::NetworkData& data )
+{
+	ASSERT_EQ( data.graphs.size(), layout.size() );
+	for( size_t g = 0; g < layout.size(); ++g )
+	{
+		SCOPED_TRACE( "graph " + std::to_string( g ) );
+		ExpectGraphMatchesFile( layout[g], data.graphs[g] );
+	}
+}
+
+/** Checks that two save layouts have the same nodes, compared by name. */
+void ExpectSameLayout( const std::vector<cmf::AnimationGraphLayout>& a, const std::vector<cmf::AnimationGraphLayout>& b )
+{
+	ASSERT_EQ( a.size(), b.size() );
+	for( size_t g = 0; g < a.size(); ++g )
+	{
+		ASSERT_EQ( a[g].nodes.size(), b[g].nodes.size() ) << "graph " << g;
+		for( size_t n = 0; n < a[g].nodes.size(); ++n )
+		{
+			EXPECT_EQ( a[g].graph->GetNode( a[g].nodes[n] )->name, b[g].graph->GetNode( b[g].nodes[n] )->name ) << "graph " << g << " node " << n;
+		}
+	}
+}
+
 bool HasErrorContaining( const std::vector<std::string>& errors, const std::string& text )
 {
 	return std::any_of( errors.begin(), errors.end(), [&text]( const std::string& error ) { return error.find( text ) != std::string::npos; } );
@@ -170,6 +207,92 @@ TEST_F( RuntimeFixture, EmbeddedAssetsSurviveSaving )
 	EXPECT_NE( builder.GetSkeleton(), nullptr );
 	EXPECT_EQ( loader.GetRequests().size(), requests );
 	EXPECT_EQ( builder.Save(), file );
+}
+
+TEST_F( RuntimeFixture, EditorDataSurvivesSavingAndIsSkippedByTheRuntime )
+{
+	const std::vector<uint8_t> editorData = { 'e', 'd', 'i', 't' };
+	const auto file = BuildCompleteNetwork( true );
+
+	cmf::AnimationNetworkBuilder builder( loader );
+	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
+	EXPECT_TRUE( builder.GetEditorData().empty() );
+	const auto generation = builder.GetGeneration();
+	builder.SetEditorData( editorData );
+	EXPECT_EQ( builder.GetGeneration(), generation ) << "editor data is not part of the network";
+	auto withEditorData = builder.Save();
+	const auto& sections = GetHeader( withEditorData ).sections;
+	ASSERT_EQ( sections.size(), 3u );
+	EXPECT_EQ( sections[2].type, cmf::can::SectionType::EditorData );
+
+	cmf::AnimationNetworkBuilder reloaded( loader );
+	ASSERT_TRUE( reloaded.Load( withEditorData.data(), withEditorData.size() ) );
+	EXPECT_EQ( reloaded.GetEditorData(), editorData );
+	EXPECT_EQ( reloaded.Save(), withEditorData );
+
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( withEditorData ) );
+	EXPECT_TRUE( network.IsReady() );
+
+	reloaded.Clear();
+	EXPECT_TRUE( reloaded.GetEditorData().empty() );
+}
+
+TEST_F( RuntimeFixture, MisplacedEditorDataIsRejected )
+{
+	cmf::AnimationNetworkBuilder builder( loader );
+	const auto file = BuildCompleteNetwork( true );
+	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
+	builder.SetEditorData( { 1, 2, 3 } );
+	const auto valid = builder.Save();
+	cmf::AnimationNetwork network( loader );
+
+	// The embedded asset section becomes a second EditorData section
+	auto twoSections = valid;
+	GetHeader( twoSections ).sections[1].type = cmf::can::SectionType::EditorData;
+	UpdateCrc( twoSections );
+	EXPECT_EQ( network.Load( twoSections ).error, "Only one EditorData section is allowed" );
+
+	// Assets can only be embedded in EmbeddedCmf sections
+	auto assetInEditorData = valid;
+	auto& assets = GetNetworkData( assetInEditorData ).assets;
+	auto* embedded = std::find_if( assets.begin(), assets.end(), []( const cmf::can::Asset& asset ) { return asset.section != cmf::can::NO_INDEX; } );
+	ASSERT_NE( embedded, assets.end() );
+	embedded->section = 2;
+	UpdateCrc( assetInEditorData );
+	EXPECT_FALSE( network.Load( assetInEditorData ) );
+	EXPECT_FALSE( builder.Load( assetInEditorData.data(), assetInEditorData.size() ) );
+}
+
+TEST_F( RuntimeFixture, SaveLayoutMatchesTheSavedFile )
+{
+	cmf::AnimationNetworkBuilder builder( loader );
+	SetUpNetwork( builder );
+	auto& root = builder.GetRootGraph();
+	// Disconnected nodes, a removed node and subgraphs that are not connected to the output are all saved
+	const auto removed = root.AddNode( cmf::AnimationNodeType::RestPose );
+	root.SetNodeName( root.AddNode( cmf::AnimationNodeType::Blend ), "unconnected" );
+	const auto outer = root.AddNode( cmf::AnimationNodeType::Subgraph );
+	root.SetNodeName( outer, "outer" );
+	auto& outerGraph = *root.GetSubgraph( outer );
+	outerGraph.SetNodeName( outerGraph.AddNode( cmf::AnimationNodeType::RestPose ), "outer rest" );
+	const auto inner = outerGraph.AddNode( cmf::AnimationNodeType::Subgraph );
+	root.GetSubgraph( outer )->GetSubgraph( inner )->AddNode( cmf::AnimationNodeType::Blend );
+	const auto second = root.AddNode( cmf::AnimationNodeType::Subgraph );
+	root.SetNodeName( second, "second" );
+	ExpectOk( root.RemoveNode( removed ) );
+
+	const auto layout = builder.GetSaveLayout();
+	ASSERT_EQ( layout.size(), 4u );
+	EXPECT_EQ( layout[0].graph, &root );
+	EXPECT_EQ( layout[0].nodes, root.GetNodes() );
+
+	auto file = builder.Save();
+	ExpectLayoutMatchesFile( layout, GetNetworkData( file ) );
+
+	cmf::AnimationNetworkBuilder reloaded( loader );
+	ASSERT_TRUE( reloaded.Load( file.data(), file.size() ) );
+	ExpectSameLayout( reloaded.GetSaveLayout(), layout );
 }
 
 TEST_F( RuntimeFixture, BuilderRejectsMalformedFilesAndKeepsItsContents )
@@ -263,7 +386,8 @@ TEST_F( RuntimeFixture, IncompleteNetworkLoadsWithErrors )
 	const auto errors = network.GetErrors();
 	EXPECT_TRUE( HasErrorContaining( errors, "graph 0: Output #0: input 'pose' is not connected" ) );
 	EXPECT_TRUE( HasErrorContaining( errors, "Blend #1: input 'poseA' is not connected" ) );
-	EXPECT_TRUE( HasErrorContaining( errors, "animation 'Missing' not found" ) );
+	EXPECT_FALSE( HasErrorContaining( errors, "animation 'Missing' not found" ) );
+	EXPECT_TRUE( HasErrorContaining( network.GetWarnings(), "animation 'Missing' not found" ) );
 }
 
 TEST_F( RuntimeFixture, NetworkWithoutFileIsNotReady )

@@ -216,4 +216,6 @@ const cmf::BoneMask* FindBoneMask( const cmf::Skeleton& skeleton, std::string_vi
 /** Returns the bytes of a section of a validated CAN file. */
 std::pair<const uint8_t*, size_t> GetSectionBytes( const void* file, uint32_t section );
 
+/** Returns the index of the first section of the given type in a validated CAN file, or can::NO_INDEX. */
+uint32_t FindSection( const void* file, can::SectionType type );
 }
