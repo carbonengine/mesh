@@ -5,6 +5,7 @@
 #include <functional>
 
 #include "data/cmfcontent.h"
+#include "rendering/cameraInput.h"
 #include "rendering/vulkan/graphicseffecttypes.h"
 
 //forwards declaration
@@ -12,19 +13,6 @@ struct AppState;
 
 template <typename T>
 class StateCollection;
-
-struct MouseState
-{
-	Vector2 position = { 0.0f, 0.0f };
-	Vector2 previousPosition = { 0.0f, 0.0f };
-	// vertical wheel delta
-	float wheelDelta{ 0.0f };
-	bool leftButton{ false };
-	bool middleButton{ false };
-	bool rightButton{ false };
-
-	bool operator==( const MouseState& other ) const;
-};
 
 template <typename T>
 class State
@@ -95,18 +83,6 @@ private:
 	T m_initialValue;
 	std::vector<std::function<void( std::vector<T>, AppState& )>> m_callbacks;
 	bool m_fireCallbacks = false;
-};
-
-enum class CameraTrigger
-{
-	CAMERA_TRIGGER_NONE,
-	CAMERA_TRIGGER_FOCUS,
-	CAMERA_TRIGGER_LOOK_UP,
-	CAMERA_TRIGGER_LOOK_DOWN,
-	CAMERA_TRIGGER_LOOK_RIGHT,
-	CAMERA_TRIGGER_LOOK_LEFT,
-	CAMERA_TRIGGER_LOOK_FRONT,
-	CAMERA_TRIGGER_LOOK_BACK,
 };
 
 struct MeshState
@@ -189,7 +165,7 @@ struct AppState
 	State<MouseState> mouseState{ {} };
 
 	// camera
-	State<CameraTrigger> cameraTrigger{ CameraTrigger::CAMERA_TRIGGER_NONE };
+	State<CameraTrigger> cameraTrigger{ CameraTrigger::None };
 	State<CcpMath::Sphere> cameraFocus{ {} };
 
 	// cmf

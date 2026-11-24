@@ -80,34 +80,34 @@ void UiMenubar::Render( AppState& appState )
 					if( ImGui::MenuItem( menuLabel.c_str(), shortcut ) )
 					{
 						appState.cameraFocus.ForceSetValue( sphere );
-						appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+						appState.cameraTrigger.ForceSetValue( CameraTrigger::Focus );
 					}
 					++index;
 				}
 				ImGui::Separator();
 				if( ImGui::MenuItem( "Look Right (+X)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_RIGHT );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookRight );
 				}
 				if( ImGui::MenuItem( "Look Left (-X)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_LEFT );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookLeft );
 				}
 				if( ImGui::MenuItem( "Look Up (+Y)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_UP );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookUp );
 				}
 				if( ImGui::MenuItem( "Look Down (-Y)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_DOWN );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookDown );
 				}
 				if( ImGui::MenuItem( "Look Front (-Z)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_FRONT );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookFront );
 				}
 				if( ImGui::MenuItem( "Look Back (+Z)" ) )
 				{
-					appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_LOOK_BACK );
+					appState.cameraTrigger.ForceSetValue( CameraTrigger::LookBack );
 				}
 				ImGui::EndMenu();
 			}

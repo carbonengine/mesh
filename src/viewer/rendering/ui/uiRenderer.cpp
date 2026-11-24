@@ -5,13 +5,11 @@
 #include <algorithm>
 #include <faBinary.h>
 #include <faLookup.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_vulkan.h>
 #include "appState.h"
 #include "uiConsts.h"
 #include "uiCustomWidgets.h"
 #include "uiSettings.h"
-#include "../vulkan/vulkanerrors.h"
+#include "rendering/vulkan/vulkanerrors.h"
 
 
 // ImGui is using a lot of variadic functions for text formatting, so we disable the cppcoreguidelines-pro-type-vararg lint for this file
@@ -20,94 +18,27 @@
 
 UIRenderer::UIRenderer( std::shared_ptr<const Renderer> renderer ) :
 	m_renderer( renderer ),
-	m_graphicsCommandBuffer( renderer.get() )
+	m_imguiLayer( renderer )
 {
 }
 
-UIRenderer::~UIRenderer()
-{
-	ImGui_ImplVulkan_Shutdown();
-	ImGui::DestroyContext();
-}
-
-static void check_vk_result( VkResult err )
-{
-	if( err == VK_SUCCESS )
-	{
-		return;
-	}
-	Log::Error( "[vulkan] Error: VkResult = %d\n", err );
-	if( err < 0 )
-	{
-		abort();
-	}
-}
+UIRenderer::~UIRenderer() = default;
 
 void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 {
 	Log::Info( "Initializing UI Renderer" );
 	// Setup Dear ImGui context
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	ImGuiLayer::CreateContext();
 	// settings must be loaded before the fonts are built
 	UiSettings::Initialize( state );
 	ApplyUiScale( state.uiScale.GetValue() );
 
-	Device* device = m_renderer->GetDevice();
-	const Swapchain* swapchain = m_renderer->GetSwapchain();
-	VkDevice logicalDevice = device->GetLogicalDevice();
-	const VkAllocationCallbacks* allocator = m_renderer->GetAllocator();
-
-	assert( device->GetQueueFamilyIndices().graphicsFamily.has_value() );
-
-	VkDescriptorPoolSize pool_sizes[] = {
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
-	};
-	VkDescriptorPoolCreateInfo pool_info = {};
-	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	pool_info.maxSets = 0;
-	for( VkDescriptorPoolSize& pool_size : pool_sizes )
-		pool_info.maxSets += pool_size.descriptorCount;
-	pool_info.poolSizeCount = (uint32_t)1;
-	pool_info.pPoolSizes = pool_sizes;
-
-	CR( vkCreateDescriptorPool( device->GetLogicalDevice(), &pool_info, allocator, &m_descriptorPool ) );
-
-	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForVulkan( window, true );
-	ImGui_ImplVulkan_InitInfo init_info = {};
-	init_info.Instance = m_renderer->GetVulkanInstance();
-	init_info.PhysicalDevice = device->GetPhysicalDevice();
-	init_info.Device = logicalDevice;
-	init_info.QueueFamily = device->GetQueueFamilyIndices().graphicsFamily.value();
-	init_info.Queue = device->GetGraphicsQueue();
-	init_info.DescriptorPool = m_descriptorPool;
-	init_info.MinImageCount = swapchain->GetMinImageCount();
-	init_info.ImageCount = swapchain->GetImageCount();
-	init_info.Allocator = allocator;
-	init_info.RenderPass = VK_NULL_HANDLE;
-	init_info.Subpass = 0;
-	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-	init_info.CheckVkResultFn = check_vk_result;
-	init_info.UseDynamicRendering = true;
-
-	//dynamic rendering parameters for imgui to use
-	auto swapchainFormat = swapchain->GetFormat();
-	init_info.PipelineRenderingCreateInfo = {};
-	init_info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainFormat;
-	init_info.PipelineRenderingCreateInfo.depthAttachmentFormat = m_renderer->GetDepthTexture()->GetFormat();
-	init_info.PipelineRenderingCreateInfo.stencilAttachmentFormat = m_renderer->GetDepthTexture()->GetFormat();
-
-	ImGui_ImplVulkan_Init( &init_info );
+	auto [width, height] = state.windowSize.GetValue();
+	CR( m_imguiLayer.InitializeBackend( window, width, height ) );
 
 	state.windowSize.RegisterCallback( [this]( std::pair<uint32_t, uint32_t> size, AppState& appState ) {
 		auto [width, height] = size;
-		m_graphicsCommandBuffer.SetRenderSize( width, height );
+		m_imguiLayer.SetRenderSize( width, height );
 	} );
 
 	state.cmfContent.RegisterCallback( [this]( std::shared_ptr<CmfContent> content, AppState& appState ) {
@@ -123,12 +54,9 @@ void UIRenderer::Initialize( GLFWwindow* window, AppState& state )
 
 	state.uiScale.RegisterCallback( [this]( float scale, AppState& appState ) {
 		ApplyUiScale( scale );
-		ImGui_ImplVulkan_CreateFontsTexture();
+		ImGuiLayer::UpdateFontsTexture();
 		UiSettings::MarkDirty();
 	} );
-
-	auto [width, height] = state.windowSize.GetValue();
-	m_graphicsCommandBuffer.SetRenderSize( width, height );
 }
 
 
@@ -165,19 +93,13 @@ void UIRenderer::ApplyUiScale( float scale )
 void UIRenderer::BeginFrame()
 {
 	// Start the Dear ImGui frame
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
+	ImGuiLayer::BeginFrame();
 }
 
 void UIRenderer::Render( AppState& appState )
 {
 	SetupUi( appState );
-	m_graphicsCommandBuffer.Begin( m_renderer.get() );
-	ImGui::Render();
-
-	ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), m_renderer->GetCurrentGraphicVkCommandBuffer() );
-	m_graphicsCommandBuffer.End();
+	m_imguiLayer.Render();
 }
 
 void UIRenderer::SetupUi( AppState& appState )
@@ -267,7 +189,7 @@ void UIRenderer::UpdateInputs( AppState& appState )
 		{
 			// focus camera on model
 			appState.cameraFocus.ForceSetValue( content->GetBoundingSphere() );
-			appState.cameraTrigger.ForceSetValue( CameraTrigger::CAMERA_TRIGGER_FOCUS );
+			appState.cameraTrigger.ForceSetValue( CameraTrigger::Focus );
 		}
 	}
 	if( ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_F12 ) )
