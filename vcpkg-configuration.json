@@ -12,7 +12,9 @@
       "packages": [
         "python3",
         "carbon-math",
+        "carbon-parser",
         "ccp-debug-info",
+        "re2c",
         "simplygon"
       ]
     }

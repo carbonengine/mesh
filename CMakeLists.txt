@@ -20,6 +20,7 @@ endif()
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
+find_package(carbon-parser CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
 find_package(mikktspace CONFIG REQUIRED)
 
@@ -97,7 +98,8 @@ set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
 target_link_libraries(CarbonMesh PUBLIC 
 	CcpMath 
 	$<BUILD_INTERFACE:meshoptimizer::meshoptimizer>
-	$<BUILD_INTERFACE:mikktspace::mikktspace>)
+	$<BUILD_INTERFACE:mikktspace::mikktspace>
+	$<BUILD_INTERFACE:CcpParser>)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
