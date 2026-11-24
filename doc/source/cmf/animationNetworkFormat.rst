@@ -1,0 +1,141 @@
+CAN File Format
+===============
+
+CAN (Carbon Animation Network) files store animation networks (see :doc:`animationNetwork`). The structures are
+declared in ``cmf/can.h``, namespace ``cmf::can::v1``.
+
+The format uses the same approach as CMF (see :doc:`fileFormat`): structures are stored as-is, and ``cmf::Span``
+members are stored as offsets relative to the span itself, so the data can be used directly from the loaded file
+buffer without fix-ups. All structures are free of implicit padding; reserved fields are always zero.
+
+File Structure
+--------------
+
+A CAN file consists of:
+
+#. A ``Header`` with the section table.
+#. The Network section, holding a ``NetworkData`` structure. It is always the first section.
+#. Zero or more EmbeddedCmf sections, each holding a complete CMF file.
+
+Sections start at offsets aligned to 8 bytes.
+
+Header
+^^^^^^
+
+.. list-table::
+    :header-rows: 1
+    :widths: 20 20 60
+
+    * - Field
+      - Type
+      - Description
+    * - ``signature``
+      - ``uint32_t``
+      - ``0x666e6163``, the bytes ``canf``
+    * - ``version``
+      - ``uint32_t``
+      - Format version, currently 1
+    * - ``headerSize``
+      - ``uint32_t``
+      - Size of the header including the section table
+    * - ``crc32``
+      - ``uint32_t``
+      - CRC32 of the rest of the file, starting after this field
+    * - ``sections``
+      - ``Span<Section>``
+      - Section table: offset, size and type (``Network`` or ``EmbeddedCmf``) of each section
+
+Network Data
+------------
+
+``NetworkData`` is the root structure of the Network section:
+
+* ``assets``: the CMF files the network references. Each asset has a path and the index of the EmbeddedCmf section
+  containing it, or ``NO_INDEX`` (``0xffffffff``) if it is loaded through the asset loader. Each path appears once.
+* ``skeletonAsset`` and ``skeletonName``: the asset containing the skeleton and its name; an empty name selects the
+  first skeleton.
+* ``parameters``: the control parameters, with name, default value and range.
+* ``graphs``: the graphs of the network. ``graphs[0]`` is the root graph; the others are subgraphs, each referenced
+  by exactly one Subgraph node.
+
+Graphs
+^^^^^^
+
+A ``Graph`` contains:
+
+* ``nodes``: the nodes. A ``Node`` stores what all node types have in common: the node type, an optional name, the
+  constant values of its inputs (one per input socket, used by unconnected Float inputs) and ``dataIndex``.
+* ``edges``: connections from an output socket to an input socket. Sockets are referenced by node index and socket
+  index; the sockets of each node type are listed in the node reference of :doc:`animationNetwork`.
+* ``interfaceInputs`` and ``interfaceOutputs``: the indices of the SubgraphInput and Output nodes, in the order of the
+  sockets they define on the Subgraph node. The root graph has no SubgraphInput nodes and at most one Output node.
+* One table per node type with type specific data. ``Node::dataIndex`` is the index of the node data in the table
+  of its type. RestPose, Blend and AdditiveBlend nodes have no data and use ``NO_INDEX``.
+
+.. list-table::
+    :header-rows: 1
+    :widths: 30 30 40
+
+    * - Node types
+      - Table
+      - Data
+    * - SubgraphInput, Output
+      - ``interfaceNodes``
+      - Socket type and name
+    * - Parameter
+      - ``parameterNodes``
+      - Parameter index
+    * - AnimationSample
+      - ``animationSampleNodes``
+      - Asset index, animation name
+    * - Switch
+      - ``switchNodes``
+      - Number of pose inputs
+    * - RandomSwitch
+      - ``randomSwitchNodes``
+      - Number of pose inputs, flags, input weights
+    * - NamedBoneWeights
+      - ``namedBoneWeightsNodes``
+      - Bone mask name
+    * - BoneWeights
+      - ``boneWeightsNodes``
+      - Default weight, weights of bones by name
+    * - Subgraph
+      - ``subgraphNodes``
+      - Index of the graph in ``NetworkData::graphs``
+    * - Expression
+      - ``expressionNodes``
+      - Expression text, input names
+
+Expressions are stored as text and compiled when the network is loaded, so files don't depend on the bytecode of
+the expression parser.
+
+Identical arrays are stored once: when the file is written, spans with identical contents share their data.
+Programs that modify a CAN file in place must take into account that a change can affect several spans.
+
+Validation
+----------
+
+``cmf::AnimationNetwork::Load`` and ``cmf::AnimationNetworkBuilder::Load`` reject files that are not well formed.
+They check:
+
+* The signature, version, header size and CRC.
+* That sections don't overlap and lie within the file, and that the first section is the Network section.
+* That all spans are aligned and lie within their section, and that embedded CMF files are valid.
+* That all indices are in range: assets, sections, parameters, graphs and node data. Each node data entry belongs to
+  one node.
+* That node and socket types are valid, that every node has one constant per input socket and that Switch nodes
+  have pose inputs.
+* That subgraphs form a tree below the root graph.
+* That edges connect existing sockets of the same type, that every input has at most one incoming edge and that
+  the edges of each graph form no cycle.
+
+Well-formed files may still describe incomplete networks, for example with unconnected pose inputs. Such networks
+load, but are not ready for evaluation; ``GetErrors`` describes the problems.
+
+Versioning
+----------
+
+Adding fields or node data tables changes the size of the structures and therefore requires a new ``FILE_VERSION``.
+Adding a node type without data doesn't change the structures, but files using it are rejected by older versions of
+the library, which don't know the node type.

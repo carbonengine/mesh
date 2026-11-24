@@ -186,6 +186,12 @@ Blend between two poses using a linear interpolation factor:
     float alpha = 0.5f;
     cmf::BlendPoses(blendedPose, poseA, poseB, alpha);
 
+The blending functions resize the output pose and set its skeleton to the skeleton of ``poseA``, so the output pose
+doesn't have to be initialized.
+
+To combine many animations under the control of game parameters, use an animation network instead of blending poses
+manually, see :doc:`animationNetwork`.
+
 Per-Bone Weighted Blending
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
