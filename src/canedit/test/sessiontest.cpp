@@ -124,6 +124,21 @@ TEST_F( EditorFixture, UndoKeepsViews )
 	EXPECT_EQ( document.GetView( Root() ).zoom, ZOOMED_VIEW.zoom );
 }
 
+TEST_F( EditorFixture, ReloadRequestsAssetsAgain )
+{
+	document.GetNetwork().SetSkeleton( "res:/moved/character.cmf", "" );
+	EXPECT_TRUE( document.IsLocked() );
+	std::string error;
+	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.can", error ) ) << error;
+
+	// The skeleton is found after the prefix points to its new location
+	WriteFile( directory.GetPath() / "other" / "moved" / "character.cmf", asset.BuildCmfFile() );
+	resolver.SetPrefixes( { { PREFIX, ( directory.GetPath() / "other" ).u8string() } } );
+	session.Reload();
+	EXPECT_FALSE( document.IsLocked() );
+	EXPECT_FALSE( document.IsModified() );
+}
+
 TEST_F( EditorFixture, AutoLayoutIsUndoable )
 {
 	const auto rest = session.AddNode( cmf::AnimationNodeType::RestPose, START );

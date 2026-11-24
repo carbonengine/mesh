@@ -128,6 +128,11 @@ void ImGuiLayer::SetRenderSize( uint32_t width, uint32_t height )
 	m_graphicsCommandBuffer.SetRenderSize( width, height );
 }
 
+void ImGuiLayer::SetClearColor( float r, float g, float b )
+{
+	m_graphicsCommandBuffer.SetClearColor( r, g, b );
+}
+
 void ImGuiLayer::UpdateFontsTexture()
 {
 	ImGui_ImplVulkan_CreateFontsTexture();

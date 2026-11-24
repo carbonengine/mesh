@@ -104,6 +104,8 @@ public:
 
 	/** Returns true if the network or the editor data changed since the document was loaded or saved. */
 	[[nodiscard]] bool IsModified() const;
+	/** Treats the current state as saved. */
+	void MarkUnmodified();
 	/** A value that changes whenever the network or the editor data (except views) changes. */
 	[[nodiscard]] uint64_t GetRevision() const;
 

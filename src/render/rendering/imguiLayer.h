@@ -32,6 +32,8 @@ public:
 	VkResult InitializeBackend( GLFWwindow* window, uint32_t width, uint32_t height );
 
 	void SetRenderSize( uint32_t width, uint32_t height );
+	/** Clears the swapchain image before drawing ImGui, for applications that don't render a scene into it. */
+	void SetClearColor( float r, float g, float b );
 	/// Re-uploads the font atlas after it was rebuilt
 	static void UpdateFontsTexture();
 

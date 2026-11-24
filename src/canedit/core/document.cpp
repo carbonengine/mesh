@@ -349,6 +349,11 @@ bool Document::IsModified() const
 	return GetRevision() != m_savedRevision;
 }
 
+void Document::MarkUnmodified()
+{
+	m_savedRevision = GetRevision();
+}
+
 uint64_t Document::GetRevision() const
 {
 	return m_network.GetGeneration() + m_editorRevision;

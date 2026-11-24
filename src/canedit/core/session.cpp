@@ -31,6 +31,17 @@ void EditorSession::Reset()
 	m_editDepth = 0;
 }
 
+void EditorSession::Reload()
+{
+	const bool modified = m_document->IsModified();
+	const auto snapshot = Capture();
+	Restore( snapshot );
+	if( !modified )
+	{
+		m_document->MarkUnmodified();
+	}
+}
+
 const GraphPath& EditorSession::GetGraphPath() const
 {
 	return m_graphPath;
