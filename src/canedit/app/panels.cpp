@@ -13,8 +13,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <sstream>
 
@@ -323,11 +321,23 @@ void PropertiesPanel::DrawNetwork( AppContext& context )
 		network.SetSkeleton( network.GetSkeletonPath(), name );
 	}
 
+	DrawPreviewMeshes( context );
+
+	SectionHeader( "Network" );
+	ImGui::Text( "%zu parameters", network.GetParameters().size() );
+	ImGui::Text( "%zu nodes in this graph", session.GetGraph().GetNodes().size() );
+	ImGui::TextColored( HINT_TEXT, "Select a node to edit it." );
+}
+
+void PropertiesPanel::DrawPreviewMeshes( AppContext& context )
+{
+	auto& document = *context.document;
 	SectionHeader( "Preview Meshes" );
-	ImGui::TextColored( HINT_TEXT, "Meshes shown together in the preview, stored with the editor data." );
+	ImGui::TextColored( HINT_TEXT, "Meshes shown together in the preview, stored in the document." );
 	// Edits apply to a copy, so that the list isn't changed while it is drawn
 	auto meshes = document.GetPreviewMeshes();
 	bool meshesChanged = false;
+	std::string reference;
 	for( size_t i = 0; i < meshes.size(); ++i )
 	{
 		ImGui::PushID( static_cast<int>( i ) );
@@ -368,14 +378,9 @@ void PropertiesPanel::DrawNetwork( AppContext& context )
 	}
 	if( meshesChanged )
 	{
-		const ScopedEdit edit( session );
+		const ScopedEdit edit( *context.session );
 		document.SetPreviewMeshes( std::move( meshes ) );
 	}
-
-	SectionHeader( "Network" );
-	ImGui::Text( "%zu parameters", network.GetParameters().size() );
-	ImGui::Text( "%zu nodes in this graph", session.GetGraph().GetNodes().size() );
-	ImGui::TextColored( HINT_TEXT, "Select a node to edit it." );
 }
 
 void PropertiesPanel::DrawNode( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
@@ -925,7 +930,7 @@ void ParametersPanel::DrawAddParameter( AppContext& context )
 void AssetsPanel::Draw( AppContext& context )
 {
 	auto& session = *context.session;
-	auto& network = context.document->GetNetwork();
+	const auto& network = context.document->GetNetwork();
 
 	const auto errors = network.GetErrors();
 	const auto warnings = network.GetWarnings();
@@ -953,33 +958,36 @@ void AssetsPanel::Draw( AppContext& context )
 	}
 
 	SectionHeader( "Embedded Assets" );
-	ImGui::TextColored( HINT_TEXT, "Embedded files are stored in the network and replace the referenced files." );
+	ImGui::TextColored( HINT_TEXT, "Embedded files are packed into the exported network and replace the referenced files. They are read when the document is opened and when it is exported." );
 	// Embedding stays available without a skeleton: embedding the skeleton file is a way to fix a missing one
+	auto& document = *context.document;
 	std::optional<std::string> removed;
-	for( const auto& path : network.GetEmbeddedAssetPaths() )
+	for( const auto& reference : document.GetEmbeddedAssets() )
 	{
-		ImGui::PushID( path.c_str() );
+		ImGui::PushID( reference.c_str() );
 		if( ImGui::SmallButton( "Remove" ) )
 		{
-			removed = path;
+			removed = reference;
 		}
 		ImGui::SameLine();
-		ImGui::TextUnformatted( path.c_str() );
+		ImGui::TextUnformatted( reference.c_str() );
+		if( const auto* error = document.GetEmbeddedAssetError( reference ) )
+		{
+			ImGui::TextColored( ERROR_TEXT, "  %s", error->c_str() );
+		}
 		ImGui::PopID();
 	}
 	if( removed )
 	{
 		const ScopedEdit edit( session );
-		network.RemoveEmbeddedAsset( *removed );
+		document.RemoveEmbeddedAsset( *removed );
 	}
 	if( ImGui::Button( "Embed File..." ) )
 	{
 		if( const auto path = dialogs::OpenCmf( "Embed CMF File" ) )
 		{
-			std::ifstream stream( std::filesystem::u8path( *path ), std::ios::binary );
-			std::vector<uint8_t> bytes( ( std::istreambuf_iterator<char>( stream ) ), std::istreambuf_iterator<char>() );
 			const ScopedEdit edit( session );
-			ReportResult( context, network.EmbedAsset( context.resolver->MakeReference( std::filesystem::u8path( *path ) ), std::move( bytes ) ) );
+			ReportResult( context, document.EmbedAsset( context.resolver->MakeReference( std::filesystem::u8path( *path ) ) ) );
 		}
 	}
 }

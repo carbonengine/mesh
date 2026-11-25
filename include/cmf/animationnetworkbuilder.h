@@ -463,13 +463,7 @@ public:
 	* the layout matches the file. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<AnimationGraphLayout> GetSaveLayout() const;
 
-	/** @brief Sets data of an editing tool, stored in the EditorData section of saved files. The data is opaque to
-	* the network; changing it does not change the generation. Empty data omits the section. */
-	CARBON_MESH_EXPORT void SetEditorData( std::vector<uint8_t> data );
-	/** @brief Returns the editor data set with SetEditorData or read by Load. */
-	[[nodiscard]] CARBON_MESH_EXPORT const std::vector<uint8_t>& GetEditorData() const;
-
-	/** @brief Removes all nodes, parameters, embedded assets, editor data and the skeleton reference. */
+	/** @brief Removes all nodes, parameters, embedded assets and the skeleton reference. */
 	CARBON_MESH_EXPORT void Clear();
 
 	/** @brief Returns a counter that changes whenever the network or one of its assets changes, for example to
@@ -525,7 +519,6 @@ private:
 	std::string m_skeletonName;
 	std::vector<AnimationParameter> m_parameters;
 	uint64_t m_generation = 1;
-	std::vector<uint8_t> m_editorData;
 	std::unique_ptr<AnimationGraphBuilder> m_rootGraph;
 };
 

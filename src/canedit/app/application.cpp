@@ -62,12 +62,22 @@ bool HasExtension( const std::string& path, const char* extension )
 	return actual == extension;
 }
 
+std::string JoinLines( const std::vector<std::string>& lines )
+{
+	std::string text;
+	for( const auto& line : lines )
+	{
+		text += '\n' + line;
+	}
+	return text;
+}
+
 }
 
 Application::Application()
 {
 	m_loader = std::make_unique<FileAssetLoader>( m_resolver );
-	m_document = std::make_unique<Document>( *m_loader );
+	m_document = std::make_unique<Document>( *m_loader, m_resolver );
 	m_session = std::make_unique<EditorSession>( *m_document );
 }
 
@@ -251,7 +261,7 @@ void Application::OnDrop( const std::vector<std::string>& paths )
 {
 	for( const auto& path : paths )
 	{
-		if( HasExtension( path, ".can" ) )
+		if( HasExtension( path, Document::FILE_EXTENSION ) || HasExtension( path, ".can" ) )
 		{
 			OpenFile( path );
 			return;
@@ -388,8 +398,14 @@ void Application::OpenFile( const std::string& path )
 
 void Application::LoadDocument( const std::string& path )
 {
+	if( HasExtension( path, ".can" ) )
+	{
+		ImportNetwork( path );
+		return;
+	}
 	std::string error;
-	if( !m_document->LoadFile( std::filesystem::u8path( path ), error ) )
+	std::vector<std::string> warnings;
+	if( !m_document->LoadFile( std::filesystem::u8path( path ), error, &warnings ) )
 	{
 		dialogs::ShowError( error );
 		m_settings.recentFiles.erase( std::remove( m_settings.recentFiles.begin(), m_settings.recentFiles.end(), path ), m_settings.recentFiles.end() );
@@ -399,6 +415,47 @@ void Application::LoadDocument( const std::string& path )
 	m_preview->Reload();
 	m_settings.AddRecentFile( path );
 	m_context.SetStatus( "Opened " + path );
+	if( !warnings.empty() )
+	{
+		dialogs::ShowWarning( "Parts of the document were skipped:" + JoinLines( warnings ) );
+	}
+}
+
+void Application::ImportNetwork( const std::string& path )
+{
+	std::string error;
+	std::vector<OrphanedAsset> orphans;
+	if( !m_document->ImportFile( std::filesystem::u8path( path ), error, &orphans ) )
+	{
+		dialogs::ShowError( error );
+		return;
+	}
+	SaveOrphanedAssets( orphans );
+	m_session->Reset();
+	m_preview->Reload();
+	m_context.SetStatus( "Imported " + path + ", save it as a document to keep the node layout" );
+}
+
+void Application::SaveOrphanedAssets( const std::vector<OrphanedAsset>& orphans )
+{
+	for( const auto& orphan : orphans )
+	{
+		const auto question = "The imported network embeds '" + orphan.reference + "', which is not available as a file. Documents only store references to embedded files.\n\nSave the embedded data to a file? Otherwise it is lost.";
+		if( !dialogs::AskYesNo( question ) )
+		{
+			continue;
+		}
+		const auto path = dialogs::SaveCmf( "Save Embedded Asset", orphan.resolvedPath ? orphan.resolvedPath->u8string() : std::string() );
+		if( !path )
+		{
+			continue;
+		}
+		std::string error;
+		if( !m_document->SaveOrphanedAsset( orphan, std::filesystem::u8path( *path ), error ) )
+		{
+			dialogs::ShowError( error );
+		}
+	}
 }
 
 bool Application::SaveDocument( bool askForPath )
@@ -422,6 +479,39 @@ bool Application::SaveDocument( bool askForPath )
 	m_settings.AddRecentFile( path.u8string() );
 	m_context.SetStatus( "Saved " + path.u8string() );
 	return true;
+}
+
+void Application::ExportDocument( bool askForPath )
+{
+	auto path = m_document->GetExportPath();
+	if( askForPath || path.empty() )
+	{
+		auto defaultPath = path;
+		if( defaultPath.empty() && !m_document->GetFilePath().empty() )
+		{
+			defaultPath = m_document->GetFilePath();
+			defaultPath.replace_extension( ".can" );
+		}
+		const auto chosen = dialogs::ExportNetwork( defaultPath.u8string() );
+		if( !chosen )
+		{
+			return;
+		}
+		std::error_code ec;
+		path = std::filesystem::absolute( std::filesystem::u8path( *chosen ), ec );
+		if( ec )
+		{
+			path = std::filesystem::u8path( *chosen );
+		}
+	}
+	std::string error;
+	if( !m_document->Export( path, error ) )
+	{
+		dialogs::ShowError( error );
+		return;
+	}
+	m_document->SetExportPath( path );
+	m_context.SetStatus( "Exported " + path.u8string() );
 }
 
 void Application::Undo()
@@ -457,6 +547,14 @@ void Application::HandleGlobalShortcuts()
 	if( ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, ImGuiInputFlags_RouteGlobal ) )
 	{
 		SaveDocument( true );
+	}
+	if( ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal ) )
+	{
+		ExportDocument( false );
+	}
+	if( ImGui::Shortcut( ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_E, ImGuiInputFlags_RouteGlobal ) )
+	{
+		ExportDocument( true );
 	}
 	if( !ImGui::GetIO().WantTextInput )
 	{
@@ -535,6 +633,15 @@ void Application::DrawFileMenu()
 	if( ImGui::MenuItem( "Save As...", "Ctrl+Shift+S" ) )
 	{
 		SaveDocument( true );
+	}
+	ImGui::Separator();
+	if( ImGui::MenuItem( "Export", "Ctrl+E" ) )
+	{
+		ExportDocument( false );
+	}
+	if( ImGui::MenuItem( "Export As...", "Ctrl+Shift+E" ) )
+	{
+		ExportDocument( true );
 	}
 	ImGui::Separator();
 	if( ImGui::MenuItem( "Reload Assets" ) )

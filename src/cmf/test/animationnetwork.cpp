@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 
 namespace networktest
 {
@@ -209,59 +210,30 @@ TEST_F( RuntimeFixture, EmbeddedAssetsSurviveSaving )
 	EXPECT_EQ( builder.Save(), file );
 }
 
-TEST_F( RuntimeFixture, EditorDataSurvivesSavingAndIsSkippedByTheRuntime )
-{
-	const std::vector<uint8_t> editorData = { 'e', 'd', 'i', 't' };
-	const auto file = BuildCompleteNetwork( true );
-
-	cmf::AnimationNetworkBuilder builder( loader );
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
-	EXPECT_TRUE( builder.GetEditorData().empty() );
-	const auto generation = builder.GetGeneration();
-	builder.SetEditorData( editorData );
-	EXPECT_EQ( builder.GetGeneration(), generation ) << "editor data is not part of the network";
-	auto withEditorData = builder.Save();
-	const auto& sections = GetHeader( withEditorData ).sections;
-	ASSERT_EQ( sections.size(), 3u );
-	EXPECT_EQ( sections[2].type, cmf::can::SectionType::EditorData );
-
-	cmf::AnimationNetworkBuilder reloaded( loader );
-	ASSERT_TRUE( reloaded.Load( withEditorData.data(), withEditorData.size() ) );
-	EXPECT_EQ( reloaded.GetEditorData(), editorData );
-	EXPECT_EQ( reloaded.Save(), withEditorData );
-
-	cmf::AnimationNetwork network( loader );
-	ASSERT_TRUE( network.Load( withEditorData ) );
-	EXPECT_TRUE( network.IsReady() );
-
-	reloaded.Clear();
-	EXPECT_TRUE( reloaded.GetEditorData().empty() );
-}
-
-TEST_F( RuntimeFixture, MisplacedEditorDataIsRejected )
+TEST_F( RuntimeFixture, InvalidSectionsAreRejected )
 {
 	cmf::AnimationNetworkBuilder builder( loader );
-	const auto file = BuildCompleteNetwork( true );
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
-	builder.SetEditorData( { 1, 2, 3 } );
-	const auto valid = builder.Save();
+	auto valid = BuildCompleteNetwork( true );
 	cmf::AnimationNetwork network( loader );
+	ASSERT_EQ( GetHeader( valid ).sections.size(), 2u );
 
-	// The embedded asset section becomes a second EditorData section
-	auto twoSections = valid;
-	GetHeader( twoSections ).sections[1].type = cmf::can::SectionType::EditorData;
-	UpdateCrc( twoSections );
-	EXPECT_EQ( network.Load( twoSections ).error, "Only one EditorData section is allowed" );
+	// Unknown section types, for example the removed EditorData section
+	auto unknownType = valid;
+	const uint8_t unknownSectionType = 2;
+	std::memcpy( &GetHeader( unknownType ).sections[1].type, &unknownSectionType, sizeof( unknownSectionType ) );
+	UpdateCrc( unknownType );
+	EXPECT_EQ( network.Load( unknownType ).error, "Invalid section type" );
+	EXPECT_FALSE( builder.Load( unknownType.data(), unknownType.size() ) );
 
 	// Assets can only be embedded in EmbeddedCmf sections
-	auto assetInEditorData = valid;
-	auto& assets = GetNetworkData( assetInEditorData ).assets;
+	auto assetInNetworkSection = valid;
+	auto& assets = GetNetworkData( assetInNetworkSection ).assets;
 	auto* embedded = std::find_if( assets.begin(), assets.end(), []( const cmf::can::Asset& asset ) { return asset.section != cmf::can::NO_INDEX; } );
 	ASSERT_NE( embedded, assets.end() );
-	embedded->section = 2;
-	UpdateCrc( assetInEditorData );
-	EXPECT_FALSE( network.Load( assetInEditorData ) );
-	EXPECT_FALSE( builder.Load( assetInEditorData.data(), assetInEditorData.size() ) );
+	embedded->section = 0;
+	UpdateCrc( assetInNetworkSection );
+	EXPECT_FALSE( network.Load( assetInNetworkSection ) );
+	EXPECT_FALSE( builder.Load( assetInNetworkSection.data(), assetInNetworkSection.size() ) );
 }
 
 TEST_F( RuntimeFixture, SaveLayoutMatchesTheSavedFile )

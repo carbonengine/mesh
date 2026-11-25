@@ -233,22 +233,20 @@ The type specific settings of a node are returned by ``GetSettings``, for exampl
 
 ``AnimationNetworkBuilder::Load`` reads a saved network for further editing. Node handles are not stored in the
 file: nodes are renumbered without removed nodes when saved. ``GetSaveLayout`` returns the graphs and nodes in the
-order they are saved, which lets tools associate their own data with nodes. Such data can be stored in the file with
-``SetEditorData``, see :doc:`animationNetworkFormat`:
+order they are saved, which lets tools associate their own data with nodes. CAN files don't store such data; tools
+keep it in their own files (see :doc:`animationNetworkFormat`):
 
 .. code-block:: cpp
 
     // Store a position per node, keyed by its location in the saved file
-    std::string positions;
     const auto layout = builder.GetSaveLayout();
     for( size_t graphIndex = 0; graphIndex < layout.size(); ++graphIndex )
     {
         for( size_t nodeIndex = 0; nodeIndex < layout[graphIndex].nodes.size(); ++nodeIndex )
         {
-            positions += FormatPosition( graphIndex, nodeIndex, GetPosition( layout[graphIndex].nodes[nodeIndex] ) );
+            WritePosition( graphIndex, nodeIndex, GetPosition( layout[graphIndex].nodes[nodeIndex] ) );
         }
     }
-    builder.SetEditorData( { positions.begin(), positions.end() } );
     std::vector<uint8_t> file = builder.Save();
 
 Node Types

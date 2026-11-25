@@ -2,12 +2,16 @@
 
 #pragma once
 
+#include "pathResolver.h"
+
 #include <cmf/animationnetworkbuilder.h>
 
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace canedit
@@ -37,7 +41,7 @@ struct GraphView
 	float zoom = 1.f;
 };
 
-/** Location of a node in a saved network: graph index and node index (see AnimationNetworkBuilder::GetSaveLayout). */
+/** Location of a node in a network: graph index and node index (see AnimationNetworkBuilder::GetSaveLayout). */
 struct NodeLocation
 {
 	uint32_t graph = 0;
@@ -56,15 +60,36 @@ struct NodeLocation
 /** Path from the root graph to a subgraph: the Subgraph nodes entered on the way, outermost first. */
 using GraphPath = std::vector<cmf::AnimationNodeId>;
 
-/** An animation network being edited, with the editor data stored alongside it (node positions, graph views and
-* the preview meshes). */
+/** An asset that was embedded in an imported CAN file, but isn't available as a file. */
+struct OrphanedAsset
+{
+	/** Reference of the asset in the network. */
+	std::string reference;
+	/** Path the reference resolves to, if its prefix is known. */
+	std::optional<std::filesystem::path> resolvedPath;
+	/** Contents of the embedded CMF file. */
+	std::vector<uint8_t> bytes;
+};
+
+/** An animation network being edited, with the editor state stored alongside it (node positions, graph views,
+* preview meshes and the export path).
+*
+* Documents are stored as JSON (.cane files) and exported to the CAN format, which is what the runtime loads.
+* Embedded assets are stored as references; their files are read when the document is loaded and again when it is
+* exported, so that the exported network contains their current contents.
+*/
 class Document
 {
 public:
-	/** Version of the editor data format. Version 2 replaced the single "previewMesh" with a "previewMeshes" list. */
-	static constexpr int EDITOR_DATA_VERSION = 2;
+	/** Extension of document files. */
+	static constexpr const char* FILE_EXTENSION = ".cane";
+	/** Value of the "format" field of document files. */
+	static constexpr const char* FORMAT_NAME = "cane";
+	/** Version of the document format. Files of newer versions are rejected. */
+	static constexpr int FILE_VERSION = 1;
 
-	explicit Document( cmf::AnimationAssetLoader& loader );
+	/** The loader and the resolver must outlive the document. Embedded assets are read through the resolver. */
+	Document( cmf::AnimationAssetLoader& loader, const PathResolver& resolver );
 
 	[[nodiscard]] cmf::AnimationNetworkBuilder& GetNetwork();
 	[[nodiscard]] const cmf::AnimationNetworkBuilder& GetNetwork() const;
@@ -93,29 +118,67 @@ public:
 	/** Lays out all nodes of a graph automatically. */
 	void AutoLayout( const cmf::AnimationGraphBuilder& graph );
 
-	/** Returns the network in the CAN format with the editor data. */
-	[[nodiscard]] std::vector<uint8_t> Serialize();
-	/** Replaces the document with a CAN file. Nodes without editor data are laid out automatically.
-	* Returns false and leaves the document unchanged if the file is malformed. */
-	bool Deserialize( const std::vector<uint8_t>& file, std::string& error );
+	// Embedded assets
+
+	/** References of the embedded assets, including the ones whose file couldn't be read. */
+	[[nodiscard]] const std::set<std::string>& GetEmbeddedAssets() const;
+	/** Embeds the file a reference resolves to. Fails, without adding the reference, if the file can't be read or is
+	* not a valid CMF file. */
+	cmf::ValidationResult EmbedAsset( const std::string& reference );
+	/** Stops embedding an asset; references to it go through the asset loader afterwards. */
+	void RemoveEmbeddedAsset( const std::string& reference );
+	/** Returns why the file of an embedded asset couldn't be read, or nullptr if it was read. */
+	[[nodiscard]] const std::string* GetEmbeddedAssetError( const std::string& reference ) const;
+	/** Forgets the contents of embedded files read so far, so that they are read again when the document is
+	* deserialized next time. Until then, deserializing (for example undo) reuses the contents read before. */
+	void ForgetEmbeddedFiles();
+	/** Replaces all references to an asset (skeleton, animations, preview meshes and embedded assets). */
+	void RenameAssetReference( const std::string& from, const std::string& to );
+
+	// Files
+
+	/** Returns the document as JSON text. The export path is stored relative to baseDirectory if it is set. */
+	[[nodiscard]] std::string Serialize( const std::filesystem::path& baseDirectory = {} ) const;
+	/** Replaces the document with JSON text written by Serialize. Relative export paths are resolved against
+	* baseDirectory. Fails, leaving the document unchanged, if the text is not a document of a supported version or
+	* has the wrong structure. Parts that can't be applied, for example an edge between incompatible sockets or an
+	* embedded asset whose file is missing, are skipped and reported as warnings. */
+	bool Deserialize( std::string_view text, std::string& error, std::vector<std::string>* warnings = nullptr, const std::filesystem::path& baseDirectory = {} );
 
 	/** Replaces the document with an empty network: a root graph with an Output node. */
 	void New();
-	bool LoadFile( const std::filesystem::path& path, std::string& error );
+	/** Loads a document file. A document that loaded with warnings is marked modified. */
+	bool LoadFile( const std::filesystem::path& path, std::string& error, std::vector<std::string>* warnings = nullptr );
 	bool SaveFile( const std::filesystem::path& path, std::string& error );
 	[[nodiscard]] const std::filesystem::path& GetFilePath() const;
 
-	/** Returns true if the network or the editor data changed since the document was loaded or saved. */
+	/** Replaces the document with a network in the CAN format; nodes are laid out automatically. The document has
+	* no file path and is modified afterwards. Embedded assets whose reference resolves to an existing file use that
+	* file; the others are removed from the network, kept as unresolved embedded assets and returned as orphans. */
+	bool ImportCan( const std::vector<uint8_t>& file, std::string& error, std::vector<OrphanedAsset>* orphans = nullptr );
+	bool ImportFile( const std::filesystem::path& path, std::string& error, std::vector<OrphanedAsset>* orphans = nullptr );
+	/** Writes the contents of an orphaned asset to a file and embeds it. If the file has a different reference than
+	* the asset, references to the asset are renamed. */
+	bool SaveOrphanedAsset( const OrphanedAsset& asset, const std::filesystem::path& path, std::string& error );
+
+	/** Path the document was last exported to, or empty. Stored in the document; setting it is a modification. */
+	[[nodiscard]] const std::filesystem::path& GetExportPath() const;
+	void SetExportPath( const std::filesystem::path& path );
+	/** Writes the network in the CAN format. Embedded files are read again. Fails if an embedded file can't be read
+	* or the network has errors; assets that are still loading are not errors. Doesn't change the document. */
+	bool Export( const std::filesystem::path& path, std::string& error ) const;
+
+	/** Returns true if the network or the editor state changed since the document was loaded or saved. */
 	[[nodiscard]] bool IsModified() const;
 	/** Treats the current state as saved. */
 	void MarkUnmodified();
-	/** A value that changes whenever the network or the editor data (except views) changes. */
+	/** A value that changes whenever the network or the editor state (except views) changes. */
 	[[nodiscard]] uint64_t GetRevision() const;
 
 	/** Returns true if the skeleton is missing, so that the network can only be fixed by setting a skeleton. */
 	[[nodiscard]] bool IsLocked() const;
 
-	/** Returns the location of a node in the saved file, or nullopt if the node or graph doesn't exist. */
+	/** Returns the location of a node, or nullopt if the node or graph doesn't exist. */
 	[[nodiscard]] std::optional<NodeLocation> Locate( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
 	/** Returns the graph and node at a location, or {nullptr, unset} if there is none. */
 	[[nodiscard]] std::pair<cmf::AnimationGraphBuilder*, cmf::AnimationNodeId> Find( const NodeLocation& location );
@@ -130,13 +193,24 @@ private:
 		GraphView view;
 	};
 
-	[[nodiscard]] std::vector<uint8_t> WriteEditorData() const;
-	void ReadEditorData( const std::vector<uint8_t>& data );
-	void PruneGraphs();
+	/** Clears the network and the editor state, except the file path. */
+	void Reset();
+	/** Reads the document; throws nlohmann::json::exception for JSON of the wrong structure. */
+	void Read( std::string_view text, std::vector<std::string>& warnings, const std::filesystem::path& baseDirectory );
+	/** Embeds an asset from the contents read before or from its file; records an error on failure. */
+	bool LoadEmbeddedAsset( const std::string& reference );
+	void PlaceAllUnpositionedNodes();
 
+	cmf::AnimationAssetLoader* m_loader;
+	const PathResolver* m_resolver;
 	cmf::AnimationNetworkBuilder m_network;
 	std::map<const cmf::AnimationGraphBuilder*, GraphState> m_graphs;
 	std::vector<std::string> m_previewMeshes;
+	std::set<std::string> m_embeddedAssets;
+	std::map<std::string, std::string> m_embeddedErrors;
+	/** Contents of embedded files read so far. */
+	std::map<std::string, std::vector<uint8_t>> m_embeddedFiles;
+	std::filesystem::path m_exportPath;
 	std::filesystem::path m_filePath;
 	uint64_t m_editorRevision = 0;
 	uint64_t m_savedRevision = 0;

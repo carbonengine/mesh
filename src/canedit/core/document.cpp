@@ -3,45 +3,20 @@
 #include "document.h"
 
 #include "autoLayout.h"
+#include "networkJson.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <fstream>
 #include <iterator>
-#include <set>
 
 namespace canedit
 {
 namespace
 {
 
-constexpr const char* FORMAT_NAME = "canedit";
-
-// Reads the view and node positions of a graph from the editor data
-void ReadGraphState( const nlohmann::json& source, const cmf::AnimationGraphLayout& layout, GraphView& view, std::map<uint32_t, Vec2>& positions )
-{
-	const auto isNumber = []( const nlohmann::json& value ) { return value.is_number(); };
-	const auto storedView = source.find( "view" );
-	if( storedView != source.end() && storedView->is_array() && storedView->size() == 3 && std::all_of( storedView->begin(), storedView->end(), isNumber ) )
-	{
-		view.pan = { ( *storedView )[0].get<float>(), ( *storedView )[1].get<float>() };
-		view.zoom = ( *storedView )[2].get<float>();
-	}
-	const auto nodes = source.find( "nodes" );
-	if( nodes == source.end() || !nodes->is_array() )
-	{
-		return;
-	}
-	for( size_t n = 0; n < nodes->size() && n < layout.nodes.size(); ++n )
-	{
-		const auto& position = ( *nodes )[n];
-		if( position.is_array() && position.size() == 2 && std::all_of( position.begin(), position.end(), isNumber ) )
-		{
-			positions[layout.nodes[n].index] = { position[0].get<float>(), position[1].get<float>() };
-		}
-	}
-}
+using Json = nlohmann::json;
 
 // Adds the positions of nodes that don't have one yet
 void FillPositions( std::map<uint32_t, Vec2>& positions, const std::map<uint32_t, Vec2>& layout, const std::vector<cmf::AnimationNodeId>& nodes )
@@ -78,31 +53,61 @@ std::vector<std::string> CleanReferences( std::vector<std::string> references )
 	return references;
 }
 
-// Reads the preview meshes from the editor data, including the single "previewMesh" of earlier files
-std::vector<std::string> ReadPreviewMeshes( const nlohmann::json& source )
+bool ReadBytes( const std::filesystem::path& path, std::vector<uint8_t>& bytes, std::string& error )
 {
-	std::vector<std::string> references;
-	const auto meshes = source.find( "previewMeshes" );
-	if( meshes != source.end() && meshes->is_array() )
+	std::ifstream stream( path, std::ios::binary );
+	if( !stream )
 	{
-		for( const auto& mesh : *meshes )
-		{
-			if( mesh.is_string() )
-			{
-				references.push_back( mesh.get<std::string>() );
-			}
-		}
+		error = "Cannot open '" + path.u8string() + "'";
+		return false;
 	}
-	const auto legacy = source.find( "previewMesh" );
-	if( legacy != source.end() && legacy->is_string() )
-	{
-		references.push_back( legacy->get<std::string>() );
-	}
-	return CleanReferences( std::move( references ) );
-}
+	bytes.assign( std::istreambuf_iterator<char>( stream ), std::istreambuf_iterator<char>() );
+	return true;
 }
 
-Document::Document( cmf::AnimationAssetLoader& loader ) :
+// Writes to a temporary file first, so that a failed write doesn't destroy the previous file
+bool WriteBytes( const std::filesystem::path& path, const void* data, size_t size, std::string& error )
+{
+	auto temporary = path;
+	temporary += ".tmp";
+	{
+		std::ofstream stream( temporary, std::ios::binary | std::ios::trunc );
+		if( !stream )
+		{
+			error = "Cannot write '" + path.u8string() + "'";
+			return false;
+		}
+		stream.write( static_cast<const char*>( data ), static_cast<std::streamsize>( size ) );
+		if( !stream )
+		{
+			error = "Failed to write '" + path.u8string() + "'";
+			return false;
+		}
+	}
+	std::error_code ec;
+	std::filesystem::rename( temporary, path, ec );
+	if( ec )
+	{
+		std::filesystem::remove( temporary, ec );
+		error = "Cannot replace '" + path.u8string() + "'";
+		return false;
+	}
+	return true;
+}
+
+// Returns the directory of a file as an absolute path, so that paths relative to it stay valid
+std::filesystem::path GetBaseDirectory( const std::filesystem::path& file )
+{
+	std::error_code ec;
+	auto absolute = std::filesystem::absolute( file, ec );
+	return ec ? file.parent_path() : absolute.parent_path();
+}
+
+}
+
+Document::Document( cmf::AnimationAssetLoader& loader, const PathResolver& resolver ) :
+	m_loader( &loader ),
+	m_resolver( &resolver ),
 	m_network( loader )
 {
 }
@@ -222,106 +227,244 @@ void Document::AutoLayout( const cmf::AnimationGraphBuilder& graph )
 	++m_editorRevision;
 }
 
-std::vector<uint8_t> Document::WriteEditorData() const
+void Document::PlaceAllUnpositionedNodes()
 {
-	nlohmann::json json;
-	json["format"] = FORMAT_NAME;
-	json["version"] = EDITOR_DATA_VERSION;
-	if( !m_previewMeshes.empty() )
-	{
-		json["previewMeshes"] = m_previewMeshes;
-	}
-	auto& graphs = json["graphs"];
-	graphs = nlohmann::json::array();
 	for( const auto& layout : m_network.GetSaveLayout() )
 	{
-		nlohmann::json graph;
-		const auto it = m_graphs.find( layout.graph );
-		const GraphState state = it == m_graphs.end() ? GraphState{} : it->second;
-		graph["view"] = { state.view.pan.x, state.view.pan.y, state.view.zoom };
-		auto& nodes = graph["nodes"];
-		nodes = nlohmann::json::array();
-		for( const auto id : layout.nodes )
-		{
-			const auto position = state.positions.find( id.index );
-			if( position == state.positions.end() )
-			{
-				nodes.push_back( nullptr );
-			}
-			else
-			{
-				nodes.push_back( { position->second.x, position->second.y } );
-			}
-		}
-		graphs.push_back( std::move( graph ) );
+		PlaceUnpositionedNodes( *layout.graph );
 	}
-	const auto text = json.dump();
-	return { text.begin(), text.end() };
 }
 
-void Document::ReadEditorData( const std::vector<uint8_t>& data )
+const std::set<std::string>& Document::GetEmbeddedAssets() const
 {
-	m_graphs.clear();
-	m_previewMeshes.clear();
-	const auto layout = m_network.GetSaveLayout();
-	const auto json = nlohmann::json::parse( data.begin(), data.end(), nullptr, false );
-	if( !json.is_discarded() && json.is_object() && json.value( "format", "" ) == FORMAT_NAME )
+	return m_embeddedAssets;
+}
+
+bool Document::LoadEmbeddedAsset( const std::string& reference )
+{
+	m_embeddedErrors.erase( reference );
+	std::vector<uint8_t> bytes;
+	std::string error;
+	const auto cached = m_embeddedFiles.find( reference );
+	if( cached != m_embeddedFiles.end() )
 	{
-		m_previewMeshes = ReadPreviewMeshes( json );
-		const auto graphs = json.find( "graphs" );
-		if( graphs != json.end() && graphs->is_array() )
+		bytes = cached->second;
+	}
+	else
+	{
+		const auto path = m_resolver->Resolve( reference, &error );
+		if( !path || !ReadBytes( *path, bytes, error ) )
 		{
-			for( size_t g = 0; g < graphs->size() && g < layout.size(); ++g )
-			{
-				auto& state = m_graphs[layout[g].graph];
-				ReadGraphState( ( *graphs )[g], layout[g], state.view, state.positions );
-			}
+			m_embeddedErrors[reference] = error;
+			return false;
 		}
 	}
-	for( const auto& graph : layout )
-	{
-		PlaceUnpositionedNodes( *graph.graph );
-	}
-}
-
-void Document::PruneGraphs()
-{
-	std::set<const cmf::AnimationGraphBuilder*> live;
-	for( const auto& layout : m_network.GetSaveLayout() )
-	{
-		live.insert( layout.graph );
-	}
-	for( auto it = m_graphs.begin(); it != m_graphs.end(); )
-	{
-		it = live.count( it->first ) == 0 ? m_graphs.erase( it ) : std::next( it );
-	}
-}
-
-std::vector<uint8_t> Document::Serialize()
-{
-	m_network.SetEditorData( WriteEditorData() );
-	return m_network.Save();
-}
-
-bool Document::Deserialize( const std::vector<uint8_t>& file, std::string& error )
-{
-	const auto result = m_network.Load( file.data(), file.size() );
+	const auto result = m_network.EmbedAsset( reference, bytes );
 	if( !result )
 	{
-		error = result.error;
+		m_embeddedErrors[reference] = result.error;
 		return false;
 	}
-	ReadEditorData( m_network.GetEditorData() );
-	PruneGraphs();
+	m_embeddedFiles[reference] = std::move( bytes );
+	return true;
+}
+
+cmf::ValidationResult Document::EmbedAsset( const std::string& reference )
+{
+	if( reference.empty() || m_embeddedAssets.count( reference ) != 0 )
+	{
+		return { false, reference.empty() ? std::string( "The reference is empty" ) : "'" + reference + "' is already embedded" };
+	}
+	// Read the file again, it may have changed since it was embedded before
+	m_embeddedFiles.erase( reference );
+	if( !LoadEmbeddedAsset( reference ) )
+	{
+		auto error = "Cannot embed '" + reference + "': " + m_embeddedErrors[reference];
+		m_embeddedErrors.erase( reference );
+		return { false, std::move( error ) };
+	}
+	m_embeddedAssets.insert( reference );
 	++m_editorRevision;
+	return { true, {} };
+}
+
+void Document::RemoveEmbeddedAsset( const std::string& reference )
+{
+	if( m_embeddedAssets.erase( reference ) == 0 )
+	{
+		return;
+	}
+	m_network.RemoveEmbeddedAsset( reference );
+	m_embeddedErrors.erase( reference );
+	++m_editorRevision;
+}
+
+const std::string* Document::GetEmbeddedAssetError( const std::string& reference ) const
+{
+	const auto it = m_embeddedErrors.find( reference );
+	return it == m_embeddedErrors.end() ? nullptr : &it->second;
+}
+
+void Document::ForgetEmbeddedFiles()
+{
+	m_embeddedFiles.clear();
+}
+
+void Document::RenameAssetReference( const std::string& from, const std::string& to )
+{
+	if( from == to )
+	{
+		return;
+	}
+	if( m_network.GetSkeletonPath() == from )
+	{
+		m_network.SetSkeleton( to, m_network.GetSkeletonName() );
+	}
+	for( const auto& layout : m_network.GetSaveLayout() )
+	{
+		// The document owns the network, so its graphs can be modified
+		auto& graph = const_cast<cmf::AnimationGraphBuilder&>( *layout.graph ); // NOLINT(cppcoreguidelines-pro-type-const-cast): see above
+		for( const auto id : layout.nodes )
+		{
+			const auto* sample = graph.GetSettings<cmf::AnimationSampleSettings>( id );
+			if( sample != nullptr && sample->assetPath == from )
+			{
+				static_cast<void>( graph.SetAnimation( id, to, sample->animationName ) );
+			}
+		}
+	}
+	auto previewMeshes = m_previewMeshes;
+	std::replace( previewMeshes.begin(), previewMeshes.end(), from, to );
+	SetPreviewMeshes( std::move( previewMeshes ) );
+	if( m_embeddedAssets.count( from ) != 0 )
+	{
+		RemoveEmbeddedAsset( from );
+		static_cast<void>( EmbedAsset( to ) );
+	}
+	++m_editorRevision;
+}
+
+std::string Document::Serialize( const std::filesystem::path& baseDirectory ) const
+{
+	Json json;
+	json["format"] = FORMAT_NAME;
+	json["version"] = FILE_VERSION;
+	json["skeleton"] = { { "asset", m_network.GetSkeletonPath() }, { "name", m_network.GetSkeletonName() } };
+	auto& parameters = json["parameters"];
+	parameters = Json::array();
+	for( const auto& parameter : m_network.GetParameters() )
+	{
+		parameters.push_back( WriteParameterJson( parameter ) );
+	}
+	json["embeddedAssets"] = m_embeddedAssets;
+	json["previewMeshes"] = m_previewMeshes;
+	auto exportPath = m_exportPath;
+	if( !baseDirectory.empty() && !exportPath.empty() )
+	{
+		// Paths on another drive have no relative form
+		const auto relative = exportPath.lexically_relative( baseDirectory );
+		if( !relative.empty() )
+		{
+			exportPath = relative;
+		}
+	}
+	json["exportPath"] = exportPath.generic_u8string();
+	const auto& root = m_network.GetRootGraph();
+	json["graph"] = WriteGraphJson( *this, root, root.GetNodes(), GraphJsonMode::Document );
+	return json.dump( 1, '\t' ) + "\n";
+}
+
+void Document::Reset()
+{
+	m_network.Clear();
+	m_graphs.clear();
+	m_previewMeshes.clear();
+	m_embeddedAssets.clear();
+	m_embeddedErrors.clear();
+	m_exportPath.clear();
+	++m_editorRevision;
+}
+
+void Document::Read( std::string_view text, std::vector<std::string>& warnings, const std::filesystem::path& baseDirectory )
+{
+	const auto json = Json::parse( text.begin(), text.end() );
+	Reset();
+	// Embedded assets first, so that the references below resolve to them
+	for( const auto& reference : json.value( "embeddedAssets", std::vector<std::string>() ) )
+	{
+		m_embeddedAssets.insert( reference );
+		if( !LoadEmbeddedAsset( reference ) )
+		{
+			warnings.push_back( "Embedded asset '" + reference + "' is not available: " + m_embeddedErrors[reference] );
+		}
+	}
+	const auto skeleton = json.value( "skeleton", Json::object() );
+	m_network.SetSkeleton( skeleton.value( "asset", "" ), skeleton.value( "name", "" ) );
+	for( const auto& parameter : json.value( "parameters", Json::array() ) )
+	{
+		const auto definition = ReadParameterJson( parameter );
+		if( m_network.AddParameter( definition ) == cmf::AnimationNetworkBuilder::INVALID_PARAMETER )
+		{
+			warnings.push_back( "Parameter '" + definition.name + "' skipped: its name is empty or used twice" );
+		}
+	}
+	GraphJsonReader reader( *this, warnings, GraphJsonMode::Document );
+	reader.ReadGraph( m_network.GetRootGraph(), json.at( "graph" ), {} );
+	m_previewMeshes = CleanReferences( json.value( "previewMeshes", std::vector<std::string>() ) );
+	const auto exportPath = std::filesystem::u8path( json.value( "exportPath", "" ) );
+	m_exportPath = exportPath.is_relative() && !exportPath.empty() && !baseDirectory.empty() ? ( baseDirectory / exportPath ).lexically_normal() : exportPath;
+	PlaceAllUnpositionedNodes();
+}
+
+bool Document::Deserialize( std::string_view text, std::string& error, std::vector<std::string>* warnings, const std::filesystem::path& baseDirectory )
+{
+	const auto json = Json::parse( text.begin(), text.end(), nullptr, false );
+	if( json.is_discarded() || !json.is_object() )
+	{
+		error = "not a JSON document";
+		return false;
+	}
+	if( json.value( "format", "" ) != FORMAT_NAME || !json.contains( "version" ) || !json["version"].is_number_integer() )
+	{
+		error = "not a CanEdit document";
+		return false;
+	}
+	const auto version = json["version"].get<int>();
+	if( version > FILE_VERSION || version < 1 )
+	{
+		error = "unsupported document version " + std::to_string( version ) + ", this CanEdit supports version " + std::to_string( FILE_VERSION );
+		return false;
+	}
+	const auto previous = Serialize();
+	const bool wasModified = IsModified();
+	std::vector<std::string> readWarnings;
+	try
+	{
+		Read( text, readWarnings, baseDirectory );
+	}
+	catch( const nlohmann::json::exception& exception )
+	{
+		error = std::string( "invalid document: " ) + exception.what();
+		// Restore the previous state, which can be read
+		std::vector<std::string> ignored;
+		Read( previous, ignored, {} );
+		if( !wasModified )
+		{
+			MarkUnmodified();
+		}
+		return false;
+	}
+	if( warnings != nullptr )
+	{
+		*warnings = std::move( readWarnings );
+	}
 	return true;
 }
 
 void Document::New()
 {
-	m_network.Clear();
-	m_graphs.clear();
-	m_previewMeshes.clear();
+	Reset();
+	m_embeddedFiles.clear();
 	m_filePath.clear();
 	auto& root = m_network.GetRootGraph();
 	const auto output = root.AddNode( cmf::AnimationNodeType::Output );
@@ -329,51 +472,41 @@ void Document::New()
 	m_savedRevision = GetRevision();
 }
 
-bool Document::LoadFile( const std::filesystem::path& path, std::string& error )
+bool Document::LoadFile( const std::filesystem::path& path, std::string& error, std::vector<std::string>* warnings )
 {
-	std::ifstream stream( path, std::ios::binary );
-	if( !stream )
+	std::vector<uint8_t> bytes;
+	if( !ReadBytes( path, bytes, error ) )
 	{
-		error = "Cannot open '" + path.u8string() + "'";
 		return false;
 	}
-	const std::vector<uint8_t> bytes( ( std::istreambuf_iterator<char>( stream ) ), std::istreambuf_iterator<char>() );
-	if( !Deserialize( bytes, error ) )
+	// Read embedded files again: they may have changed since they were read
+	auto embeddedFiles = std::move( m_embeddedFiles );
+	m_embeddedFiles.clear();
+	std::vector<std::string> readWarnings;
+	const std::string_view text( reinterpret_cast<const char*>( bytes.data() ), bytes.size() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the file is text
+	if( !Deserialize( text, error, &readWarnings, GetBaseDirectory( path ) ) )
 	{
-		error = "'" + path.u8string() + "' is not a valid animation network: " + error;
+		m_embeddedFiles = std::move( embeddedFiles );
+		error = "'" + path.u8string() + "' is not a valid animation network document: " + error;
 		return false;
 	}
 	m_filePath = path;
-	m_savedRevision = GetRevision();
+	if( readWarnings.empty() )
+	{
+		m_savedRevision = GetRevision();
+	}
+	if( warnings != nullptr )
+	{
+		*warnings = std::move( readWarnings );
+	}
 	return true;
 }
 
 bool Document::SaveFile( const std::filesystem::path& path, std::string& error )
 {
-	const auto bytes = Serialize();
-	// Write to a temporary file first, so that a failed save doesn't destroy the previous file
-	auto temporary = path;
-	temporary += ".tmp";
+	const auto text = Serialize( GetBaseDirectory( path ) );
+	if( !WriteBytes( path, text.data(), text.size(), error ) )
 	{
-		std::ofstream stream( temporary, std::ios::binary | std::ios::trunc );
-		if( !stream )
-		{
-			error = "Cannot write '" + path.u8string() + "'";
-			return false;
-		}
-		stream.write( reinterpret_cast<const char*>( bytes.data() ), static_cast<std::streamsize>( bytes.size() ) ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): streams write chars
-		if( !stream )
-		{
-			error = "Failed to write '" + path.u8string() + "'";
-			return false;
-		}
-	}
-	std::error_code ec;
-	std::filesystem::rename( temporary, path, ec );
-	if( ec )
-	{
-		std::filesystem::remove( temporary, ec );
-		error = "Cannot replace '" + path.u8string() + "'";
 		return false;
 	}
 	m_filePath = path;
@@ -384,6 +517,121 @@ bool Document::SaveFile( const std::filesystem::path& path, std::string& error )
 const std::filesystem::path& Document::GetFilePath() const
 {
 	return m_filePath;
+}
+
+bool Document::ImportCan( const std::vector<uint8_t>& file, std::string& error, std::vector<OrphanedAsset>* orphans )
+{
+	const auto result = m_network.Load( file.data(), file.size() );
+	if( !result )
+	{
+		error = result.error;
+		return false;
+	}
+	// Load replaced the network: clear the editor state, but not the network
+	m_graphs.clear();
+	m_previewMeshes.clear();
+	m_embeddedAssets.clear();
+	m_embeddedErrors.clear();
+	m_embeddedFiles.clear();
+	m_exportPath.clear();
+	m_filePath.clear();
+	for( const auto& reference : m_network.GetEmbeddedAssetPaths() )
+	{
+		OrphanedAsset asset{ reference, m_resolver->Resolve( reference ), *m_network.GetEmbeddedAsset( reference ) };
+		m_network.RemoveEmbeddedAsset( reference );
+		m_embeddedAssets.insert( reference );
+		std::error_code ec;
+		if( asset.resolvedPath && std::filesystem::is_regular_file( *asset.resolvedPath, ec ) && LoadEmbeddedAsset( reference ) )
+		{
+			continue;
+		}
+		m_embeddedErrors[reference] = "the embedded data of the imported network is not available as a file";
+		if( orphans != nullptr )
+		{
+			orphans->push_back( std::move( asset ) );
+		}
+	}
+	PlaceAllUnpositionedNodes();
+	++m_editorRevision;
+	return true;
+}
+
+bool Document::ImportFile( const std::filesystem::path& path, std::string& error, std::vector<OrphanedAsset>* orphans )
+{
+	std::vector<uint8_t> bytes;
+	if( !ReadBytes( path, bytes, error ) )
+	{
+		return false;
+	}
+	if( !ImportCan( bytes, error, orphans ) )
+	{
+		error = "'" + path.u8string() + "' is not a valid animation network: " + error;
+		return false;
+	}
+	return true;
+}
+
+bool Document::SaveOrphanedAsset( const OrphanedAsset& asset, const std::filesystem::path& path, std::string& error )
+{
+	std::error_code ec;
+	if( path.has_parent_path() )
+	{
+		std::filesystem::create_directories( path.parent_path(), ec );
+	}
+	if( !WriteBytes( path, asset.bytes.data(), asset.bytes.size(), error ) )
+	{
+		return false;
+	}
+	const auto reference = m_resolver->MakeReference( path );
+	RemoveEmbeddedAsset( asset.reference );
+	RenameAssetReference( asset.reference, reference );
+	const auto result = EmbedAsset( reference );
+	if( !result )
+	{
+		error = result.error;
+		return false;
+	}
+	return true;
+}
+
+const std::filesystem::path& Document::GetExportPath() const
+{
+	return m_exportPath;
+}
+
+void Document::SetExportPath( const std::filesystem::path& path )
+{
+	if( path != m_exportPath )
+	{
+		m_exportPath = path;
+		++m_editorRevision;
+	}
+}
+
+bool Document::Export( const std::filesystem::path& path, std::string& error ) const
+{
+	// Build the exported network from the document in a separate document, which reads the embedded files again
+	Document exported( *m_loader, *m_resolver );
+	if( !exported.Deserialize( Serialize(), error ) )
+	{
+		return false;
+	}
+	std::string problems;
+	for( const auto& [reference, embedError] : exported.m_embeddedErrors )
+	{
+		problems.append( "\nEmbedded asset '" ).append( reference ).append( "': " ).append( embedError );
+	}
+	for( const auto& networkError : exported.GetNetwork().GetErrors() )
+	{
+		problems.append( "\n" ).append( networkError );
+	}
+	if( !problems.empty() )
+	{
+		error = "The network can't be exported:" + problems;
+		return false;
+	}
+	const auto bytes = exported.GetNetwork().Save();
+	return WriteBytes( path, bytes.data(), bytes.size(), error );
 }
 
 bool Document::IsModified() const

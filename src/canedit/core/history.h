@@ -6,6 +6,7 @@
 
 #include <deque>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace canedit
@@ -14,8 +15,8 @@ namespace canedit
 /** State of an editing session that undo and redo restore. */
 struct Snapshot
 {
-	/** The network with its editor data, as written by Document::Serialize. */
-	std::vector<uint8_t> file;
+	/** The document, as written by Document::Serialize. */
+	std::string document;
 	/** The graph that is open in the editor. */
 	std::vector<NodeLocation> graphPath;
 	/** The selected nodes of the open graph. */

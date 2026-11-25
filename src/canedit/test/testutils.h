@@ -73,7 +73,7 @@ struct EditorFixture : public ::testing::Test
 	TemporaryDirectory directory;
 	canedit::PathResolver resolver;
 	canedit::FileAssetLoader loader{ resolver };
-	canedit::Document document{ loader };
+	canedit::Document document{ loader, resolver };
 	canedit::EditorSession session{ document };
 
 	EditorFixture()

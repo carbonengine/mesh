@@ -14,6 +14,8 @@ set(CANEDIT_CORE_SOURCES
     document.h
     history.cpp
     history.h
+    networkJson.cpp
+    networkJson.h
     pathResolver.cpp
     pathResolver.h
     session.cpp

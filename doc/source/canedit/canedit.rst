@@ -1,16 +1,19 @@
 CanEdit
 =======
 
-CanEdit is a graphical editor for animation networks (``.can`` files, see :doc:`../cmf/animationNetwork`). It shows
-the network as a graph of nodes, previews the result on a skinned model and lets you change the control parameters
-of the network while it plays.
+CanEdit is a graphical editor for animation networks (see :doc:`../cmf/animationNetwork`). It shows the network as a
+graph of nodes, previews the result on a skinned model and lets you change the control parameters of the network while
+it plays.
+
+CanEdit saves networks as documents (``.cane`` files, see `Documents and Export`_) and exports them as ``.can`` files,
+which the runtime loads.
 
 CanEdit is built with the other tools (``-DBUILD_TOOLS=ON``). Start it without arguments for a new network, or pass a
-``.can`` file to open it:
+``.cane`` document to open it (or a ``.can`` file to import it):
 
 .. code-block:: bash
 
-   CanEdit characters/soldier.can
+   CanEdit characters/soldier.cane
 
 Window Layout
 -------------
@@ -104,9 +107,11 @@ Keyboard and Mouse
       - Undo, redo
     * - Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S
       - New, open, save, save as
+    * - Ctrl+E, Ctrl+Shift+E
+      - Export, export as
 
-**Edit > Auto Arrange** lays out the open graph automatically. It is also applied to networks that were not saved by
-CanEdit, which have no node positions.
+**Edit > Auto Arrange** lays out the open graph automatically. It is also applied to imported ``.can`` files, which
+have no node positions.
 
 Preview
 -------
@@ -157,33 +162,81 @@ directory of a prefix.
 Embedded Assets
 ---------------
 
-**Embed File...** in the **Problems and Assets** panel stores a CMF file in the network. References to its path then
-use the embedded file, which makes the network self-contained at the cost of a larger file.
+An embedded asset is a CMF file that is packed into the exported ``.can`` file. References to its path then use the
+embedded copy instead of loading the file, which makes the exported network self-contained at the cost of a larger
+file.
 
-Editor Data
------------
+**Embed File...** in the **Problems and Assets** panel marks a file as embedded. The document only stores its
+reference: the file is read when the document is opened, when **File > Reload Assets** is used and again when the
+network is exported, so the exported network always contains the current file. Undo and redo reuse the contents read
+before.
 
-CanEdit stores node positions, the pan and zoom of each graph and the preview meshes in the EditorData section of the
-``.can`` file (see :doc:`../cmf/animationNetworkFormat`). Other programs that load the network ignore the section.
-Its contents are UTF-8 JSON:
+An embedded file that can't be read is listed with the error in the panel and the network uses the asset loader for
+its path, as if it weren't embedded. A network whose embedded files can't be read is not exported.
+
+Documents and Export
+--------------------
+
+**File > Save** writes the document: a UTF-8 JSON file with the ``.cane`` extension that holds the whole network
+together with the node positions, the pan and zoom of each graph, the preview meshes and the export path. Documents are
+meant to be kept in source control: they are indented, and nodes are stored in a stable order.
+
+**File > Export** (Ctrl+E) writes the network in the CAN format to the export path of the document. The first export
+asks for the path, and **Export As...** (Ctrl+Shift+E) always asks. The export path is stored in the document, relative
+to the document file, so changing it is a change of the document. Exporting doesn't save the document.
+
+Networks with errors (see the **Problems and Assets** panel) are not exported. Assets that are still loading and
+warnings, such as missing animations, don't prevent the export.
+
+Importing CAN files
+^^^^^^^^^^^^^^^^^^^
+
+**File > Open** also opens ``.can`` files, as do dropping them on the window and passing them on the command line. An
+imported network becomes a new, unsaved document; its nodes are laid out automatically.
+
+Embedded files of the imported network whose reference resolves to an existing file use that file. For the others,
+CanEdit asks whether to save the embedded data to a file, because documents only store references. Saving it to a
+different location than its reference resolves to changes the references to it in the network.
+
+Document Format
+^^^^^^^^^^^^^^^
+
+An abbreviated document:
 
 .. code-block:: json
 
     {
-        "format": "canedit",
-        "version": 2,
+        "format": "cane",
+        "version": 1,
+        "skeleton": { "asset": "res:/characters/soldier.cmf", "name": "" },
+        "parameters": [ { "name": "speed", "default": 0.0, "min": 0.0, "max": null } ],
+        "embeddedAssets": [ "res:/characters/soldier_idle.cmf" ],
         "previewMeshes": [ "res:/characters/soldier.cmf", "res:/characters/soldier_head.cmf" ],
-        "graphs": [
-            {
-                "view": [ -120.0, -40.0, 1.0 ],
-                "nodes": [ [ 600.0, 0.0 ], [ 300.0, 0.0 ], null ]
-            }
-        ]
+        "exportPath": "../export/soldier.can",
+        "graph": {
+            "view": [ -120.0, -40.0, 1.0 ],
+            "nodes": [
+                {
+                    "type": "Output", "name": "", "position": [ 600.0, 0.0 ], "inputs": [ 0.0 ],
+                    "settings": { "socketName": "", "socketType": "Pose" }
+                },
+                {
+                    "type": "AnimationSample", "name": "Idle", "position": [ 300.0, 0.0 ], "inputs": [ 0.0, 1.0, 1.0 ],
+                    "settings": { "asset": "res:/characters/soldier_idle.cmf", "animation": "Idle" }
+                }
+            ],
+            "edges": [ [ 1, 0, 0, 0 ] ]
+        }
     }
 
-``previewMeshes`` lists the preview meshes. Version 1 files stored a single ``previewMesh`` string instead; CanEdit
-still reads it.
+* ``format`` and ``version`` identify the file. CanEdit rejects documents of newer versions.
+* ``parameters`` are the control parameters in order. Limits without a value (``null``) are unbounded.
+* ``graph`` is the root graph. ``view`` is the graph position at the top left corner of the view followed by the
+  zoom. ``nodes`` lists the nodes with their type, name, position, input constants (one per input; ``null`` for no
+  value) and type specific settings; Parameter nodes reference parameters by name. Subgraph nodes contain their graph
+  in ``graph``, in the same form. ``edges`` connects ``[ output node, output socket, input node, input socket ]``,
+  with nodes referenced by their index in ``nodes``.
 
-``graphs`` has one entry per graph in file order (the root graph first). ``view`` is the graph position at the top
-left corner of the view followed by the zoom. ``nodes`` holds the position of each node of the graph in file order, or
-``null`` for nodes without a position, which are placed automatically.
+Nodes without a position are placed automatically. Parts of a document that can't be applied, for example an edge
+between sockets of different types or an unknown node type, are skipped with a warning when the document is opened;
+the document is then marked as modified.

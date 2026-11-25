@@ -1342,12 +1342,6 @@ public:
 			builder.m_parameters.push_back( { ToStdString( parameter.name ), parameter.defaultValue, parameter.minValue, parameter.maxValue } );
 		}
 		ReadGraphs( *builder.m_rootGraph, data );
-		const auto editorSection = detail::FindSection( file, can::SectionType::EditorData );
-		if( editorSection != can::NO_INDEX )
-		{
-			const auto [bytes, size] = detail::GetSectionBytes( file, editorSection );
-			builder.m_editorData.assign( bytes, bytes + size );
-		}
 	}
 
 	/** A graph in save order with the indices assigned to its subgraphs. */
@@ -1417,7 +1411,7 @@ private:
 		}
 		WriteGraphs( *builder.m_rootGraph );
 		Modify( m_data.graphs, m_allocator ) = m_graphs;
-		return WriteFile( embeddedFiles, builder.m_editorData );
+		return WriteFile( embeddedFiles );
 	}
 
 	uint32_t GetAssetIndex( const std::string& path )
@@ -1603,7 +1597,7 @@ private:
 		return ( offset + alignment - 1 ) / alignment * alignment;
 	}
 
-	std::vector<uint8_t> WriteFile( const std::vector<const std::vector<uint8_t>*>& embeddedFiles, const std::vector<uint8_t>& editorData )
+	std::vector<uint8_t> WriteFile( const std::vector<const std::vector<uint8_t>*>& embeddedFiles )
 	{
 		auto network = Flatten( m_data );
 		PointersToOffsets( *reinterpret_cast<can::NetworkData*>( network.data.get() ) ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
@@ -1613,10 +1607,6 @@ private:
 		for( const auto* file : embeddedFiles )
 		{
 			Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( file->size() ), can::SectionType::EmbeddedCmf } );
-		}
-		if( !editorData.empty() )
-		{
-			Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( editorData.size() ), can::SectionType::EditorData } );
 		}
 		auto flattenedHeader = Flatten( header );
 		auto& fileHeader = *reinterpret_cast<can::Header*>( flattenedHeader.data.get() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
@@ -1633,10 +1623,6 @@ private:
 		for( uint32_t i = 0; i < embeddedFiles.size(); ++i )
 		{
 			std::memcpy( result.data() + sections[i + 1].offset, embeddedFiles[i]->data(), embeddedFiles[i]->size() );
-		}
-		if( !editorData.empty() )
-		{
-			std::memcpy( result.data() + sections[sections.size() - 1].offset, editorData.data(), editorData.size() );
 		}
 		PointersToOffsets( fileHeader );
 		std::memcpy( result.data(), flattenedHeader.data.get(), flattenedHeader.size );
@@ -1775,16 +1761,6 @@ std::vector<AnimationGraphLayout> AnimationNetworkBuilder::GetSaveLayout() const
 	return Serializer::GetLayout( *m_rootGraph );
 }
 
-void AnimationNetworkBuilder::SetEditorData( std::vector<uint8_t> data )
-{
-	m_editorData = std::move( data );
-}
-
-const std::vector<uint8_t>& AnimationNetworkBuilder::GetEditorData() const
-{
-	return m_editorData;
-}
-
 ValidationResult AnimationNetworkBuilder::Load( const void* file, size_t size )
 {
 	// Copy the file so that it is aligned and can be read in place
@@ -1813,7 +1789,6 @@ void AnimationNetworkBuilder::Clear()
 	m_rootGraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *this, nullptr, {} ) ); // NOLINT(modernize-make-unique): the constructor is private
 	m_parameters.clear();
 	m_embeddedAssets.clear();
-	m_editorData.clear();
 	MarkModified();
 }
 

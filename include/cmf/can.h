@@ -443,9 +443,6 @@ enum class SectionType : uint8_t
 	Network,
 	/** Contains a complete CMF file. */
 	EmbeddedCmf,
-	/** Optional data of editing tools (for example node positions), opaque to the runtime. A file has at most one
-	* such section. Readers that don't use it skip it. */
-	EditorData,
 };
 
 struct Section

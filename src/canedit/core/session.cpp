@@ -35,6 +35,7 @@ void EditorSession::Reload()
 {
 	const bool modified = m_document->IsModified();
 	const auto snapshot = Capture();
+	m_document->ForgetEmbeddedFiles();
 	Restore( snapshot );
 	if( !modified )
 	{
@@ -167,7 +168,7 @@ void EditorSession::SelectEdge( cmf::AnimationSocketRef input )
 Snapshot EditorSession::Capture()
 {
 	Snapshot snapshot;
-	snapshot.file = m_document->Serialize();
+	snapshot.document = m_document->Serialize();
 	snapshot.graphPath = m_document->LocatePath( m_graphPath );
 	const auto& graph = GetGraph();
 	for( const auto id : m_selection )
@@ -182,7 +183,8 @@ Snapshot EditorSession::Capture()
 
 void EditorSession::Restore( const Snapshot& snapshot )
 {
-	// Views are not part of the edit history: keep the current ones
+	// Views and the export path are not part of the edit history: keep the current ones
+	const auto exportPath = m_document->GetExportPath();
 	std::vector<GraphView> views;
 	const auto& network = m_document->GetNetwork();
 	for( const auto& layout : network.GetSaveLayout() )
@@ -190,10 +192,11 @@ void EditorSession::Restore( const Snapshot& snapshot )
 		views.push_back( m_document->GetView( *layout.graph ) );
 	}
 	std::string error;
-	if( !m_document->Deserialize( snapshot.file, error ) )
+	if( !m_document->Deserialize( snapshot.document, error ) )
 	{
 		return;
 	}
+	m_document->SetExportPath( exportPath );
 	const auto layout = network.GetSaveLayout();
 	for( size_t i = 0; i < layout.size() && i < views.size(); ++i )
 	{

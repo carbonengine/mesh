@@ -15,7 +15,7 @@ TEST( Settings, RoundTripThroughJson )
 {
 	canedit::EditorSettings settings;
 	settings.prefixes = { { "res", "c:/content" }, { "art", "/art" } };
-	settings.recentFiles = { "a.can", "b.can" };
+	settings.recentFiles = { "a.cane", "b.cane" };
 	settings.uiScale = SCALE;
 	settings.leftPanelWidth = WIDTH;
 

@@ -13,7 +13,7 @@ Carbon Mesh is a C++ library for serializing 3D mesh, skeleton and animation dat
 | CLI processor | `src/processor/` | `cmfprocessor` | Requires `-DBUILD_TOOLS=ON` |
 | Render library | `src/render/` | `CarbonMeshRender` (static lib) | Private Vulkan renderer shared by the viewer and CanEdit, requires `-DBUILD_TOOLS=ON` |
 | Viewer | `src/viewer/` | `CarbonMeshViewer` | Vulkan/GLFW/ImGui app, requires `-DBUILD_TOOLS=ON` |
-| Animation network editor | `src/canedit/` | `CanEdit`, `CanEditCore` (static lib), `canedittest` | ImGui editor for `.can` files, requires `-DBUILD_TOOLS=ON` |
+| Animation network editor | `src/canedit/` | `CanEdit`, `CanEditCore` (static lib), `canedittest` | ImGui editor for animation networks (`.cane` documents, exports `.can`), requires `-DBUILD_TOOLS=ON` |
 | Docs | `doc/source/` | `Sphinx`, `Doxygen` | reStructuredText, requires `-DBUILD_DOCUMENTATION=ON` |
 
 Third-party code lives in `vendor/` as git submodules (vcpkg, the carbonengine vcpkg registry, ufbx, MoltenVK, Font Awesome). **Do not modify anything under `vendor/`.**
@@ -136,7 +136,7 @@ Run `python scripts/run_clang_tidy.py --help` for all options (`--preset`, `--bu
 - FBX import uses vendored **ufbx** (`src/processor/fbximport/`). Simplygon code is guarded by `#ifdef WITH_SIMPLYGON`.
 - **Render library** (`src/render/`): the Vulkan renderer, renderables, camera and CMF content loading used by the viewer and CanEdit. Renderables have plain setters and don't know about any application state. Sources are collected with `GLOB_RECURSE`. GLSL shaders in `src/render/assets/shaders/` are compiled to SPIR-V headers at build time by `glslc`, and `src/render/scripts/shaderCacheCreator.py` bundles them into a cache. Shared shader code goes in `.inc` files. Headers rely on `renderpch.h`; tools include it from their own precompiled header.
 - **Viewer**: sources are collected with `GLOB_RECURSE`, so new files are picked up on the next re-configure. `ViewerBinding` connects the viewer `AppState` to the render library. The viewer uses a precompiled header (`stdafx.h`).
-- **CanEdit** (`src/canedit/`): `core/` holds the UI independent editing logic (document, undo, clipboard, path prefixes, asset loading) and is tested by `canedittest` in `test/`; `app/` is the ImGui application. Editor data is stored as JSON in the EditorData section of `.can` files. New files must be added to the source lists in the CMakeLists.txt of `core/`, `test/` or `app/`. User guide: `doc/source/canedit/canedit.rst`.
+- **CanEdit** (`src/canedit/`): `core/` holds the UI independent editing logic (document, undo, clipboard, path prefixes, asset loading) and is tested by `canedittest` in `test/`; `app/` is the ImGui application. Documents are JSON `.cane` files (`Document`, `networkJson`) holding the network and editor state; `.can` files are only exported or imported. New files must be added to the source lists in the CMakeLists.txt of `core/`, `test/` or `app/`. User guide: `doc/source/canedit/canedit.rst`.
 - The project is using C++17. Using `std` library is permitted, escept `iostream`-related features in the library itself (can still be used in tools).
 - Do not use `printf` or any other logging in the library, can only do that in tools.
 - Do not throw or catch C++ exceptions in the library code, but can use then in tools.

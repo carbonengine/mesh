@@ -31,6 +31,7 @@ public:
 
 private:
 	void DrawNetwork( AppContext& context );
+	void DrawPreviewMeshes( AppContext& context );
 	void DrawNode( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
 	void DrawSettings( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
 	void DrawInterface( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationInterfaceSettings& settings );

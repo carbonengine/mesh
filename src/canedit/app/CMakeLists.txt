@@ -1,6 +1,6 @@
 # Copyright © 2026 CCP ehf.
 
-# CanEdit: graphical editor for animation networks (.can files)
+# CanEdit: graphical editor for animation networks (.cane documents, exported as .can files)
 find_package(tinyfiledialogs CONFIG REQUIRED)
 
 if(WIN32)

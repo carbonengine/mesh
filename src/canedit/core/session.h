@@ -26,7 +26,7 @@ public:
 
 	/** Clears the history and the selection, for example after a document was loaded. */
 	void Reset();
-	/** Reloads the document from its current state, so that its assets are requested again (for example after the
+	/** Reloads the document from its current state, so that its assets and embedded files are read again (for example after the
 	* asset paths changed). Keeps the open graph, the selection, the history and the modified state. */
 	void Reload();
 

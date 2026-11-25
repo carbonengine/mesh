@@ -138,22 +138,13 @@ std::string ValidateHeader( const uint8_t* bytes, size_t size )
 		return "The first section must be the Network section";
 	}
 	size_t previousEnd = header.headerSize;
-	bool hasEditorData = false;
 	for( const auto& section : header.sections )
 	{
 		if( section.offset % SECTION_ALIGNMENT != 0 || section.offset < previousEnd || static_cast<size_t>( section.offset ) + section.size > size )
 		{
 			return "Invalid section bounds";
 		}
-		if( section.type == can::SectionType::EditorData )
-		{
-			if( hasEditorData )
-			{
-				return "Only one EditorData section is allowed";
-			}
-			hasEditorData = true;
-		}
-		else if( section.type != can::SectionType::Network && section.type != can::SectionType::EmbeddedCmf )
+		if( section.type != can::SectionType::Network && section.type != can::SectionType::EmbeddedCmf )
 		{
 			return "Invalid section type";
 		}
@@ -167,11 +158,6 @@ std::string ValidateEmbeddedFiles( const uint8_t* bytes )
 	const auto& sections = GetHeader( bytes ).sections;
 	for( uint32_t i = 1; i < sections.size(); ++i )
 	{
-		if( sections[i].type == can::SectionType::EditorData )
-		{
-			// Editor data is opaque to the runtime
-			continue;
-		}
 		if( sections[i].type != can::SectionType::EmbeddedCmf )
 		{
 			return "Only the first section can be a Network section";
@@ -747,18 +733,5 @@ std::pair<const uint8_t*, size_t> GetSectionBytes( const void* file, uint32_t se
 {
 	const auto& entry = GetHeader( file ).sections[section];
 	return { static_cast<const uint8_t*>( file ) + entry.offset, entry.size };
-}
-
-uint32_t FindSection( const void* file, can::SectionType type )
-{
-	const auto& sections = GetHeader( file ).sections;
-	for( uint32_t i = 0; i < sections.size(); ++i )
-	{
-		if( sections[i].type == type )
-		{
-			return i;
-		}
-	}
-	return can::NO_INDEX;
 }
 }

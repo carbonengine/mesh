@@ -67,7 +67,7 @@ TEST_F( EditorFixture, PastingIntoAnotherNetworkAddsParameters )
 	ASSERT_TRUE( Root().SetParameter( parameter, index ) );
 	const auto text = session.CopySelection();
 
-	canedit::Document other( loader );
+	canedit::Document other( loader, resolver );
 	other.New();
 	other.GetNetwork().SetSkeleton( CHARACTER_REFERENCE, "" );
 	canedit::EditorSession otherSession( other );

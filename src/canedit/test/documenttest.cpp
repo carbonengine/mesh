@@ -6,6 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <iterator>
+
 namespace canedittest
 {
 namespace
@@ -19,6 +21,11 @@ constexpr Vec2 INNER_POSITION = { 10.f, -10.f };
 constexpr canedit::GraphView SUBGRAPH_VIEW = { { 1.f, 2.f }, 0.5f };
 constexpr canedit::GraphView OTHER_VIEW = { { 5.f, 5.f }, 2.f };
 constexpr const char* HEAD_REFERENCE = "res:/characters/head.cmf";
+constexpr const char* EMBEDDED_FILE = "embedded/character.cmf";
+constexpr const char* EMBEDDED_REFERENCE = "res:/embedded/character.cmf";
+constexpr float SPEED_DEFAULT = 2.f;
+constexpr float SPEED_MAX = 10.f;
+constexpr float BLEND_WEIGHT = 0.25f;
 
 std::vector<Vec2> GetPositions( const canedit::Document& document, const cmf::AnimationGraphBuilder& graph )
 {
@@ -32,9 +39,26 @@ std::vector<Vec2> GetPositions( const canedit::Document& document, const cmf::An
 	return positions;
 }
 
+std::vector<uint8_t> ReadFile( const std::filesystem::path& path )
+{
+	std::ifstream stream( path, std::ios::binary );
+	return { std::istreambuf_iterator<char>( stream ), std::istreambuf_iterator<char>() };
+}
+
+nlohmann::json ReadJson( const std::filesystem::path& path )
+{
+	const auto bytes = ReadFile( path );
+	return nlohmann::json::parse( bytes.begin(), bytes.end() );
+}
+
+void WriteText( const std::filesystem::path& path, const std::string& text )
+{
+	WriteFile( path, { text.begin(), text.end() } );
+}
+
 TEST_F( EditorFixture, NewDocumentHasAnOutputNode )
 {
-	canedit::Document fresh( loader );
+	canedit::Document fresh( loader, resolver );
 	fresh.New();
 	EXPECT_FALSE( fresh.IsModified() );
 	const auto& root = fresh.GetNetwork().GetRootGraph();
@@ -44,59 +68,89 @@ TEST_F( EditorFixture, NewDocumentHasAnOutputNode )
 	EXPECT_FALSE( document.IsLocked() );
 }
 
-TEST_F( EditorFixture, EditorDataSurvivesSavingAndLoading )
+TEST_F( EditorFixture, DocumentSurvivesSavingAndLoading )
 {
+	auto& network = document.GetNetwork();
 	auto& root = Root();
+	const auto speedIndex = network.AddParameter( { "speed", SPEED_DEFAULT, 0.f, SPEED_MAX } );
+	network.AddParameter( { "unused", 0.f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() } );
+	const auto blend = root.AddNode( cmf::AnimationNodeType::Blend );
 	const auto sample = root.AddNode( cmf::AnimationNodeType::AnimationSample );
-	ASSERT_TRUE( root.Connect( { sample, 0 }, { Output(), 0 } ) );
+	ASSERT_TRUE( root.SetAnimation( sample, CHARACTER_REFERENCE, networktest::LIFT_ANIMATION ) );
+	const auto speed = root.AddNode( cmf::AnimationNodeType::Parameter );
+	ASSERT_TRUE( root.SetParameter( speed, speedIndex ) );
+	ASSERT_TRUE( root.SetNodeName( blend, "Mix" ) );
+	ASSERT_TRUE( root.Connect( { blend, 0 }, { Output(), 0 } ) );
+	ASSERT_TRUE( root.Connect( { sample, 0 }, { blend, 1 } ) );
+	ASSERT_TRUE( root.SetInputConstant( { blend, 2 }, BLEND_WEIGHT ) );
 	document.SetNodePosition( root, sample, SAMPLE_POSITION );
-	// Nodes that are not connected keep their position too
-	const auto loose = root.AddNode( cmf::AnimationNodeType::Blend );
-	document.SetNodePosition( root, loose, LOOSE_POSITION );
+	document.SetNodePosition( root, speed, LOOSE_POSITION );
 	const auto subgraphNode = root.AddNode( cmf::AnimationNodeType::Subgraph );
 	document.SetNodePosition( root, subgraphNode, {} );
 	auto& subgraph = *root.GetSubgraph( subgraphNode );
 	const auto inner = subgraph.AddNode( cmf::AnimationNodeType::RestPose );
+	const auto innerOutput = subgraph.AddNode( cmf::AnimationNodeType::Output );
+	ASSERT_TRUE( subgraph.Connect( { inner, 0 }, { innerOutput, 0 } ) );
 	document.SetNodePosition( subgraph, inner, INNER_POSITION );
 	document.SetView( subgraph, SUBGRAPH_VIEW );
 	document.SetPreviewMeshes( { CHARACTER_REFERENCE, HEAD_REFERENCE } );
+	ASSERT_TRUE( root.Connect( { subgraphNode, 0 }, { blend, 0 } ) );
+	const auto savedNetwork = network.Save();
 
-	const auto path = directory.GetPath() / "network.can";
+	const auto path = directory.GetPath() / "network.cane";
 	std::string error;
 	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
 	EXPECT_FALSE( document.IsModified() );
 
-	canedit::Document loaded( loader );
-	ASSERT_TRUE( loaded.LoadFile( path, error ) ) << error;
+	canedit::Document loaded( loader, resolver );
+	std::vector<std::string> warnings;
+	ASSERT_TRUE( loaded.LoadFile( path, error, &warnings ) ) << error;
+	EXPECT_TRUE( warnings.empty() );
 	EXPECT_FALSE( loaded.IsModified() );
 	EXPECT_EQ( loaded.GetFilePath(), path );
+	EXPECT_EQ( loaded.GetNetwork().Save(), savedNetwork ) << "the network is stored completely";
 	EXPECT_EQ( loaded.GetPreviewMeshes(), ( std::vector<std::string>{ CHARACTER_REFERENCE, HEAD_REFERENCE } ) );
 	const auto& loadedRoot = loaded.GetNetwork().GetRootGraph();
 	const auto nodes = loadedRoot.GetNodes();
-	ASSERT_EQ( nodes.size(), 4u );
-	EXPECT_EQ( loaded.GetNodePosition( loadedRoot, nodes[1] ), SAMPLE_POSITION );
-	EXPECT_EQ( loaded.GetNodePosition( loadedRoot, nodes[2] ), LOOSE_POSITION );
-	const auto& loadedSubgraph = *loadedRoot.GetSubgraph( nodes[3] );
+	ASSERT_EQ( nodes.size(), 5u );
+	EXPECT_EQ( loaded.GetNodePosition( loadedRoot, nodes[2] ), SAMPLE_POSITION );
+	EXPECT_EQ( loaded.GetNodePosition( loadedRoot, nodes[3] ), LOOSE_POSITION );
+	const auto& loadedSubgraph = *loadedRoot.GetSubgraph( nodes[4] );
 	EXPECT_EQ( loaded.GetNodePosition( loadedSubgraph, loadedSubgraph.GetNodes()[0] ), INNER_POSITION );
 	EXPECT_EQ( loaded.GetView( loadedSubgraph ).zoom, SUBGRAPH_VIEW.zoom );
 	EXPECT_EQ( loaded.GetView( loadedSubgraph ).pan, SUBGRAPH_VIEW.pan );
+
+	// Saving again gives the same file
+	const auto again = directory.GetPath() / "again.cane";
+	ASSERT_TRUE( loaded.SaveFile( again, error ) ) << error;
+	EXPECT_EQ( ReadFile( again ), ReadFile( path ) );
 }
 
-TEST_F( EditorFixture, EditorDataIsJson )
+TEST_F( EditorFixture, DocumentsAreReadableJson )
 {
+	auto& network = document.GetNetwork();
+	const auto speed = Root().AddNode( cmf::AnimationNodeType::Parameter );
+	ASSERT_TRUE( Root().SetParameter( speed, network.AddParameter( { "speed", 0.f, 0.f, SPEED_MAX } ) ) );
 	document.SetPreviewMeshes( { "body.cmf", "head.cmf" } );
-	const auto file = document.Serialize();
-	const auto& editorData = document.GetNetwork().GetEditorData();
-	const auto json = nlohmann::json::parse( editorData.begin(), editorData.end() );
-	EXPECT_EQ( json["format"], "canedit" );
-	EXPECT_EQ( json["version"], canedit::Document::EDITOR_DATA_VERSION );
-	EXPECT_EQ( json["previewMeshes"], nlohmann::json::array( { "body.cmf", "head.cmf" } ) );
-	EXPECT_FALSE( json.contains( "previewMesh" ) );
-	EXPECT_EQ( json["graphs"].size(), 1u );
+	const auto path = directory.GetPath() / "network.cane";
+	std::string error;
+	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
 
-	// Other clients load the network and skip the editor data
-	cmf::AnimationNetwork network( loader );
-	EXPECT_TRUE( network.Load( file ) );
+	const auto json = ReadJson( path );
+	EXPECT_EQ( json["format"], "cane" );
+	EXPECT_EQ( json["version"], canedit::Document::FILE_VERSION );
+	EXPECT_EQ( json["skeleton"]["asset"], CHARACTER_REFERENCE );
+	EXPECT_EQ( json["skeleton"]["name"], networktest::SKELETON_NAME );
+	EXPECT_EQ( json["previewMeshes"], nlohmann::json::array( { "body.cmf", "head.cmf" } ) );
+	ASSERT_EQ( json["parameters"].size(), 1u );
+	EXPECT_EQ( json["parameters"][0]["name"], "speed" );
+	EXPECT_EQ( json["parameters"][0]["max"], SPEED_MAX );
+	const auto& nodes = json["graph"]["nodes"];
+	ASSERT_EQ( nodes.size(), 2u );
+	EXPECT_EQ( nodes[0]["type"], "Output" );
+	EXPECT_EQ( nodes[1]["type"], "Parameter" );
+	EXPECT_EQ( nodes[1]["settings"]["parameter"], "speed" ) << "Parameter nodes reference parameters by name";
+	EXPECT_TRUE( json["graph"].contains( "view" ) );
 }
 
 TEST_F( EditorFixture, PreviewMeshesSkipEmptyAndRepeatedReferences )
@@ -138,20 +192,7 @@ TEST_F( EditorFixture, PreviewMeshEditsCanBeUndone )
 	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "body.cmf", "head.cmf" } ) );
 }
 
-TEST_F( EditorFixture, SinglePreviewMeshOfEarlierFilesIsRead )
-{
-	const nlohmann::json json = { { "format", "canedit" }, { "version", 1 }, { "previewMesh", "mesh.cmf" } };
-	const auto text = json.dump();
-	document.GetNetwork().SetEditorData( { text.begin(), text.end() } );
-	const auto file = document.GetNetwork().Save();
-
-	canedit::Document loaded( loader );
-	std::string error;
-	ASSERT_TRUE( loaded.Deserialize( file, error ) ) << error;
-	EXPECT_EQ( loaded.GetPreviewMeshes(), ( std::vector<std::string>{ "mesh.cmf" } ) );
-}
-
-TEST_F( EditorFixture, NetworksWithoutEditorDataAreLaidOut )
+TEST_F( EditorFixture, ImportedNetworksAreLaidOut )
 {
 	cmf::AnimationNetworkBuilder builder( loader );
 	builder.SetSkeleton( CHARACTER_REFERENCE, "" );
@@ -164,9 +205,14 @@ TEST_F( EditorFixture, NetworksWithoutEditorDataAreLaidOut )
 	ASSERT_TRUE( root.Connect( { blend, 0 }, { output, 0 } ) );
 	ASSERT_TRUE( root.Connect( { restA, 0 }, { blend, 0 } ) );
 	ASSERT_TRUE( root.Connect( { restB, 0 }, { blend, 1 } ) );
+	const auto file = builder.Save();
 
 	std::string error;
-	ASSERT_TRUE( document.Deserialize( builder.Save(), error ) ) << error;
+	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.cane", error ) ) << error;
+	ASSERT_TRUE( document.ImportCan( file, error ) ) << error;
+	EXPECT_TRUE( document.GetFilePath().empty() ) << "imported networks are saved as new documents";
+	EXPECT_TRUE( document.IsModified() );
+	EXPECT_EQ( document.GetNetwork().Save(), file );
 	const auto& loadedRoot = document.GetNetwork().GetRootGraph();
 	const auto positions = GetPositions( document, loadedRoot );
 	ASSERT_EQ( positions.size(), 5u );
@@ -196,24 +242,201 @@ TEST_F( EditorFixture, MissingSkeletonLocksTheDocument )
 TEST_F( EditorFixture, ChangesMarkTheDocumentModified )
 {
 	std::string error;
-	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.can", error ) ) << error;
+	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.cane", error ) ) << error;
 	EXPECT_FALSE( document.IsModified() );
 	document.SetView( Root(), OTHER_VIEW );
 	EXPECT_FALSE( document.IsModified() ) << "views are not modifications";
 	document.SetNodePosition( Root(), Output(), { 1.f, 1.f } );
 	EXPECT_TRUE( document.IsModified() );
-	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.can", error ) ) << error;
+	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.cane", error ) ) << error;
 	Root().AddNode( cmf::AnimationNodeType::RestPose );
 	EXPECT_TRUE( document.IsModified() );
+	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.cane", error ) ) << error;
+	document.SetExportPath( directory.GetPath() / "a.can" );
+	EXPECT_TRUE( document.IsModified() ) << "the export path is stored in the document";
 }
 
 TEST_F( EditorFixture, MalformedFilesAreNotLoaded )
 {
-	WriteFile( directory.GetPath() / "bad.can", { 'n', 'o', 'p', 'e' } );
+	const auto& directoryPath = directory.GetPath();
+	WriteText( directoryPath / "text.cane", "nope" );
+	WriteText( directoryPath / "other.cane", R"({ "format": "other", "version": 1 })" );
+	WriteText( directoryPath / "newer.cane", R"({ "format": "cane", "version": 99, "graph": { "nodes": [], "edges": [] } })" );
+	WriteText( directoryPath / "structure.cane", R"({ "format": "cane", "version": 1, "graph": { "nodes": 5, "edges": [] } })" );
+	WriteFile( directoryPath / "network.cane", asset.BuildCmfFile() );
 	std::string error;
-	EXPECT_FALSE( document.LoadFile( directory.GetPath() / "bad.can", error ) );
-	EXPECT_FALSE( error.empty() );
-	EXPECT_TRUE( Output().IsSet() ) << "the document is unchanged";
+	ASSERT_TRUE( document.SaveFile( directoryPath / "a.cane", error ) ) << error;
+	for( const auto* name : { "text.cane", "other.cane", "newer.cane", "structure.cane", "network.cane", "missing.cane" } )
+	{
+		error.clear();
+		const bool loaded = document.LoadFile( directoryPath / name, error );
+		const bool unchanged = Output().IsSet() && document.GetNetwork().GetSkeletonPath() == CHARACTER_REFERENCE && !document.IsModified() && document.GetFilePath() == directoryPath / "a.cane";
+		EXPECT_TRUE( !loaded && !error.empty() ) << name << " was loaded";
+		EXPECT_TRUE( unchanged ) << name << " changed the document";
+	}
+	EXPECT_NE( error.find( "missing.cane" ), std::string::npos );
+}
+
+TEST_F( EditorFixture, PartsThatCantBeAppliedAreSkipped )
+{
+	const auto path = directory.GetPath() / "network.cane";
+	std::string error;
+	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
+	auto json = ReadJson( path );
+	auto& graph = json["graph"];
+	graph["nodes"].push_back( { { "type", "NoSuchNode" } } );
+	graph["nodes"].push_back( { { "type", "Parameter" }, { "settings", { { "parameter", "missing" } } } } );
+	graph["nodes"].push_back( { { "type", "Expression" } } );
+	// A Float output into the Pose input of the Output node
+	graph["edges"].push_back( { 3, 0, 0, 0 } );
+	WriteText( path, json.dump() );
+
+	canedit::Document loaded( loader, resolver );
+	std::vector<std::string> warnings;
+	ASSERT_TRUE( loaded.LoadFile( path, error, &warnings ) ) << error;
+	EXPECT_EQ( warnings.size(), 3u );
+	EXPECT_TRUE( loaded.IsModified() ) << "saving the document drops the skipped parts";
+	EXPECT_EQ( loaded.GetNetwork().GetRootGraph().GetNodes().size(), 3u );
+	EXPECT_TRUE( loaded.GetNetwork().GetRootGraph().GetEdges().empty() );
+}
+
+TEST_F( EditorFixture, ExportPathIsStoredRelativeToTheDocument )
+{
+	const auto exportPath = directory.GetPath() / "out" / "network.can";
+	document.SetExportPath( exportPath );
+	std::string error;
+	const auto path = directory.GetPath() / "documents" / "network.cane";
+	std::filesystem::create_directories( path.parent_path() );
+	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
+	EXPECT_EQ( ReadJson( path )["exportPath"], "../out/network.can" );
+
+	canedit::Document loaded( loader, resolver );
+	ASSERT_TRUE( loaded.LoadFile( path, error ) ) << error;
+	EXPECT_EQ( loaded.GetExportPath(), exportPath.lexically_normal() );
+}
+
+TEST_F( EditorFixture, ExportWritesTheNetwork )
+{
+	const auto rest = Root().AddNode( cmf::AnimationNodeType::RestPose );
+	ASSERT_TRUE( Root().Connect( { rest, 0 }, { Output(), 0 } ) );
+	document.MarkUnmodified();
+	const auto path = directory.GetPath() / "network.can";
+	std::string error;
+	ASSERT_TRUE( document.Export( path, error ) ) << error;
+	EXPECT_FALSE( document.IsModified() ) << "exporting doesn't change the document";
+	const auto file = ReadFile( path );
+	EXPECT_EQ( file, document.GetNetwork().Save() );
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( file ) );
+	EXPECT_TRUE( network.IsReady() );
+}
+
+TEST_F( EditorFixture, NetworksWithErrorsAreNotExported )
+{
+	document.GetNetwork().SetSkeleton( "res:/missing.cmf", "" );
+	const auto path = directory.GetPath() / "network.can";
+	std::string error;
+	EXPECT_FALSE( document.Export( path, error ) );
+	EXPECT_NE( error.find( "can't be exported" ), std::string::npos ) << error;
+	EXPECT_FALSE( std::filesystem::exists( path ) );
+}
+
+TEST_F( EditorFixture, EmbeddedAssetsAreStoredAsReferences )
+{
+	WriteFile( directory.GetPath() / EMBEDDED_FILE, asset.BuildCmfFile() );
+	EXPECT_FALSE( document.EmbedAsset( "res:/missing.cmf" ) );
+	EXPECT_TRUE( document.GetEmbeddedAssets().empty() );
+	ASSERT_TRUE( document.EmbedAsset( EMBEDDED_REFERENCE ) );
+	EXPECT_EQ( document.GetEmbeddedAssets(), std::set<std::string>{ EMBEDDED_REFERENCE } );
+	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
+	document.GetNetwork().SetSkeleton( EMBEDDED_REFERENCE, "" );
+	const auto rest = Root().AddNode( cmf::AnimationNodeType::RestPose );
+	ASSERT_TRUE( Root().Connect( { rest, 0 }, { Output(), 0 } ) );
+
+	const auto path = directory.GetPath() / "network.cane";
+	std::string error;
+	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
+	EXPECT_EQ( ReadJson( path )["embeddedAssets"], nlohmann::json::array( { EMBEDDED_REFERENCE } ) );
+
+	// The exported network contains the file
+	const auto exported = directory.GetPath() / "network.can";
+	ASSERT_TRUE( document.Export( exported, error ) ) << error;
+	cmf::AnimationNetworkBuilder builder( loader );
+	const auto file = ReadFile( exported );
+	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
+	EXPECT_EQ( builder.GetEmbeddedAssetPaths(), std::vector<std::string>{ EMBEDDED_REFERENCE } );
+
+	// Without the file, the document loads with a warning and keeps the reference, but can't be exported
+	std::filesystem::remove( directory.GetPath() / EMBEDDED_FILE );
+	EXPECT_FALSE( document.Export( exported, error ) ) << "embedded files are read again when exporting";
+	EXPECT_NE( error.find( EMBEDDED_REFERENCE ), std::string::npos ) << error;
+	canedit::Document loaded( loader, resolver );
+	std::vector<std::string> warnings;
+	ASSERT_TRUE( loaded.LoadFile( path, error, &warnings ) ) << error;
+	EXPECT_EQ( warnings.size(), 1u );
+	EXPECT_EQ( loaded.GetEmbeddedAssets(), std::set<std::string>{ EMBEDDED_REFERENCE } );
+	EXPECT_NE( loaded.GetEmbeddedAssetError( EMBEDDED_REFERENCE ), nullptr );
+	EXPECT_EQ( loaded.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
+}
+
+TEST_F( EditorFixture, UndoReusesEmbeddedFiles )
+{
+	WriteFile( directory.GetPath() / EMBEDDED_FILE, asset.BuildCmfFile() );
+	{
+		const canedit::ScopedEdit edit( session );
+		ASSERT_TRUE( document.EmbedAsset( EMBEDDED_REFERENCE ) );
+	}
+	std::filesystem::remove( directory.GetPath() / EMBEDDED_FILE );
+	ASSERT_TRUE( session.Undo() );
+	EXPECT_TRUE( document.GetEmbeddedAssets().empty() );
+	EXPECT_EQ( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
+	ASSERT_TRUE( session.Redo() );
+	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr ) << "the file was read before";
+
+	// Reloading reads the files again
+	session.Reload();
+	EXPECT_EQ( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
+	EXPECT_NE( document.GetEmbeddedAssetError( EMBEDDED_REFERENCE ), nullptr );
+}
+
+TEST_F( EditorFixture, UndoKeepsTheExportPath )
+{
+	session.AddNode( cmf::AnimationNodeType::RestPose, {} );
+	document.SetExportPath( directory.GetPath() / "network.can" );
+	ASSERT_TRUE( session.Undo() );
+	EXPECT_EQ( document.GetExportPath(), directory.GetPath() / "network.can" );
+}
+
+TEST_F( EditorFixture, ImportedEmbeddedAssetsUseExistingFiles )
+{
+	const auto bytes = asset.BuildCmfFile();
+	WriteFile( directory.GetPath() / EMBEDDED_FILE, bytes );
+	cmf::AnimationNetworkBuilder builder( loader );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_REFERENCE, bytes ) );
+	ASSERT_TRUE( builder.EmbedAsset( "res:/lost/character.cmf", bytes ) );
+	builder.SetSkeleton( "res:/lost/character.cmf", "" );
+	builder.GetRootGraph().AddNode( cmf::AnimationNodeType::Output );
+	const auto file = builder.Save();
+
+	std::string error;
+	std::vector<canedit::OrphanedAsset> orphans;
+	ASSERT_TRUE( document.ImportCan( file, error, &orphans ) ) << error;
+	EXPECT_EQ( document.GetEmbeddedAssets(), ( std::set<std::string>{ EMBEDDED_REFERENCE, "res:/lost/character.cmf" } ) );
+	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
+	ASSERT_EQ( orphans.size(), 1u );
+	EXPECT_EQ( orphans[0].reference, "res:/lost/character.cmf" );
+	EXPECT_EQ( orphans[0].bytes, bytes );
+	ASSERT_TRUE( orphans[0].resolvedPath.has_value() );
+	EXPECT_NE( document.GetEmbeddedAssetError( "res:/lost/character.cmf" ), nullptr );
+	EXPECT_EQ( document.GetNetwork().GetEmbeddedAsset( "res:/lost/character.cmf" ), nullptr );
+
+	// Saving the orphan to another location renames its references
+	ASSERT_TRUE( document.SaveOrphanedAsset( orphans[0], directory.GetPath() / "found" / "character.cmf", error ) ) << error;
+	EXPECT_EQ( ReadFile( directory.GetPath() / "found" / "character.cmf" ), bytes );
+	EXPECT_EQ( document.GetEmbeddedAssets(), ( std::set<std::string>{ EMBEDDED_REFERENCE, "res:/found/character.cmf" } ) );
+	EXPECT_EQ( document.GetNetwork().GetSkeletonPath(), "res:/found/character.cmf" );
+	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( "res:/found/character.cmf" ), nullptr );
+	EXPECT_EQ( document.GetEmbeddedAssetError( "res:/found/character.cmf" ), nullptr );
 }
 
 }

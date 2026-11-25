@@ -9,12 +9,16 @@
 namespace canedit::dialogs
 {
 
-/** Asks for an animation network to open. */
+/** Asks for an animation network document (.cane) or a CAN file to import. */
 std::optional<std::string> OpenNetwork();
-/** Asks where to save an animation network. */
+/** Asks where to save an animation network document (.cane). */
 std::optional<std::string> SaveNetwork( const std::string& defaultPath );
+/** Asks where to export an animation network in the CAN format. */
+std::optional<std::string> ExportNetwork( const std::string& defaultPath );
 /** Asks for a CMF file, for example a skeleton, animation or preview mesh. */
 std::optional<std::string> OpenCmf( const char* title );
+/** Asks where to save a CMF file. */
+std::optional<std::string> SaveCmf( const char* title, const std::string& defaultPath );
 /** Asks for a directory. */
 std::optional<std::string> SelectDirectory( const char* title, const std::string& defaultPath );
 
@@ -27,7 +31,11 @@ enum class Answer : uint8_t
 
 /** Asks whether unsaved changes should be saved. */
 Answer AskSaveChanges( const std::string& documentName );
+/** Asks a yes/no question; returns true for yes. */
+bool AskYesNo( const std::string& message );
 /** Shows an error message box. */
 void ShowError( const std::string& message );
+/** Shows a warning message box. */
+void ShowWarning( const std::string& message );
 
 }
