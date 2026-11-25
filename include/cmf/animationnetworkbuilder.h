@@ -253,6 +253,9 @@ public:
 	[[nodiscard]] CARBON_MESH_EXPORT AnimationSocketType GetOutputType( AnimationSocketRef output ) const;
 	/** @brief Returns the name of an input socket, or an empty string if it doesn't exist. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::string GetInputName( AnimationSocketRef input ) const;
+	/** @brief Returns the kind of value of a Float input socket. Inputs that are not listed in AnimationNodeTypeInfo
+	* (Expression inputs, Subgraph and Output interface sockets) and missing sockets are Number. */
+	[[nodiscard]] CARBON_MESH_EXPORT AnimationValueKind GetInputValueKind( AnimationSocketRef input ) const;
 	/** @brief Returns the name of an output socket, or an empty string if it doesn't exist. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::string GetOutputName( AnimationSocketRef output ) const;
 
@@ -273,7 +276,8 @@ public:
 	/** @brief Returns all edges in the graph. */
 	[[nodiscard]] CARBON_MESH_EXPORT const std::vector<AnimationEdge>& GetEdges() const;
 
-	/** @brief Sets the constant used by a Float input without an incoming edge. */
+	/** @brief Sets the constant used by a Float input without an incoming edge. Any value is accepted, whatever the
+	* kind of the input (see GetInputValueKind). */
 	CARBON_MESH_EXPORT ValidationResult SetInputConstant( AnimationSocketRef input, float value );
 
 	/** @brief Sets the animation sampled by an AnimationSample node.

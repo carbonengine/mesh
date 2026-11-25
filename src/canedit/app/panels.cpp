@@ -47,6 +47,46 @@ constexpr float HALF = 0.5f;
 /** Frame padding is applied on both sides of a widget. */
 constexpr float TWO_SIDES = 2.f;
 
+/** Drag speed of integer fields, in values per pixel. */
+constexpr float INTEGER_DRAG_SPEED = 0.1f;
+/** Largest magnitude of integer fields: 2^24, up to which floats hold every whole number exactly. */
+constexpr int MAX_INTEGER = 1 << 24;
+
+/** Shows the control for the constant of a Float input that fits its kind of value. Returns the new value when it
+* changed. */
+std::optional<float> InputConstantField( const char* label, cmf::AnimationValueKind kind, float value )
+{
+	switch( kind )
+	{
+	case cmf::AnimationValueKind::Boolean: {
+		// Networks treat any value other than 0 as true
+		bool checked = value != 0.f;
+		if( ImGui::Checkbox( label, &checked ) )
+		{
+			return checked ? 1.f : 0.f;
+		}
+		return std::nullopt;
+	}
+	case cmf::AnimationValueKind::Integer: {
+		// Networks truncate fractional values; out of range values are shown clamped
+		const auto limit = static_cast<float>( MAX_INTEGER );
+		int whole = std::isfinite( value ) ? static_cast<int>( std::clamp( std::trunc( value ), -limit, limit ) ) : 0;
+		if( ImGui::DragInt( label, &whole, INTEGER_DRAG_SPEED, -MAX_INTEGER, MAX_INTEGER ) )
+		{
+			return static_cast<float>( whole );
+		}
+		return std::nullopt;
+	}
+	case cmf::AnimationValueKind::Number:
+		break;
+	}
+	if( ImGui::DragFloat( label, &value, DRAG_SPEED ) )
+	{
+		return value;
+	}
+	return std::nullopt;
+}
+
 /** Shows a text field that applies its value when editing ends. Returns true and sets result when it does. */
 bool CommitText( std::map<std::string, std::string>& texts, const std::string& key, const char* label, const std::string& current, std::string& result, bool multiline = false )
 {
@@ -714,10 +754,9 @@ void PropertiesPanel::DrawInputConstants( AppContext& context, cmf::AnimationGra
 		}
 		else
 		{
-			float value = graph.GetNode( node )->inputConstants[socket];
-			if( ImGui::DragFloat( name.c_str(), &value, DRAG_SPEED ) )
+			if( const auto value = InputConstantField( name.c_str(), graph.GetInputValueKind( input ), graph.GetNode( node )->inputConstants[socket] ) )
 			{
-				ReportResult( context, graph.SetInputConstant( input, value ) );
+				ReportResult( context, graph.SetInputConstant( input, *value ) );
 			}
 			TrackEdit( session );
 		}

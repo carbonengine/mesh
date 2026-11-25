@@ -29,6 +29,7 @@ void ExpectInputMatches( const cmf::AnimationGraphBuilder& graph, cmf::Animation
 	EXPECT_EQ( graph.GetInputName( { id, socket } ), info.name );
 	EXPECT_EQ( graph.GetInputType( { id, socket } ), info.type );
 	EXPECT_EQ( graph.GetNode( id )->inputConstants[socket], info.defaultValue );
+	EXPECT_EQ( graph.GetInputValueKind( { id, socket } ), info.valueKind );
 }
 
 /** Checks the fixed sockets of a new node against the description of its type. */
@@ -66,6 +67,33 @@ bool HasWarningContaining( const cmf::AnimationNetworkBuilder& network, const st
 }
 
 // Editing
+
+TEST_F( NetworkFixture, InputsHaveValueKinds )
+{
+	cmf::AnimationNetworkBuilder network( loader );
+	auto& graph = network.GetRootGraph();
+	const auto sample = graph.AddNode( cmf::AnimationNodeType::AnimationSample );
+	const cmf::AnimationSocketRef loop = { sample, 1 };
+	EXPECT_EQ( graph.GetInputValueKind( { sample, 0 } ), cmf::AnimationValueKind::Number );
+	EXPECT_EQ( graph.GetInputValueKind( loop ), cmf::AnimationValueKind::Boolean );
+
+	const auto switchNode = graph.AddNode( cmf::AnimationNodeType::Switch );
+	const cmf::AnimationSocketRef selector = { switchNode, 0 };
+	EXPECT_EQ( graph.GetInputValueKind( selector ), cmf::AnimationValueKind::Integer );
+	EXPECT_EQ( graph.GetInputValueKind( { switchNode, 1 } ), cmf::AnimationValueKind::Number ) << "pose inputs";
+
+	// The kind is a hint for editors: constants of any value are accepted
+	EXPECT_TRUE( graph.SetInputConstant( loop, 0.5f ) );
+	EXPECT_EQ( graph.GetNode( sample )->inputConstants[1], 0.5f );
+	EXPECT_TRUE( graph.SetInputConstant( selector, 1.5f ) );
+	EXPECT_EQ( graph.GetNode( switchNode )->inputConstants[0], 1.5f );
+
+	// Inputs declared by the node have no kind
+	const auto expression = graph.AddNode( cmf::AnimationNodeType::Expression );
+	ASSERT_TRUE( graph.SetExpression( expression, "a", { "a" } ) );
+	EXPECT_EQ( graph.GetInputValueKind( { expression, 0 } ), cmf::AnimationValueKind::Number );
+	EXPECT_EQ( graph.GetInputValueKind( { sample, 7 } ), cmf::AnimationValueKind::Number ) << "missing socket";
+}
 
 TEST_F( NetworkFixture, NodesHaveSocketsOfTheirType )
 {

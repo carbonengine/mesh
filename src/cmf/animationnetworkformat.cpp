@@ -21,7 +21,7 @@ constexpr uint32_t SECTION_ALIGNMENT = 8;
 constexpr std::array<SocketInfo, 1> OUTPUT_INPUTS = { { { "pose", can::SocketType::Pose, 0.f } } };
 constexpr std::array<SocketInfo, 3> SAMPLE_INPUTS = { {
 	{ "time", can::SocketType::Float, 0.f },
-	{ "loop", can::SocketType::Float, 1.f },
+	{ "loop", can::SocketType::Float, 1.f, ValueKind::Boolean },
 	{ "speed", can::SocketType::Float, 1.f },
 } };
 constexpr std::array<SocketInfo, 4> BLEND_INPUTS = { {
@@ -37,7 +37,7 @@ constexpr std::array<SocketInfo, 5> ADDITIVE_INPUTS = { {
 	{ "alpha", can::SocketType::Float, 1.f },
 	{ "weights", can::SocketType::BoneWeights, 0.f },
 } };
-constexpr std::array<SocketInfo, 1> SWITCH_INPUTS = { { { "selector", can::SocketType::Float, 0.f } } };
+constexpr std::array<SocketInfo, 1> SWITCH_INPUTS = { { { "selector", can::SocketType::Float, 0.f, ValueKind::Integer } } };
 
 static_assert( SAMPLE_INPUTS.size() == SAMPLE_SPEED_INPUT + 1 && BLEND_INPUTS.size() == BLEND_WEIGHTS_INPUT + 1 && ADDITIVE_INPUTS.size() == ADDITIVE_WEIGHTS_INPUT + 1, "Socket tables must match the socket index constants" );
 
@@ -548,6 +548,13 @@ float GetDefaultInputConstant( can::NodeType type, uint32_t socket )
 	const auto info = GetNodeTypeInfo( type );
 	const bool listed = info.layout != SocketLayout::Interface && socket < info.inputCount;
 	return listed ? info.inputs[socket].defaultValue : 0.f;
+}
+
+ValueKind GetInputValueKind( const NodeShape& shape, uint32_t socket )
+{
+	const auto info = GetNodeTypeInfo( shape.type );
+	const bool listed = ( info.layout == SocketLayout::Fixed || info.layout == SocketLayout::Switch ) && socket < info.inputCount;
+	return listed ? info.inputs[socket].valueKind : ValueKind::Number;
 }
 
 bool HasNodeData( can::NodeType type )

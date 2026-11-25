@@ -158,8 +158,17 @@ std::string FormatInputLabel( const cmf::AnimationGraphBuilder& graph, cmf::Anim
 	auto label = graph.GetInputName( input );
 	if( graph.GetInputType( input ) == cmf::AnimationSocketType::Float && !graph.GetConnection( input ) )
 	{
+		const float constant = graph.GetNode( input.node )->inputConstants[input.socket];
+		const auto kind = graph.GetInputValueKind( input );
+		if( kind == cmf::AnimationValueKind::Boolean )
+		{
+			// Networks treat any value other than 0 as true
+			return label + ( constant != 0.f ? " = true" : " = false" );
+		}
+		// Integers are shown as networks use them, truncated
+		const bool integer = kind == cmf::AnimationValueKind::Integer && std::isfinite( constant );
 		std::array<char, LABEL_BUFFER_SIZE> value{};
-		std::snprintf( value.data(), value.size(), " = %.3g", graph.GetNode( input.node )->inputConstants[input.socket] );
+		std::snprintf( value.data(), value.size(), integer ? " = %.0f" : " = %.3g", integer ? std::trunc( constant ) : constant );
 		label += value.data();
 	}
 	return label;

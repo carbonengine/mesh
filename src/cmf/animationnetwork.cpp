@@ -324,7 +324,8 @@ AnimationNodeTypeInfo GetAnimationNodeTypeInfo( AnimationNodeType type )
 {
 	// The public socket description mirrors the internal one, so that the internal socket tables can be exposed
 	static_assert( sizeof( AnimationSocketInfo ) == sizeof( detail::SocketInfo ) && alignof( AnimationSocketInfo ) == alignof( detail::SocketInfo ) );
-	static_assert( offsetof( AnimationSocketInfo, name ) == offsetof( detail::SocketInfo, name ) && offsetof( AnimationSocketInfo, type ) == offsetof( detail::SocketInfo, type ) && offsetof( AnimationSocketInfo, defaultValue ) == offsetof( detail::SocketInfo, defaultValue ) );
+	static_assert( offsetof( AnimationSocketInfo, name ) == offsetof( detail::SocketInfo, name ) && offsetof( AnimationSocketInfo, type ) == offsetof( detail::SocketInfo, type ) && offsetof( AnimationSocketInfo, defaultValue ) == offsetof( detail::SocketInfo, defaultValue ) && offsetof( AnimationSocketInfo, valueKind ) == offsetof( detail::SocketInfo, valueKind ) );
+	static_assert( static_cast<uint8_t>( AnimationValueKind::Number ) == static_cast<uint8_t>( detail::ValueKind::Number ) && static_cast<uint8_t>( AnimationValueKind::Boolean ) == static_cast<uint8_t>( detail::ValueKind::Boolean ) && static_cast<uint8_t>( AnimationValueKind::Integer ) == static_cast<uint8_t>( detail::ValueKind::Integer ) );
 	const auto info = detail::GetNodeTypeInfo( type );
 	AnimationNodeTypeInfo result;
 	result.name = info.name;

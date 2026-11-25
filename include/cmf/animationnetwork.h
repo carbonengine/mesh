@@ -44,6 +44,21 @@ enum class AnimationSocketLayout : uint8_t
 	Subgraph,
 };
 
+/** @brief How the value of a Float socket is interpreted.
+*
+* Float values are always stored as floats. The kind is a hint for editors, so that they can show a fitting control,
+* for example a checkbox for Boolean inputs. Networks and the builder don't enforce it, and it is not stored in files.
+*/
+enum class AnimationValueKind : uint8_t
+{
+	/** Any number. */
+	Number,
+	/** 0 for false and 1 for true. Networks treat any value other than 0 as true. */
+	Boolean,
+	/** Whole numbers. Networks truncate fractional values. */
+	Integer,
+};
+
 /** @brief Description of an input socket with a fixed name and type. */
 struct AnimationSocketInfo
 {
@@ -53,6 +68,8 @@ struct AnimationSocketInfo
 	AnimationSocketType type = AnimationSocketType::Float;
 	/** Constant of a Float input in a newly created node. */
 	float defaultValue = 0.f;
+	/** Kind of value of a Float input. */
+	AnimationValueKind valueKind = AnimationValueKind::Number;
 };
 
 /** @brief Description of an animation network node type, for example for listing node types in an editor. */

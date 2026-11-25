@@ -439,6 +439,16 @@ std::string AnimationGraphBuilder::GetInputName( AnimationSocketRef input ) cons
 	return {};
 }
 
+AnimationValueKind AnimationGraphBuilder::GetInputValueKind( AnimationSocketRef input ) const
+{
+	const auto* slot = FindSlot( input.node );
+	if( !slot || input.socket >= GetInputCount( input.node ) || slot->node.type == AnimationNodeType::Subgraph )
+	{
+		return AnimationValueKind::Number;
+	}
+	return static_cast<AnimationValueKind>( detail::GetInputValueKind( GetShape( slot->node ), input.socket ) );
+}
+
 std::string AnimationGraphBuilder::GetOutputName( AnimationSocketRef output ) const
 {
 	const auto* slot = FindSlot( output.node );

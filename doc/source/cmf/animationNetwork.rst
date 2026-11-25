@@ -48,7 +48,8 @@ Inputs that are not connected behave as follows:
 
 * Pose inputs must be connected; a network with an unconnected pose input can't be evaluated.
 * Float inputs use a constant value stored in the node. Every node type has sensible defaults, for example a speed
-  of 1.
+  of 1. Editors show some Float inputs differently: ``loop`` as a Boolean and ``selector`` as an Integer (see
+  `Value Kinds`_).
 * BoneWeights inputs are optional; without them, a blend applies to all bones in the same way.
 
 Control Parameters
@@ -109,7 +110,7 @@ Node Reference
       - Float
       - Network parameter
     * - AnimationSample
-      - time, loop (default 1), speed (default 1) (Float)
+      - time, loop (Boolean, default 1), speed (default 1) (Float)
       - Pose
       - Asset path, animation name
     * - RestPose
@@ -121,7 +122,7 @@ Node Reference
       - Pose
       - \-
     * - Switch
-      - selector (Float), pose0 … poseN-1 (Pose)
+      - selector (Float, Integer), pose0 … poseN-1 (Pose)
       - Pose
       - Number of pose inputs
     * - RandomSwitch
@@ -263,6 +264,34 @@ and default constants of its fixed inputs. Tools use it to list node types witho
         const auto info = cmf::GetAnimationNodeTypeInfo( static_cast<cmf::AnimationNodeType>( type ) );
         // info.name, info.inputs[0 .. info.inputCount), info.outputType, ...
     }
+
+Value Kinds
+^^^^^^^^^^^
+
+Float sockets always carry a float, but some inputs only use part of the range. ``cmf::AnimationValueKind`` describes
+it, so that editors can show a fitting control:
+
+* **Number**: any value. Most Float inputs, and all inputs declared by a node (Expression inputs, subgraph interface
+  sockets).
+* **Boolean**: 0 for false and 1 for true, for example the ``loop`` input of AnimationSample. Networks treat any value
+  other than 0 as true.
+* **Integer**: whole numbers, for example the ``selector`` input of Switch. Networks truncate fractional values.
+
+The kind is part of the node type description (``AnimationSocketInfo::valueKind``) and is not stored in files.
+``AnimationGraphBuilder::GetInputValueKind`` returns the kind of any input, for example to choose an editor control:
+
+.. code-block:: cpp
+
+    const cmf::AnimationSocketRef input = { node, socket };
+    switch( graph.GetInputValueKind( input ) )
+    {
+    case cmf::AnimationValueKind::Boolean: // show a checkbox
+    case cmf::AnimationValueKind::Integer: // show an integer field
+    case cmf::AnimationValueKind::Number:  // show a float field
+        break;
+    }
+
+The kind is only a hint: ``SetInputConstant`` accepts any value, and networks evaluate any value as described above.
 
 Embedding Assets
 ^^^^^^^^^^^^^^^^

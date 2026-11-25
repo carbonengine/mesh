@@ -59,6 +59,14 @@ enum class SocketLayout : uint8_t
 	Subgraph,
 };
 
+/** How the value of a Float socket is interpreted (mirrors AnimationValueKind). Not stored in files. */
+enum class ValueKind : uint8_t
+{
+	Number,
+	Boolean,
+	Integer,
+};
+
 /** Description of an input socket with a fixed name and type. */
 struct SocketInfo
 {
@@ -66,6 +74,8 @@ struct SocketInfo
 	can::SocketType type = can::SocketType::Float;
 	/** Constant of the input in a newly created node. */
 	float defaultValue = 0.f;
+	/** Kind of value of a Float input. */
+	ValueKind valueKind = ValueKind::Number;
 };
 
 /** Description of a node type: its name, sockets and data. All socket queries are derived from it. */
@@ -120,6 +130,9 @@ std::string GetOutputName( can::NodeType type );
 
 /** Returns the default constant of an input of a newly created node. */
 float GetDefaultInputConstant( can::NodeType type, uint32_t socket );
+
+/** Returns the kind of value of an input socket: listed in the socket table for fixed inputs, Number for the rest. */
+ValueKind GetInputValueKind( const NodeShape& shape, uint32_t socket );
 
 /** Returns true if nodes of the type have data in a per-type table of the graph. */
 bool HasNodeData( can::NodeType type );

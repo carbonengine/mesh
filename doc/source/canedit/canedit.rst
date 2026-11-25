@@ -53,8 +53,9 @@ Selecting and moving
 
 Properties
    The **Properties** panel edits the selected node: its name, its settings (for example the animation of an
-   AnimationSample node or the text of an Expression node) and the constants of value inputs that have no edge. With
-   no node selected, it edits the skeleton of the network and the preview mesh.
+   AnimationSample node or the text of an Expression node) and the constants of value inputs that have no edge.
+   Boolean inputs such as ``loop`` are shown as checkboxes and Integer inputs such as ``selector`` as whole numbers.
+   With no node selected, it edits the skeleton of the network and the preview meshes.
 
 Subgraphs
    Double-click a Subgraph node, or select it and press Enter, to open its graph. The bar above the graph shows the
