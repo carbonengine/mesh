@@ -12,7 +12,6 @@
 #include <cstring>
 #include <numeric>
 #include <set>
-#include <tuple>
 #include <variant>
 
 namespace cmf
@@ -1316,32 +1315,10 @@ void AnimationNetworkBuilder::MarkModified()
 class AnimationNetworkBuilder::Serializer
 {
 public:
-	static std::vector<uint8_t> Save( const AnimationNetworkBuilder& builder )
+	static ValidationResult Save( const AnimationNetworkBuilder& builder, std::vector<uint8_t>& file )
 	{
-		Serializer serializer;
-		return serializer.Write( builder );
-	}
-
-	static void Load( AnimationNetworkBuilder& builder, const uint8_t* file )
-	{
-		const auto& data = detail::GetNetworkData( file );
-		for( const auto& asset : data.assets )
-		{
-			if( asset.section != can::NO_INDEX )
-			{
-				const auto [bytes, size] = detail::GetSectionBytes( file, asset.section );
-				builder.EmbedAsset( ToStdStringView( asset.path ), std::vector<uint8_t>( bytes, bytes + size ) );
-			}
-		}
-		if( data.skeletonAsset != can::NO_INDEX )
-		{
-			builder.SetSkeleton( ToStdStringView( data.assets[data.skeletonAsset].path ), ToStdStringView( data.skeletonName ) );
-		}
-		for( const auto& parameter : data.parameters )
-		{
-			builder.m_parameters.push_back( { ToStdString( parameter.name ), parameter.defaultValue, parameter.minValue, parameter.maxValue } );
-		}
-		ReadGraphs( *builder.m_rootGraph, data );
+		Serializer serializer( builder );
+		return serializer.Write( file );
 	}
 
 	/** A graph in save order with the indices assigned to its subgraphs. */
@@ -1390,28 +1367,85 @@ public:
 	}
 
 private:
+	const AnimationNetworkBuilder* m_builder = nullptr;
 	MemoryAllocator m_allocator;
 	can::NetworkData m_data;
 	std::map<std::string, uint32_t, std::less<>> m_assetIndices;
+	/** Embedded animations to store. */
+	std::vector<cmf::Animation> m_animations;
+	/** Index in m_animations of each stored animation, keyed by the animation in its embedded asset. */
+	std::map<const cmf::Animation*, uint32_t> m_animationIndices;
 	std::vector<can::Graph> m_graphs;
+	/** First problem found while writing. */
+	std::string m_error;
 
-	std::vector<uint8_t> Write( const AnimationNetworkBuilder& builder )
+	explicit Serializer( const AnimationNetworkBuilder& builder ) :
+		m_builder( &builder )
 	{
-		std::vector<const std::vector<uint8_t>*> embeddedFiles;
-		for( const auto& [path, asset] : builder.m_embeddedAssets )
-		{
-			embeddedFiles.push_back( &asset.file );
-			m_data.assets[GetAssetIndex( path )].section = static_cast<uint32_t>( embeddedFiles.size() );
-		}
-		m_data.skeletonAsset = GetAssetIndex( builder.m_skeletonPath );
-		m_data.skeletonName = m_allocator.AllocateString( builder.m_skeletonName );
-		for( const auto& parameter : builder.m_parameters )
+	}
+
+	ValidationResult Write( std::vector<uint8_t>& file )
+	{
+		WriteSkeleton();
+		for( const auto& parameter : m_builder->m_parameters )
 		{
 			Modify( m_data.parameters, m_allocator ).push_back( { m_allocator.AllocateString( parameter.name ), parameter.defaultValue, parameter.minValue, parameter.maxValue } );
 		}
-		WriteGraphs( *builder.m_rootGraph );
+		WriteGraphs( *m_builder->m_rootGraph );
+		if( !m_error.empty() )
+		{
+			return { false, m_error };
+		}
 		Modify( m_data.graphs, m_allocator ) = m_graphs;
-		return WriteFile( embeddedFiles );
+		Modify( m_data.animations, m_allocator ) = m_animations;
+		file = WriteFile();
+		return { true, {} };
+	}
+
+	void SetMissingError( const std::string& kind, const std::string& path, const std::string& name )
+	{
+		if( m_error.empty() )
+		{
+			m_error = "The embedded asset '" + path + "' has no " + kind + ( name.empty() ? std::string() : " named '" + name + "'" );
+		}
+	}
+
+	// Stores the skeleton itself if it comes from an embedded asset, otherwise a reference to its external asset
+	void WriteSkeleton()
+	{
+		const auto& path = m_builder->m_skeletonPath;
+		const auto& name = m_builder->m_skeletonName;
+		m_data.skeletonName = m_allocator.AllocateString( name );
+		const auto embedded = m_builder->m_embeddedAssets.find( path );
+		if( embedded == m_builder->m_embeddedAssets.end() )
+		{
+			m_data.skeletonAsset = GetAssetIndex( path );
+			return;
+		}
+		const auto* skeleton = detail::FindSkeleton( *embedded->second.data, name );
+		if( skeleton == nullptr )
+		{
+			SetMissingError( "skeleton", path, name );
+			return;
+		}
+		Modify( m_data.skeleton, m_allocator ).push_back( *skeleton );
+	}
+
+	// Returns the index in m_animations of an animation of an embedded asset, adding it on first use
+	uint32_t GetEmbeddedAnimationIndex( const std::string& path, const EmbeddedAsset& asset, const std::string& name )
+	{
+		const auto* animation = detail::FindAnimation( *asset.data, name );
+		if( animation == nullptr )
+		{
+			SetMissingError( "animation", path, name );
+			return can::NO_INDEX;
+		}
+		const auto [it, added] = m_animationIndices.emplace( animation, static_cast<uint32_t>( m_animations.size() ) );
+		if( added )
+		{
+			m_animations.push_back( *animation );
+		}
+		return it->second;
 	}
 
 	uint32_t GetAssetIndex( const std::string& path )
@@ -1426,7 +1460,7 @@ private:
 			return it->second;
 		}
 		const auto index = static_cast<uint32_t>( m_data.assets.size() );
-		Modify( m_data.assets, m_allocator ).push_back( { m_allocator.AllocateString( path ), can::NO_INDEX } );
+		Modify( m_data.assets, m_allocator ).push_back( { m_allocator.AllocateString( path ) } );
 		m_assetIndices.emplace( path, index );
 		return index;
 	}
@@ -1546,8 +1580,16 @@ private:
 	uint32_t WriteSettings( const AnimationSampleSettings& settings, can::Graph& graph )
 	{
 		can::AnimationSampleNode data;
-		data.assetIndex = GetAssetIndex( settings.assetPath );
 		data.animationName = m_allocator.AllocateString( settings.animationName );
+		const auto embedded = m_builder->m_embeddedAssets.find( settings.assetPath );
+		if( embedded == m_builder->m_embeddedAssets.end() )
+		{
+			data.assetIndex = GetAssetIndex( settings.assetPath );
+		}
+		else
+		{
+			data.embeddedAnimation = GetEmbeddedAnimationIndex( embedded->first, embedded->second, settings.animationName );
+		}
 		return AddNodeData( graph.animationSampleNodes, data );
 	}
 
@@ -1597,17 +1639,13 @@ private:
 		return ( offset + alignment - 1 ) / alignment * alignment;
 	}
 
-	std::vector<uint8_t> WriteFile( const std::vector<const std::vector<uint8_t>*>& embeddedFiles )
+	std::vector<uint8_t> WriteFile()
 	{
 		auto network = Flatten( m_data );
 		PointersToOffsets( *reinterpret_cast<can::NetworkData*>( network.data.get() ) ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
 
 		can::Header header;
 		Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( network.size ), can::SectionType::Network } );
-		for( const auto* file : embeddedFiles )
-		{
-			Modify( header.sections, m_allocator ).push_back( { 0, static_cast<uint32_t>( file->size() ), can::SectionType::EmbeddedCmf } );
-		}
 		auto flattenedHeader = Flatten( header );
 		auto& fileHeader = *reinterpret_cast<can::Header*>( flattenedHeader.data.get() ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): Flatten returns the flattened root structure
 		fileHeader.headerSize = static_cast<uint32_t>( flattenedHeader.size );
@@ -1620,10 +1658,6 @@ private:
 		std::vector<uint8_t> result( offset, 0 );
 		const auto& sections = fileHeader.sections;
 		std::memcpy( result.data() + sections[0].offset, network.data.get(), network.size );
-		for( uint32_t i = 0; i < embeddedFiles.size(); ++i )
-		{
-			std::memcpy( result.data() + sections[i + 1].offset, embeddedFiles[i]->data(), embeddedFiles[i]->size() );
-		}
 		PointersToOffsets( fileHeader );
 		std::memcpy( result.data(), flattenedHeader.data.get(), flattenedHeader.size );
 
@@ -1632,149 +1666,16 @@ private:
 		std::memcpy( result.data() + offsetof( can::Header, crc32 ), &crc, sizeof( crc ) );
 		return result;
 	}
-
-	static void ReadGraphs( AnimationGraphBuilder& root, const can::NetworkData& data )
-	{
-		std::vector<std::pair<AnimationGraphBuilder*, uint32_t>> pending = { { &root, 0 } };
-		// Sockets of Subgraph nodes depend on their subgraph, so their input constants are set when all graphs are read
-		std::vector<std::tuple<AnimationGraphBuilder*, AnimationNodeId, const can::Node*>> subgraphNodes;
-		while( !pending.empty() )
-		{
-			const auto [graph, graphIndex] = pending.back();
-			pending.pop_back();
-			const auto& source = data.graphs[graphIndex];
-			std::vector<AnimationNodeId> ids;
-			ids.reserve( source.nodes.size() );
-			for( const auto& node : source.nodes )
-			{
-				const auto id = graph->AddNode( node.type );
-				ids.push_back( id );
-				auto& slot = *graph->FindSlot( id );
-				ReadNode( *graph, slot, data, source, node );
-				if( slot.subgraph )
-				{
-					pending.emplace_back( slot.subgraph.get(), detail::GetNodeData<can::SubgraphNode>( source, node ).graphIndex );
-					subgraphNodes.emplace_back( graph, id, &node );
-				}
-			}
-			for( const auto& edge : source.edges )
-			{
-				graph->m_edges.push_back( { { ids[edge.from.node], edge.from.socket }, { ids[edge.to.node], edge.to.socket } } );
-			}
-			// Interface order may differ from the node order
-			graph->m_interfaceInputs.clear();
-			for( const auto index : source.interfaceInputs )
-			{
-				graph->m_interfaceInputs.push_back( ids[index] );
-			}
-			graph->m_interfaceOutputs.clear();
-			for( const auto index : source.interfaceOutputs )
-			{
-				graph->m_interfaceOutputs.push_back( ids[index] );
-			}
-		}
-		for( const auto& [graph, id, node] : subgraphNodes )
-		{
-			graph->FindSlot( id )->node.inputConstants.assign( node->inputConstants.begin(), node->inputConstants.end() );
-		}
-	}
-
-	static std::vector<std::string> ReadStrings( const Span<String>& strings )
-	{
-		std::vector<std::string> result;
-		result.reserve( strings.size() );
-		for( const auto& string : strings )
-		{
-			result.push_back( ToStdString( string ) );
-		}
-		return result;
-	}
-
-	static void ReadNode( AnimationGraphBuilder& graph, AnimationGraphBuilder::Slot& slot, const can::NetworkData& data, const can::Graph& sourceGraph, const can::Node& source )
-	{
-		auto& node = slot.node;
-		node.name = ToStdString( source.name );
-		node.inputConstants.assign( source.inputConstants.begin(), source.inputConstants.end() );
-		node.settings = ReadSettings( data, sourceGraph, source );
-		if( const auto* assetPath = GetSampleAssetPath( node ) )
-		{
-			graph.m_network->AcquireAsset( *assetPath );
-		}
-	}
-
-	static AnimationNodeSettings ReadSettings( const can::NetworkData& data, const can::Graph& graph, const can::Node& node )
-	{
-		switch( node.type )
-		{
-		case AnimationNodeType::Output:
-		case AnimationNodeType::SubgraphInput: {
-			const auto& source = detail::GetNodeData<can::InterfaceNode>( graph, node );
-			return AnimationInterfaceSettings{ ToStdString( source.name ), source.type };
-		}
-		case AnimationNodeType::Parameter:
-			return AnimationParameterSettings{ detail::GetNodeData<can::ParameterNode>( graph, node ).parameterIndex };
-		case AnimationNodeType::AnimationSample: {
-			const auto& source = detail::GetNodeData<can::AnimationSampleNode>( graph, node );
-			const auto assetPath = source.assetIndex == can::NO_INDEX ? std::string() : ToStdString( data.assets[source.assetIndex].path );
-			return AnimationSampleSettings{ assetPath, ToStdString( source.animationName ) };
-		}
-		case AnimationNodeType::Switch:
-			return AnimationSwitchSettings{ detail::GetNodeData<can::SwitchNode>( graph, node ).poseInputCount };
-		case AnimationNodeType::RandomSwitch: {
-			const auto& source = detail::GetNodeData<can::RandomSwitchNode>( graph, node );
-			return AnimationRandomSwitchSettings{ source.poseInputCount, { source.weights.begin(), source.weights.end() }, ( source.flags & can::RANDOM_SWITCH_REROLL_ON_ACTIVATE ) != 0 };
-		}
-		case AnimationNodeType::NamedBoneWeights:
-			return AnimationNamedBoneWeightsSettings{ ToStdString( detail::GetNodeData<can::NamedBoneWeightsNode>( graph, node ).maskName ) };
-		case AnimationNodeType::BoneWeights: {
-			const auto& source = detail::GetNodeData<can::BoneWeightsNode>( graph, node );
-			AnimationBoneWeightsSettings settings;
-			settings.defaultWeight = source.defaultWeight;
-			for( const auto& weight : source.weights )
-			{
-				settings.weights.push_back( { ToStdString( weight.bone ), weight.weight } );
-			}
-			return settings;
-		}
-		case AnimationNodeType::Expression: {
-			const auto& source = detail::GetNodeData<can::ExpressionNode>( graph, node );
-			return AnimationExpressionSettings{ ToStdString( source.expression ), ReadStrings( source.inputNames ) };
-		}
-		case AnimationNodeType::RestPose:
-		case AnimationNodeType::Blend:
-		case AnimationNodeType::AdditiveBlend:
-		case AnimationNodeType::Subgraph:
-		case AnimationNodeType::Count:
-			break;
-		}
-		return std::monostate{};
-	}
 };
 
-std::vector<uint8_t> AnimationNetworkBuilder::Save() const
+ValidationResult AnimationNetworkBuilder::Save( std::vector<uint8_t>& file ) const
 {
-	return Serializer::Save( *this );
+	return Serializer::Save( *this, file );
 }
 
 std::vector<AnimationGraphLayout> AnimationNetworkBuilder::GetSaveLayout() const
 {
 	return Serializer::GetLayout( *m_rootGraph );
-}
-
-ValidationResult AnimationNetworkBuilder::Load( const void* file, size_t size )
-{
-	// Copy the file so that it is aligned and can be read in place
-	const auto* bytes = static_cast<const uint8_t*>( file );
-	const std::vector<uint8_t> buffer( bytes, bytes + size );
-	auto result = detail::ValidateCanFile( buffer.data(), buffer.size() );
-	if( !result )
-	{
-		return result;
-	}
-	Clear();
-	Serializer::Load( *this, buffer.data() );
-	MarkModified();
-	return result;
 }
 
 void AnimationNetworkBuilder::Clear()

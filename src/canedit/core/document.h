@@ -60,16 +60,6 @@ struct NodeLocation
 /** Path from the root graph to a subgraph: the Subgraph nodes entered on the way, outermost first. */
 using GraphPath = std::vector<cmf::AnimationNodeId>;
 
-/** An asset that was embedded in an imported CAN file, but isn't available as a file. */
-struct OrphanedAsset
-{
-	/** Reference of the asset in the network. */
-	std::string reference;
-	/** Path the reference resolves to, if its prefix is known. */
-	std::optional<std::filesystem::path> resolvedPath;
-	/** Contents of the embedded CMF file. */
-	std::vector<uint8_t> bytes;
-};
 
 /** An animation network being edited, with the editor state stored alongside it (node positions, graph views,
 * preview meshes and the export path).
@@ -132,8 +122,6 @@ public:
 	/** Forgets the contents of embedded files read so far, so that they are read again when the document is
 	* deserialized next time. Until then, deserializing (for example undo) reuses the contents read before. */
 	void ForgetEmbeddedFiles();
-	/** Replaces all references to an asset (skeleton, animations, preview meshes and embedded assets). */
-	void RenameAssetReference( const std::string& from, const std::string& to );
 
 	// Files
 
@@ -152,20 +140,13 @@ public:
 	bool SaveFile( const std::filesystem::path& path, std::string& error );
 	[[nodiscard]] const std::filesystem::path& GetFilePath() const;
 
-	/** Replaces the document with a network in the CAN format; nodes are laid out automatically. The document has
-	* no file path and is modified afterwards. Embedded assets whose reference resolves to an existing file use that
-	* file; the others are removed from the network, kept as unresolved embedded assets and returned as orphans. */
-	bool ImportCan( const std::vector<uint8_t>& file, std::string& error, std::vector<OrphanedAsset>* orphans = nullptr );
-	bool ImportFile( const std::filesystem::path& path, std::string& error, std::vector<OrphanedAsset>* orphans = nullptr );
-	/** Writes the contents of an orphaned asset to a file and embeds it. If the file has a different reference than
-	* the asset, references to the asset are renamed. */
-	bool SaveOrphanedAsset( const OrphanedAsset& asset, const std::filesystem::path& path, std::string& error );
 
 	/** Path the document was last exported to, or empty. Stored in the document; setting it is a modification. */
 	[[nodiscard]] const std::filesystem::path& GetExportPath() const;
 	void SetExportPath( const std::filesystem::path& path );
-	/** Writes the network in the CAN format. Embedded files are read again. Fails if an embedded file can't be read
-	* or the network has errors; assets that are still loading are not errors. Doesn't change the document. */
+	/** Writes the network in the CAN format. Embedded files are read again. Fails if an embedded file can't be read,
+	* the network has errors (assets that are still loading are not errors) or a skeleton or animation referenced from
+	* an embedded file is missing. Doesn't change the document. */
 	bool Export( const std::filesystem::path& path, std::string& error ) const;
 
 	/** Returns true if the network or the editor state changed since the document was loaded or saved. */

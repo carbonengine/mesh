@@ -43,6 +43,8 @@ constexpr float DIRECTORY_COLUMN_WEIGHT = 4.f;
 /** Frame padding is applied on both sides of a widget. */
 constexpr float TWO_SIDES = 2.f;
 constexpr ImVec4 ERROR_TEXT_COLOR = { 1.f, 0.45f, 0.4f, 1.f };
+/** Extension of exported animation networks. */
+constexpr const char* CAN_EXTENSION = ".can";
 
 Application* GetApplication( GLFWwindow* window )
 {
@@ -261,7 +263,7 @@ void Application::OnDrop( const std::vector<std::string>& paths )
 {
 	for( const auto& path : paths )
 	{
-		if( HasExtension( path, Document::FILE_EXTENSION ) || HasExtension( path, ".can" ) )
+		if( HasExtension( path, Document::FILE_EXTENSION ) || HasExtension( path, CAN_EXTENSION ) )
 		{
 			OpenFile( path );
 			return;
@@ -390,7 +392,8 @@ void Application::OpenDocument()
 
 void Application::OpenFile( const std::string& path )
 {
-	if( ConfirmDiscardChanges() )
+	// CAN files are rejected by LoadDocument, there is no need to ask about unsaved changes
+	if( HasExtension( path, CAN_EXTENSION ) || ConfirmDiscardChanges() )
 	{
 		LoadDocument( path );
 	}
@@ -398,9 +401,9 @@ void Application::OpenFile( const std::string& path )
 
 void Application::LoadDocument( const std::string& path )
 {
-	if( HasExtension( path, ".can" ) )
+	if( HasExtension( path, CAN_EXTENSION ) )
 	{
-		ImportNetwork( path );
+		dialogs::ShowError( "'" + path + "' is an exported animation network, which can't be opened. Open the network document (" + Document::FILE_EXTENSION + ") it was exported from instead." );
 		return;
 	}
 	std::string error;
@@ -421,42 +424,6 @@ void Application::LoadDocument( const std::string& path )
 	}
 }
 
-void Application::ImportNetwork( const std::string& path )
-{
-	std::string error;
-	std::vector<OrphanedAsset> orphans;
-	if( !m_document->ImportFile( std::filesystem::u8path( path ), error, &orphans ) )
-	{
-		dialogs::ShowError( error );
-		return;
-	}
-	SaveOrphanedAssets( orphans );
-	m_session->Reset();
-	m_preview->Reload();
-	m_context.SetStatus( "Imported " + path + ", save it as a document to keep the node layout" );
-}
-
-void Application::SaveOrphanedAssets( const std::vector<OrphanedAsset>& orphans )
-{
-	for( const auto& orphan : orphans )
-	{
-		const auto question = "The imported network embeds '" + orphan.reference + "', which is not available as a file. Documents only store references to embedded files.\n\nSave the embedded data to a file? Otherwise it is lost.";
-		if( !dialogs::AskYesNo( question ) )
-		{
-			continue;
-		}
-		const auto path = dialogs::SaveCmf( "Save Embedded Asset", orphan.resolvedPath ? orphan.resolvedPath->u8string() : std::string() );
-		if( !path )
-		{
-			continue;
-		}
-		std::string error;
-		if( !m_document->SaveOrphanedAsset( orphan, std::filesystem::u8path( *path ), error ) )
-		{
-			dialogs::ShowError( error );
-		}
-	}
-}
 
 bool Application::SaveDocument( bool askForPath )
 {

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "cmf.h"
 #include "span.h"
 
 #include <cstddef>
@@ -11,8 +12,8 @@
 /** @file
 * Data structures of the CAN (Carbon Animation Network) binary file format.
 *
-* A CAN file consists of a Header, a Network section holding a NetworkData structure, and optional sections with
-* embedded CMF files. Like CMF, all structures are stored as-is, with Span members encoded as self-relative offsets
+* A CAN file consists of a Header and a Network section holding a NetworkData structure. Skeletons and animations
+* embedded in the network are stored in NetworkData as CMF structures. Like CMF, all structures are stored as-is, with Span members encoded as self-relative offsets
 * (see PointersToOffsets), so the data can be used directly from the loaded file buffer.
 */
 
@@ -209,11 +210,13 @@ struct ParameterNode
 /** @brief Data of AnimationSample nodes. */
 struct AnimationSampleNode
 {
-	/** Index in NetworkData::assets of the CMF file containing the animation, or NO_INDEX if not set. */
+	/** Index in NetworkData::assets of the external CMF file containing the animation, or NO_INDEX. */
 	uint32_t assetIndex = NO_INDEX;
-	/** Reserved, always 0. */
-	uint32_t reserved = 0;
-	/** Animation name; empty selects the first animation. */
+	/** Index in NetworkData::animations of the embedded animation, or NO_INDEX. At most one of assetIndex and
+	* embeddedAnimation is set; if neither is, the node has no animation. */
+	uint32_t embeddedAnimation = NO_INDEX;
+	/** Animation name in the external file; empty selects the first animation. For embedded animations, the name the
+	* animation was referenced by, kept for diagnostics. */
 	String animationName;
 
 	static constexpr std::string_view TypeName = "AnimationSampleNode";
@@ -221,6 +224,7 @@ struct AnimationSampleNode
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, assetIndex, "assetIndex" );
+		visitor( *this, embeddedAnimation, "embeddedAnimation" );
 		visitor( *this, animationName, "animationName" );
 	}
 };
@@ -388,36 +392,37 @@ struct Parameter
 	}
 };
 
-/** @brief CMF file referenced by the network. */
+/** @brief External CMF file referenced by the network, loaded through the asset loader. */
 struct Asset
 {
-	/** Asset path, resolved by the asset loader unless the asset is embedded. */
+	/** Asset path, resolved by the asset loader. */
 	String path;
-	/** Index of the EmbeddedCmf section containing the file, or NO_INDEX if the asset is external. */
-	uint32_t section = NO_INDEX;
-	/** Reserved, always 0. Keeps the structure free of implicit padding. */
-	uint32_t reserved = 0;
 
 	static constexpr std::string_view TypeName = "Asset";
 	template <typename T>
 	constexpr void EnumerateMembers( T&& visitor )
 	{
 		visitor( *this, path, "path" );
-		visitor( *this, section, "section" );
 	}
 };
 
 /** @brief Root structure of the Network section. */
 struct NetworkData
 {
-	/** Index of the asset containing the skeleton. */
+	/** Index in assets of the external CMF file containing the skeleton, or NO_INDEX. At most one of skeletonAsset and
+	* skeleton is set. */
 	uint32_t skeletonAsset = NO_INDEX;
 	/** Reserved, always 0. Keeps the structure free of implicit padding. */
 	uint32_t reserved = 0;
-	/** Skeleton name; empty selects the first skeleton. */
+	/** Skeleton name in the external file; empty selects the first skeleton. For an embedded skeleton, the name it was
+	* referenced by, kept for diagnostics. */
 	String skeletonName;
-	/** All CMF files referenced by the network; each path appears once. */
+	/** External CMF files referenced by the network; each path appears once. */
 	Span<Asset> assets;
+	/** Embedded skeleton: empty, or a single skeleton. */
+	Span<cmf::v1::Skeleton> skeleton;
+	/** Embedded animations, referenced by AnimationSampleNode::embeddedAnimation. */
+	Span<cmf::v1::Animation> animations;
 	Span<Parameter> parameters;
 	/** Graphs; graphs[0] is the root graph, the rest are subgraphs referenced by Subgraph nodes. */
 	Span<Graph> graphs;
@@ -429,6 +434,8 @@ struct NetworkData
 		visitor( *this, skeletonAsset, "skeletonAsset" );
 		visitor( *this, skeletonName, "skeletonName" );
 		visitor( *this, assets, "assets" );
+		visitor( *this, skeleton, "skeleton" );
+		visitor( *this, animations, "animations" );
 		visitor( *this, parameters, "parameters" );
 		visitor( *this, graphs, "graphs" );
 	}
@@ -439,10 +446,8 @@ static_assert( sizeof( NamedBoneWeight ) == offsetof( NamedBoneWeight, reserved 
 
 enum class SectionType : uint8_t
 {
-	/** Contains NetworkData. Always the first section. */
+	/** Contains NetworkData. The only section of a CAN file. */
 	Network,
-	/** Contains a complete CMF file. */
-	EmbeddedCmf,
 };
 
 struct Section

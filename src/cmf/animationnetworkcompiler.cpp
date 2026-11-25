@@ -371,8 +371,7 @@ private:
 	uint32_t AddSampleOp( const NodeRef& ref )
 	{
 		const auto& data = GetNodeData<can::AnimationSampleNode>( GetGraph( ref ), GetNode( ref ) );
-		const auto* asset = data.assetIndex == can::NO_INDEX ? nullptr : m_network->GetAssetData( data.assetIndex );
-		if( asset == nullptr || FindAnimation( *asset, ToStdStringView( data.animationName ) ) == nullptr )
+		if( m_network->GetAnimation( data ) == nullptr )
 		{
 			// Animations that are not set, failed to load or are missing play the rest pose
 			return AddRestPoseOp( ref );
@@ -464,7 +463,7 @@ private:
 	uint32_t AddSample( const NodeRef& ref )
 	{
 		const auto& data = GetNodeData<can::AnimationSampleNode>( GetGraph( ref ), GetNode( ref ) );
-		const auto& animation = *FindAnimation( *m_network->GetAssetData( data.assetIndex ), ToStdStringView( data.animationName ) );
+		const auto& animation = *m_network->GetAnimation( data );
 
 		SampleInfo sample;
 		sample.duration = animation.duration;

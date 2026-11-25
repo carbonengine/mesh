@@ -1123,6 +1123,21 @@ std::string AreBuffersValid( const cmf::Data& mainData, const cmf::Header& heade
 
 }
 
+namespace cmf::detail
+{
+
+std::string ValidateSkeleton( const cmf::Skeleton& skeleton )
+{
+	return IsSkeletonValid( skeleton );
+}
+
+std::string ValidateAnimation( const cmf::Animation& animation )
+{
+	return IsAnimationValid( animation );
+}
+
+}
+
 namespace cmf
 {
 

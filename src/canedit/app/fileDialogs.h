@@ -9,7 +9,7 @@
 namespace canedit::dialogs
 {
 
-/** Asks for an animation network document (.cane) or a CAN file to import. */
+/** Asks for an animation network document (.cane). */
 std::optional<std::string> OpenNetwork();
 /** Asks where to save an animation network document (.cane). */
 std::optional<std::string> SaveNetwork( const std::string& defaultPath );
@@ -17,8 +17,7 @@ std::optional<std::string> SaveNetwork( const std::string& defaultPath );
 std::optional<std::string> ExportNetwork( const std::string& defaultPath );
 /** Asks for a CMF file, for example a skeleton, animation or preview mesh. */
 std::optional<std::string> OpenCmf( const char* title );
-/** Asks where to save a CMF file. */
-std::optional<std::string> SaveCmf( const char* title, const std::string& defaultPath );
+
 /** Asks for a directory. */
 std::optional<std::string> SelectDirectory( const char* title, const std::string& defaultPath );
 

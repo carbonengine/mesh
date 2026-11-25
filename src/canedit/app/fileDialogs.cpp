@@ -51,8 +51,8 @@ std::optional<std::string> SaveFile( const char* title, const std::string& defau
 
 std::optional<std::string> OpenNetwork()
 {
-	const std::array<const char*, 2> filter = { "*.cane", "*.can" };
-	return ToOptional( tinyfd_openFileDialog( "Open Animation Network", nullptr, static_cast<int>( filter.size() ), filter.data(), "Animation Networks (*.cane, *.can)", 0 ) );
+	const std::array<const char*, 1> filter = { "*.cane" };
+	return ToOptional( tinyfd_openFileDialog( "Open Animation Network", nullptr, static_cast<int>( filter.size() ), filter.data(), "Animation Network Documents (*.cane)", 0 ) );
 }
 
 std::optional<std::string> SaveNetwork( const std::string& defaultPath )
@@ -71,10 +71,6 @@ std::optional<std::string> OpenCmf( const char* title )
 	return ToOptional( tinyfd_openFileDialog( title, nullptr, static_cast<int>( filter.size() ), filter.data(), "CMF Files (*.cmf)", 0 ) );
 }
 
-std::optional<std::string> SaveCmf( const char* title, const std::string& defaultPath )
-{
-	return SaveFile( title, defaultPath, "*.cmf", "CMF Files (*.cmf)" );
-}
 
 std::optional<std::string> SelectDirectory( const char* title, const std::string& defaultPath )
 {

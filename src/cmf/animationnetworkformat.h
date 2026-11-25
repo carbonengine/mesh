@@ -203,16 +203,13 @@ can::SocketType GetInputType( const can::NetworkData& data, const can::Graph& gr
 can::SocketType GetOutputType( const can::NetworkData& data, const can::Graph& graph, const can::Node& node, uint32_t socket );
 std::string GetInputName( const can::NetworkData& data, const can::Graph& graph, const can::Node& node, uint32_t socket );
 
-/** Checks that a CAN file is well formed: header, sections, CRC, span bounds, embedded CMF files, all indices,
+/** Checks that a CAN file is well formed: header, section, CRC, span bounds, embedded skeleton and animations, all indices,
 * socket types, one edge per input and no cycles. Networks that are well formed may still be incomplete (for example,
 * have unconnected inputs); those problems are reported by AnimationNetwork::GetErrors. */
 ValidationResult ValidateCanFile( const void* data, size_t size );
 
 /** Returns the network data of a validated CAN file. */
 const can::NetworkData& GetNetworkData( const void* file );
-
-/** Returns the CMF data embedded in a section of a validated CAN file. */
-const cmf::Data& GetEmbeddedCmfData( const void* file, uint32_t section );
 
 /** Returns the skeleton with the given name, or the first skeleton if the name is empty. */
 const cmf::Skeleton* FindSkeleton( const cmf::Data& data, std::string_view name );
@@ -225,7 +222,4 @@ uint32_t FindBone( const cmf::Skeleton& skeleton, std::string_view name );
 
 /** Returns the bone mask with the given name, or nullptr. */
 const cmf::BoneMask* FindBoneMask( const cmf::Skeleton& skeleton, std::string_view name );
-
-/** Returns the bytes of a section of a validated CAN file. */
-std::pair<const uint8_t*, size_t> GetSectionBytes( const void* file, uint32_t section );
 }

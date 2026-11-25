@@ -13,6 +13,12 @@
 namespace cmf::detail
 {
 
+/** Checks the contents of a skeleton whose spans are known to be valid. Returns an empty string when valid. */
+std::string ValidateSkeleton( const cmf::Skeleton& skeleton );
+
+/** Checks the contents of an animation whose spans are known to be valid. Returns an empty string when valid. */
+std::string ValidateAnimation( const cmf::Animation& animation );
+
 /** Recursively checks that every span reachable from value is aligned and lies within [base, base + totalSize).
  * Returns an empty string when valid, otherwise a description of the first problem found. */
 template <typename T>

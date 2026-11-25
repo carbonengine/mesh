@@ -133,60 +133,52 @@ std::string ValidateHeader( const uint8_t* bytes, size_t size )
 	{
 		return "Invalid header: " + error;
 	}
-	if( header.sections.empty() || header.sections[0].type != can::SectionType::Network )
+	if( header.sections.size() != 1 )
 	{
-		return "The first section must be the Network section";
+		return "The file must have exactly one section";
 	}
-	size_t previousEnd = header.headerSize;
-	for( const auto& section : header.sections )
+	const auto& section = header.sections[0];
+	if( section.type != can::SectionType::Network )
 	{
-		if( section.offset % SECTION_ALIGNMENT != 0 || section.offset < previousEnd || static_cast<size_t>( section.offset ) + section.size > size )
-		{
-			return "Invalid section bounds";
-		}
-		if( section.type != can::SectionType::Network && section.type != can::SectionType::EmbeddedCmf )
-		{
-			return "Invalid section type";
-		}
-		previousEnd = static_cast<size_t>( section.offset ) + section.size;
+		return "Invalid section type";
+	}
+	if( section.offset % SECTION_ALIGNMENT != 0 || section.offset < header.headerSize || static_cast<size_t>( section.offset ) + section.size > size )
+	{
+		return "Invalid section bounds";
 	}
 	return {};
 }
 
-std::string ValidateEmbeddedFiles( const uint8_t* bytes )
+// Checks the skeleton reference and the contents of the embedded skeleton and animations
+std::string ValidateAssets( const can::NetworkData& data )
 {
-	const auto& sections = GetHeader( bytes ).sections;
-	for( uint32_t i = 1; i < sections.size(); ++i )
-	{
-		if( sections[i].type != can::SectionType::EmbeddedCmf )
-		{
-			return "Only the first section can be a Network section";
-		}
-		ValidationOptions options;
-		options.validateCrc = true;
-		options.validateHeader = true;
-		options.validateMainData = true;
-		auto result = ValidateFile( bytes + sections[i].offset, sections[i].size, options );
-		if( !result )
-		{
-			return "Embedded CMF file in section " + std::to_string( i ) + " is invalid: " + result.error;
-		}
-	}
-	return {};
-}
-
-std::string ValidateAssets( const can::NetworkData& data, const can::Header& header )
-{
-	for( const auto& asset : data.assets )
-	{
-		if( asset.section != can::NO_INDEX && ( asset.section >= header.sections.size() || header.sections[asset.section].type != can::SectionType::EmbeddedCmf ) )
-		{
-			return "Asset '" + ToStdString( asset.path ) + "' references an invalid section";
-		}
-	}
 	if( data.skeletonAsset != can::NO_INDEX && data.skeletonAsset >= data.assets.size() )
 	{
 		return "Invalid skeleton asset index";
+	}
+	if( data.skeleton.size() > 1 )
+	{
+		return "More than one embedded skeleton";
+	}
+	if( data.skeletonAsset != can::NO_INDEX && !data.skeleton.empty() )
+	{
+		return "The skeleton is both external and embedded";
+	}
+	for( const auto& skeleton : data.skeleton )
+	{
+		auto error = ValidateSkeleton( skeleton );
+		if( !error.empty() )
+		{
+			return "Invalid embedded skeleton: " + error;
+		}
+	}
+	for( uint32_t i = 0; i < data.animations.size(); ++i )
+	{
+		auto error = ValidateAnimation( data.animations[i] );
+		if( !error.empty() )
+		{
+			return "Invalid embedded animation " + std::to_string( i ) + ": " + error;
+		}
 	}
 	return {};
 }
@@ -275,10 +267,18 @@ std::string ValidateNode( const can::NetworkData& data, const can::Graph& graph,
 	}
 	if( node.type == can::NodeType::AnimationSample )
 	{
-		const auto assetIndex = GetNodeData<can::AnimationSampleNode>( graph, node ).assetIndex;
-		if( assetIndex != can::NO_INDEX && assetIndex >= data.assets.size() )
+		const auto& sample = GetNodeData<can::AnimationSampleNode>( graph, node );
+		if( sample.assetIndex != can::NO_INDEX && sample.assetIndex >= data.assets.size() )
 		{
 			return "invalid asset index";
+		}
+		if( sample.embeddedAnimation != can::NO_INDEX && sample.embeddedAnimation >= data.animations.size() )
+		{
+			return "invalid embedded animation index";
+		}
+		if( sample.assetIndex != can::NO_INDEX && sample.embeddedAnimation != can::NO_INDEX )
+		{
+			return "the animation is both external and embedded";
 		}
 	}
 	if( GetNodeTypeInfo( node.type ).layout == SocketLayout::Switch && GetShape( graph, node ).poseInputCount == 0 )
@@ -360,9 +360,9 @@ std::string LocateError( uint32_t graph, uint32_t node, const std::string& error
 	return "Graph " + std::to_string( graph ) + " node " + std::to_string( node ) + ": " + error;
 }
 
-std::string ValidateNetworkData( const can::NetworkData& data, const can::Header& header )
+std::string ValidateNetworkData( const can::NetworkData& data )
 {
-	auto error = ValidateAssets( data, header );
+	auto error = ValidateAssets( data );
 	for( uint32_t i = 0; i < data.graphs.size() && error.empty(); ++i )
 	{
 		error = ValidateNodeData( data.graphs[i] );
@@ -673,16 +673,12 @@ ValidationResult ValidateCanFile( const void* data, size_t size )
 	auto error = ValidateHeader( bytes, size );
 	if( error.empty() )
 	{
-		error = ValidateEmbeddedFiles( bytes );
-	}
-	if( error.empty() )
-	{
 		const auto& section = GetHeader( bytes ).sections[0];
 		const auto& networkData = GetNetworkData( bytes );
 		error = AreSpanPointersValid( networkData, &networkData, section.size );
 		if( error.empty() )
 		{
-			error = ValidateNetworkData( networkData, GetHeader( bytes ) );
+			error = ValidateNetworkData( networkData );
 		}
 		else
 		{
@@ -696,13 +692,6 @@ const can::NetworkData& GetNetworkData( const void* file )
 {
 	const auto* bytes = static_cast<const uint8_t*>( file );
 	return *reinterpret_cast<const can::NetworkData*>( bytes + GetHeader( file ).sections[0].offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the section holds a NetworkData structure
-}
-
-const cmf::Data& GetEmbeddedCmfData( const void* file, uint32_t section )
-{
-	const auto* cmfFile = GetSectionBytes( file, section ).first;
-	const auto& cmfHeader = *reinterpret_cast<const cmf::Header*>( cmfFile ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the section holds a validated CMF file
-	return *reinterpret_cast<const cmf::Data*>( cmfFile + cmfHeader.sections[0].offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): section 0 of a CMF file holds its Data
 }
 
 const cmf::Skeleton* FindSkeleton( const cmf::Data& data, std::string_view name )
@@ -727,11 +716,5 @@ const cmf::BoneMask* FindBoneMask( const cmf::Skeleton& skeleton, std::string_vi
 {
 	const auto* it = std::find_if( skeleton.boneMasks.begin(), skeleton.boneMasks.end(), [name]( const cmf::BoneMask& mask ) { return ToStdStringView( mask.name ) == name; } );
 	return it == skeleton.boneMasks.end() ? nullptr : &*it;
-}
-
-std::pair<const uint8_t*, size_t> GetSectionBytes( const void* file, uint32_t section )
-{
-	const auto& entry = GetHeader( file ).sections[section];
-	return { static_cast<const uint8_t*>( file ) + entry.offset, entry.size };
 }
 }

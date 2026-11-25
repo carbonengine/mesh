@@ -95,15 +95,9 @@ ValidationResult AnimationNetwork::Load( std::vector<uint8_t> file )
 	const auto loadId = ++m_loadId;
 	for( uint32_t i = 0; i < m_data->assets.size(); ++i )
 	{
-		const auto& asset = m_data->assets[i];
-		if( asset.section != can::NO_INDEX )
-		{
-			m_assets[i] = { &detail::GetEmbeddedCmfData( m_file.data(), asset.section ), AssetState::Loaded };
-			continue;
-		}
 		std::weak_ptr<bool> alive = m_aliveToken;
 		// The callback may run before RequestLoad returns
-		m_loader->RequestLoad( ToStdStringView( asset.path ), [this, alive = std::move( alive ), loadId, i]( const cmf::Data* data ) {
+		m_loader->RequestLoad( ToStdStringView( m_data->assets[i].path ), [this, alive = std::move( alive ), loadId, i]( const cmf::Data* data ) {
 			if( !alive.expired() )
 			{
 				OnAssetLoaded( loadId, i, data );
@@ -124,10 +118,7 @@ void AnimationNetwork::Unload()
 	++m_loadId;
 	for( const auto& asset : m_data->assets )
 	{
-		if( asset.section == can::NO_INDEX )
-		{
-			m_loader->Release( ToStdStringView( asset.path ) );
-		}
+		m_loader->Release( ToStdStringView( asset.path ) );
 	}
 	m_data = nullptr;
 	m_compiled.reset();
@@ -176,8 +167,26 @@ const Skeleton* AnimationNetwork::GetSkeleton() const
 	{
 		return nullptr;
 	}
+	if( !m_data->skeleton.empty() )
+	{
+		return m_data->skeleton.data();
+	}
 	const auto* data = GetAssetData( m_data->skeletonAsset );
 	return data ? detail::FindSkeleton( *data, ToStdStringView( m_data->skeletonName ) ) : nullptr;
+}
+
+const Animation* AnimationNetwork::GetAnimation( const can::AnimationSampleNode& node ) const
+{
+	if( !m_data )
+	{
+		return nullptr;
+	}
+	if( node.embeddedAnimation != can::NO_INDEX )
+	{
+		return &m_data->animations[node.embeddedAnimation];
+	}
+	const auto* data = GetAssetData( node.assetIndex );
+	return data ? detail::FindAnimation( *data, ToStdStringView( node.animationName ) ) : nullptr;
 }
 
 bool AnimationNetwork::HasPendingAssets() const
@@ -214,7 +223,11 @@ void AnimationNetwork::CollectProblems( std::vector<std::string>* errorsOut, std
 	const auto& data = *m_data;
 	if( data.skeletonAsset == can::NO_INDEX )
 	{
-		errors.emplace_back( "No skeleton is set" );
+		// An embedded skeleton is always available
+		if( data.skeleton.empty() )
+		{
+			errors.emplace_back( "No skeleton is set" );
+		}
 	}
 	else if( m_assets[data.skeletonAsset].state == AssetState::Failed )
 	{
@@ -298,6 +311,10 @@ void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& n
 void AnimationNetwork::ValidateAnimationSample( const can::AnimationSampleNode& node, const std::string& prefix, std::vector<std::string>& warnings ) const
 {
 	const auto& data = *m_data;
+	if( node.embeddedAnimation != can::NO_INDEX )
+	{
+		return;
+	}
 	if( node.assetIndex == can::NO_INDEX )
 	{
 		warnings.push_back( prefix + "no animation asset is set" );

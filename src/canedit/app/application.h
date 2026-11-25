@@ -36,7 +36,7 @@ public:
 	bool Initialize();
 	/** Runs the main loop until the window is closed. */
 	void Run();
-	/** Opens a network document (.cane) or imports a CAN file, asking to save unsaved changes first. */
+	/** Opens a network document (.cane), asking to save unsaved changes first. */
 	void OpenFile( const std::string& path );
 
 private:
@@ -49,10 +49,8 @@ private:
 	bool ConfirmDiscardChanges();
 	void NewDocument();
 	void OpenDocument();
+	/** Loads a network document. Exported CAN files are rejected with an explanation. */
 	void LoadDocument( const std::string& path );
-	void ImportNetwork( const std::string& path );
-	/** Offers to save embedded assets of an imported network that are not available as files. */
-	void SaveOrphanedAssets( const std::vector<OrphanedAsset>& orphans );
 	bool SaveDocument( bool askForPath );
 	void ExportDocument( bool askForPath );
 	void Undo();

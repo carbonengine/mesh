@@ -81,7 +81,7 @@ Assets
 
 The network references a CMF file with the skeleton it animates, and AnimationSample nodes reference CMF files with
 animations. Files are referenced by asset path. Paths are resolved by an asset loader that the application provides
-(see `The Asset Loader`_), unless a CMF file with the same path is embedded in the network.
+(see `The Asset Loader`_), unless a CMF file with the same path is embedded in the network (see `Embedding Assets`_).
 
 Animation channels are matched to the bones of the network skeleton by bone name, so animations don't have to use
 the same bone order or contain all bones. Bones that an animation doesn't animate keep their rest pose.
@@ -220,21 +220,30 @@ The following network blends between an idle and a walk animation based on a ``s
     {
         // Report problems that don't prevent evaluation, for example a missing animation
     }
-    std::vector<uint8_t> file = builder.Save();
+    std::vector<uint8_t> file;
+    const auto saved = builder.Save( file );
+    if( !saved )
+    {
+        // saved.error describes the problem, for example an animation missing from an embedded file
+    }
 
 Editing operations return a ``cmf::ValidationResult`` describing why an operation failed, for example a connection
 between sockets of different types or a connection that would create a cycle. ``GetErrors`` lists problems that
 prevent the network from being evaluated, such as unconnected pose inputs. ``GetWarnings`` lists problems that the
-network works around, such as animations missing from their files. Networks with errors can still be saved and
-loaded again for editing.
+network works around, such as animations missing from their files. Networks with errors can still be saved;
+``cmf::AnimationNetwork`` reports the errors when it loads them. Saving only fails if a skeleton or animation
+referenced from an embedded file is missing (see `Embedding Assets`_).
 
 The type specific settings of a node are returned by ``GetSettings``, for example
 ``graph.GetSettings<cmf::AnimationSampleSettings>( idle )``.
 
-``AnimationNetworkBuilder::Load`` reads a saved network for further editing. Node handles are not stored in the
-file: nodes are renumbered without removed nodes when saved. ``GetSaveLayout`` returns the graphs and nodes in the
-order they are saved, which lets tools associate their own data with nodes. CAN files don't store such data; tools
-keep it in their own files (see :doc:`animationNetworkFormat`):
+CAN files are meant for playback and can't be loaded back into a builder: they only contain the parts of embedded
+files that the network uses. Tools keep the editable network in their own files and export CAN files from it; CanEdit,
+for example, saves ``.cane`` documents (see :doc:`../canedit/canedit`).
+
+Node handles are not stored in the file: nodes are renumbered without removed nodes when saved. ``GetSaveLayout``
+returns the graphs and nodes in the order they are saved, which lets tools associate their own data with nodes. CAN
+files don't store such data; tools keep it in their own files (see :doc:`animationNetworkFormat`):
 
 .. code-block:: cpp
 
@@ -247,7 +256,8 @@ keep it in their own files (see :doc:`animationNetworkFormat`):
             WritePosition( graphIndex, nodeIndex, GetPosition( layout[graphIndex].nodes[nodeIndex] ) );
         }
     }
-    std::vector<uint8_t> file = builder.Save();
+    std::vector<uint8_t> file;
+    builder.Save( file );
 
 Node Types
 ^^^^^^^^^^
@@ -294,9 +304,23 @@ The kind is only a hint: ``SetInputConstant`` accepts any value, and networks ev
 Embedding Assets
 ^^^^^^^^^^^^^^^^
 
-``AnimationNetworkBuilder::EmbedAsset`` stores a CMF file in the network. References to its path then resolve to
-the embedded file instead of going through the asset loader. This makes a network self-contained, at the cost of a
+``AnimationNetworkBuilder::EmbedAsset`` adds a CMF file to the network. References to its path then resolve to the
+embedded file instead of going through the asset loader. This makes a network self-contained, at the cost of a
 larger file.
+
+The builder keeps the whole file, but ``Save`` only stores what the network uses from it: the skeleton, if the
+skeleton reference points to the file, and the animations that AnimationSample nodes sample from it. Meshes and
+unused skeletons and animations are left out, so embedding a character file with meshes doesn't add the meshes to the
+network. ``Save`` fails if the network references a skeleton or animation that the embedded file doesn't contain:
+
+.. code-block:: cpp
+
+    builder.EmbedAsset( "characters/soldier.cmf", ReadFile( "characters/soldier.cmf" ) );
+    builder.SetSkeleton( "characters/soldier.cmf", "" );
+    graph.SetAnimation( idle, "characters/soldier.cmf", "idle" );
+
+    std::vector<uint8_t> file;
+    const auto saved = builder.Save( file ); // Stores the first skeleton and the "idle" animation of the file
 
 Playing Networks
 ----------------

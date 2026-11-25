@@ -163,11 +163,16 @@ public:
 	/** @brief Returns the network description, or nullptr if no network is loaded. */
 	[[nodiscard]] CARBON_MESH_EXPORT const can::NetworkData* GetData() const;
 
-	/** @brief Returns the loaded data of an asset in can::NetworkData::assets, or nullptr if it isn't loaded. */
+	/** @brief Returns the loaded data of an external asset in can::NetworkData::assets, or nullptr if it isn't loaded. */
 	[[nodiscard]] CARBON_MESH_EXPORT const cmf::Data* GetAssetData( uint32_t assetIndex ) const;
 
-	/** @brief Returns the skeleton if it is loaded and found, otherwise nullptr. */
+	/** @brief Returns the skeleton: the embedded one, or the external one if it is loaded and found. Returns nullptr
+	* otherwise. */
 	[[nodiscard]] CARBON_MESH_EXPORT const Skeleton* GetSkeleton() const;
+
+	/** @brief Returns the animation sampled by an AnimationSample node of the loaded network: the embedded one, or the
+	* external one if its asset is loaded and the animation is found. Returns nullptr otherwise. */
+	[[nodiscard]] CARBON_MESH_EXPORT const Animation* GetAnimation( const can::AnimationSampleNode& node ) const;
 
 	/** @brief Returns true if some assets are still loading. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool HasPendingAssets() const;

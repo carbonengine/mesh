@@ -14,10 +14,9 @@ File Structure
 A CAN file consists of:
 
 #. A ``Header`` with the section table.
-#. The Network section, holding a ``NetworkData`` structure. It is always the first section.
-#. Zero or more EmbeddedCmf sections, each holding a complete CMF file.
+#. The Network section, holding a ``NetworkData`` structure. It is the only section.
 
-Sections start at offsets aligned to 8 bytes.
+The section starts at an offset aligned to 8 bytes.
 
 Header
 ^^^^^^
@@ -43,20 +42,32 @@ Header
       - CRC32 of the rest of the file, starting after this field
     * - ``sections``
       - ``Span<Section>``
-      - Section table: offset, size and type (``Network`` or ``EmbeddedCmf``) of each section
+      - Section table with a single entry: offset, size and type (``Network``) of the Network section
 
 Network Data
 ------------
 
 ``NetworkData`` is the root structure of the Network section:
 
-* ``assets``: the CMF files the network references. Each asset has a path and the index of the EmbeddedCmf section
-  containing it, or ``NO_INDEX`` (``0xffffffff``) if it is loaded through the asset loader. Each path appears once.
-* ``skeletonAsset`` and ``skeletonName``: the asset containing the skeleton and its name; an empty name selects the
-  first skeleton.
+* ``assets``: the external CMF files the network references, loaded through the asset loader. Each asset has a path;
+  each path appears once.
+* ``skeletonAsset`` and ``skeletonName``: the external asset containing the skeleton and its name; an empty name
+  selects the first skeleton. ``skeletonAsset`` is ``NO_INDEX`` (``0xffffffff``) if the skeleton is embedded.
+* ``skeleton``: the embedded skeleton, a ``cmf::Skeleton``, or empty if the skeleton is external. For an embedded
+  skeleton, ``skeletonName`` keeps the name it was referenced by.
+* ``animations``: the embedded animations, ``cmf::Animation`` structures referenced by AnimationSample nodes.
 * ``parameters``: the control parameters, with name, default value and range.
 * ``graphs``: the graphs of the network. ``graphs[0]`` is the root graph; the others are subgraphs, each referenced
   by exactly one Subgraph node.
+
+Embedded Skeletons and Animations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Embedded skeletons and animations use the CMF structures (see :doc:`fileFormat`), stored in the Network section like
+the rest of the network. Only what the network uses is stored: the skeleton of the network and the animations that
+AnimationSample nodes sample, each animation once. Meshes and other skeletons and animations of the embedded CMF
+files are left out. References to embedded data are resolved when the network is saved, so embedded data is
+referenced by index rather than by name.
 
 Editor Data
 -----------
@@ -96,7 +107,7 @@ A ``Graph`` contains:
       - Parameter index
     * - AnimationSample
       - ``animationSampleNodes``
-      - Asset index, animation name
+      - External asset index or embedded animation index, animation name
     * - Switch
       - ``switchNodes``
       - Number of pose inputs
@@ -125,15 +136,14 @@ Programs that modify a CAN file in place must take into account that a change ca
 Validation
 ----------
 
-``cmf::AnimationNetwork::Load`` and ``cmf::AnimationNetworkBuilder::Load`` reject files that are not well formed.
-They check:
+``cmf::AnimationNetwork::Load`` rejects files that are not well formed. It checks:
 
 * The signature, version, header size and CRC.
-* That sections don't overlap and lie within the file, that the first section is the Network section and that all
-  sections have a known type.
-* That all spans are aligned and lie within their section, and that embedded CMF files are valid.
-* That all indices are in range: assets, sections, parameters, graphs and node data. Each node data entry belongs to
-  one node.
+* That the file has a single section, the Network section, and that it lies within the file.
+* That all spans are aligned and lie within the Network section, and that the embedded skeleton and animations are
+  valid.
+* That all indices are in range: assets, embedded animations, parameters, graphs and node data. Each node data entry
+  belongs to one node. The skeleton and each AnimationSample node are either external or embedded, not both.
 * That node and socket types are valid, that every node has one constant per input socket and that Switch nodes
   have pose inputs.
 * That subgraphs form a tree below the root graph.

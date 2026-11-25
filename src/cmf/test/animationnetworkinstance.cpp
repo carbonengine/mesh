@@ -97,7 +97,7 @@ struct InstanceFixture : public ::testing::Test
 		Connect( result, output, 0 );
 		const auto errors = builder.GetErrors();
 		EXPECT_TRUE( errors.empty() ) << ( errors.empty() ? "" : errors[0] );
-		ExpectOk( network.Load( builder.Save() ) );
+		ExpectOk( network.Load( SaveNetwork( builder ) ) );
 		EXPECT_EQ( network.IsReady(), expectReady );
 	}
 
@@ -533,7 +533,7 @@ TEST_F( InstanceFixture, ReloadingTheNetworkInvalidatesInstances )
 	LoadNetwork( graph.AddNode( cmf::AnimationNodeType::RestPose ) );
 	cmf::AnimationNetworkInstance instance( network );
 	ASSERT_TRUE( instance.IsValid() );
-	ExpectOk( network.Load( builder.Save() ) );
+	ExpectOk( network.Load( SaveNetwork( builder ) ) );
 	EXPECT_FALSE( instance.IsValid() );
 	EXPECT_FALSE( instance.Evaluate() );
 }

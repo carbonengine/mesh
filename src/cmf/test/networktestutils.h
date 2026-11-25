@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "gtest/gtest.h"
+
 #include "cmf/animationnetworkbuilder.h"
 #include "cmf/memallocator.h"
 #include "cmf/writer.h"
@@ -194,6 +196,15 @@ private:
 };
 
 constexpr const char* ASSET_PATH = "assets/character.cmf";
+
+/** Saves a network in the CAN format, failing the test if saving fails. */
+inline std::vector<uint8_t> SaveNetwork( const cmf::AnimationNetworkBuilder& network )
+{
+	std::vector<uint8_t> file;
+	const auto result = network.Save( file );
+	EXPECT_TRUE( result ) << result.error;
+	return file;
+}
 
 /** Sets up a network whose skeleton comes from ASSET_PATH and whose root graph has an Output node. */
 inline cmf::AnimationNodeId SetUpNetwork( cmf::AnimationNetworkBuilder& network )

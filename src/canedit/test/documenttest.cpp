@@ -56,6 +56,19 @@ void WriteText( const std::filesystem::path& path, const std::string& text )
 	WriteFile( path, { text.begin(), text.end() } );
 }
 
+/** Saves a document and removes the node positions from the file. */
+void WriteWithoutPositions( canedit::Document& document, const std::filesystem::path& path )
+{
+	std::string error;
+	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
+	auto json = ReadJson( path );
+	for( auto& node : json["graph"]["nodes"] )
+	{
+		node.erase( "position" );
+	}
+	WriteText( path, json.dump() );
+}
+
 TEST_F( EditorFixture, NewDocumentHasAnOutputNode )
 {
 	canedit::Document fresh( loader, resolver );
@@ -95,7 +108,7 @@ TEST_F( EditorFixture, DocumentSurvivesSavingAndLoading )
 	document.SetView( subgraph, SUBGRAPH_VIEW );
 	document.SetPreviewMeshes( { CHARACTER_REFERENCE, HEAD_REFERENCE } );
 	ASSERT_TRUE( root.Connect( { subgraphNode, 0 }, { blend, 0 } ) );
-	const auto savedNetwork = network.Save();
+	const auto savedNetwork = networktest::SaveNetwork( network );
 
 	const auto path = directory.GetPath() / "network.cane";
 	std::string error;
@@ -108,7 +121,7 @@ TEST_F( EditorFixture, DocumentSurvivesSavingAndLoading )
 	EXPECT_TRUE( warnings.empty() );
 	EXPECT_FALSE( loaded.IsModified() );
 	EXPECT_EQ( loaded.GetFilePath(), path );
-	EXPECT_EQ( loaded.GetNetwork().Save(), savedNetwork ) << "the network is stored completely";
+	EXPECT_EQ( networktest::SaveNetwork( loaded.GetNetwork() ), savedNetwork ) << "the network is stored completely";
 	EXPECT_EQ( loaded.GetPreviewMeshes(), ( std::vector<std::string>{ CHARACTER_REFERENCE, HEAD_REFERENCE } ) );
 	const auto& loadedRoot = loaded.GetNetwork().GetRootGraph();
 	const auto nodes = loadedRoot.GetNodes();
@@ -192,29 +205,25 @@ TEST_F( EditorFixture, PreviewMeshEditsCanBeUndone )
 	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "body.cmf", "head.cmf" } ) );
 }
 
-TEST_F( EditorFixture, ImportedNetworksAreLaidOut )
+TEST_F( EditorFixture, NodesWithoutPositionsAreLaidOut )
 {
-	cmf::AnimationNetworkBuilder builder( loader );
-	builder.SetSkeleton( CHARACTER_REFERENCE, "" );
-	auto& root = builder.GetRootGraph();
-	const auto output = root.AddNode( cmf::AnimationNodeType::Output );
+	auto& root = Root();
 	const auto blend = root.AddNode( cmf::AnimationNodeType::Blend );
 	const auto restA = root.AddNode( cmf::AnimationNodeType::RestPose );
 	const auto restB = root.AddNode( cmf::AnimationNodeType::RestPose );
 	root.AddNode( cmf::AnimationNodeType::Expression );
-	ASSERT_TRUE( root.Connect( { blend, 0 }, { output, 0 } ) );
+	ASSERT_TRUE( root.Connect( { blend, 0 }, { Output(), 0 } ) );
 	ASSERT_TRUE( root.Connect( { restA, 0 }, { blend, 0 } ) );
 	ASSERT_TRUE( root.Connect( { restB, 0 }, { blend, 1 } ) );
-	const auto file = builder.Save();
 
+	// A document written by another tool, without node positions
+	const auto path = directory.GetPath() / "network.cane";
+	WriteWithoutPositions( document, path );
+	canedit::Document loaded( loader, resolver );
 	std::string error;
-	ASSERT_TRUE( document.SaveFile( directory.GetPath() / "a.cane", error ) ) << error;
-	ASSERT_TRUE( document.ImportCan( file, error ) ) << error;
-	EXPECT_TRUE( document.GetFilePath().empty() ) << "imported networks are saved as new documents";
-	EXPECT_TRUE( document.IsModified() );
-	EXPECT_EQ( document.GetNetwork().Save(), file );
-	const auto& loadedRoot = document.GetNetwork().GetRootGraph();
-	const auto positions = GetPositions( document, loadedRoot );
+	ASSERT_TRUE( loaded.LoadFile( path, error ) ) << error;
+	const auto& loadedRoot = loaded.GetNetwork().GetRootGraph();
+	const auto positions = GetPositions( loaded, loadedRoot );
 	ASSERT_EQ( positions.size(), 5u );
 	// Inputs are to the left of the nodes they feed; unconnected nodes are below the graph
 	EXPECT_LT( positions[1].x, positions[0].x );
@@ -325,7 +334,7 @@ TEST_F( EditorFixture, ExportWritesTheNetwork )
 	ASSERT_TRUE( document.Export( path, error ) ) << error;
 	EXPECT_FALSE( document.IsModified() ) << "exporting doesn't change the document";
 	const auto file = ReadFile( path );
-	EXPECT_EQ( file, document.GetNetwork().Save() );
+	EXPECT_EQ( file, networktest::SaveNetwork( document.GetNetwork() ) );
 	cmf::AnimationNetwork network( loader );
 	ASSERT_TRUE( network.Load( file ) );
 	EXPECT_TRUE( network.IsReady() );
@@ -358,13 +367,14 @@ TEST_F( EditorFixture, EmbeddedAssetsAreStoredAsReferences )
 	ASSERT_TRUE( document.SaveFile( path, error ) ) << error;
 	EXPECT_EQ( ReadJson( path )["embeddedAssets"], nlohmann::json::array( { EMBEDDED_REFERENCE } ) );
 
-	// The exported network contains the file
+	// The exported network contains the skeleton of the file
 	const auto exported = directory.GetPath() / "network.can";
 	ASSERT_TRUE( document.Export( exported, error ) ) << error;
-	cmf::AnimationNetworkBuilder builder( loader );
-	const auto file = ReadFile( exported );
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
-	EXPECT_EQ( builder.GetEmbeddedAssetPaths(), std::vector<std::string>{ EMBEDDED_REFERENCE } );
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( ReadFile( exported ) ) );
+	EXPECT_TRUE( network.GetData()->assets.empty() );
+	ASSERT_EQ( network.GetData()->skeleton.size(), 1u );
+	EXPECT_TRUE( network.IsReady() );
 
 	// Without the file, the document loads with a warning and keeps the reference, but can't be exported
 	std::filesystem::remove( directory.GetPath() / EMBEDDED_FILE );
@@ -407,36 +417,19 @@ TEST_F( EditorFixture, UndoKeepsTheExportPath )
 	EXPECT_EQ( document.GetExportPath(), directory.GetPath() / "network.can" );
 }
 
-TEST_F( EditorFixture, ImportedEmbeddedAssetsUseExistingFiles )
+TEST_F( EditorFixture, MissingEmbeddedAnimationsAreNotExported )
 {
-	const auto bytes = asset.BuildCmfFile();
-	WriteFile( directory.GetPath() / EMBEDDED_FILE, bytes );
-	cmf::AnimationNetworkBuilder builder( loader );
-	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_REFERENCE, bytes ) );
-	ASSERT_TRUE( builder.EmbedAsset( "res:/lost/character.cmf", bytes ) );
-	builder.SetSkeleton( "res:/lost/character.cmf", "" );
-	builder.GetRootGraph().AddNode( cmf::AnimationNodeType::Output );
-	const auto file = builder.Save();
+	WriteFile( directory.GetPath() / EMBEDDED_FILE, asset.BuildCmfFile() );
+	ASSERT_TRUE( document.EmbedAsset( EMBEDDED_REFERENCE ) );
+	const auto sample = Root().AddNode( cmf::AnimationNodeType::AnimationSample );
+	ASSERT_TRUE( Root().SetAnimation( sample, EMBEDDED_REFERENCE, "Missing" ) );
+	ASSERT_TRUE( Root().Connect( { sample, 0 }, { Output(), 0 } ) );
 
+	const auto path = directory.GetPath() / "network.can";
 	std::string error;
-	std::vector<canedit::OrphanedAsset> orphans;
-	ASSERT_TRUE( document.ImportCan( file, error, &orphans ) ) << error;
-	EXPECT_EQ( document.GetEmbeddedAssets(), ( std::set<std::string>{ EMBEDDED_REFERENCE, "res:/lost/character.cmf" } ) );
-	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( EMBEDDED_REFERENCE ), nullptr );
-	ASSERT_EQ( orphans.size(), 1u );
-	EXPECT_EQ( orphans[0].reference, "res:/lost/character.cmf" );
-	EXPECT_EQ( orphans[0].bytes, bytes );
-	ASSERT_TRUE( orphans[0].resolvedPath.has_value() );
-	EXPECT_NE( document.GetEmbeddedAssetError( "res:/lost/character.cmf" ), nullptr );
-	EXPECT_EQ( document.GetNetwork().GetEmbeddedAsset( "res:/lost/character.cmf" ), nullptr );
-
-	// Saving the orphan to another location renames its references
-	ASSERT_TRUE( document.SaveOrphanedAsset( orphans[0], directory.GetPath() / "found" / "character.cmf", error ) ) << error;
-	EXPECT_EQ( ReadFile( directory.GetPath() / "found" / "character.cmf" ), bytes );
-	EXPECT_EQ( document.GetEmbeddedAssets(), ( std::set<std::string>{ EMBEDDED_REFERENCE, "res:/found/character.cmf" } ) );
-	EXPECT_EQ( document.GetNetwork().GetSkeletonPath(), "res:/found/character.cmf" );
-	EXPECT_NE( document.GetNetwork().GetEmbeddedAsset( "res:/found/character.cmf" ), nullptr );
-	EXPECT_EQ( document.GetEmbeddedAssetError( "res:/found/character.cmf" ), nullptr );
+	EXPECT_FALSE( document.Export( path, error ) );
+	EXPECT_NE( error.find( "has no animation named 'Missing'" ), std::string::npos ) << error;
+	EXPECT_FALSE( std::filesystem::exists( path ) );
 }
 
 }

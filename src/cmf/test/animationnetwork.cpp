@@ -98,9 +98,12 @@ struct RuntimeFixture : public ::testing::Test
 		// A removed node leaves a gap in the slots
 		ExpectOk( sub.RemoveNode( weights ) );
 		EXPECT_TRUE( builder.GetErrors().empty() );
-		return builder.Save();
+		return SaveNetwork( builder );
 	}
 };
+
+/** Index of the AnimationSample node in the subgraph of the complete network. */
+constexpr uint32_t COMPLETE_NETWORK_SAMPLE_NODE = 2;
 
 cmf::can::Header& GetHeader( std::vector<uint8_t>& file )
 {
@@ -110,6 +113,16 @@ cmf::can::Header& GetHeader( std::vector<uint8_t>& file )
 cmf::can::NetworkData& GetNetworkData( std::vector<uint8_t>& file )
 {
 	return *reinterpret_cast<cmf::can::NetworkData*>( file.data() + GetHeader( file ).sections[0].offset ); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): test access to the network section
+}
+
+const cmf::can::AnimationSampleNode& GetSampleNode( const cmf::can::Graph& graph, uint32_t node )
+{
+	return graph.animationSampleNodes[graph.nodes[node].dataIndex];
+}
+
+cmf::can::AnimationSampleNode& GetSampleNode( cmf::can::Graph& graph, uint32_t node )
+{
+	return graph.animationSampleNodes[graph.nodes[node].dataIndex];
 }
 
 void UpdateCrc( std::vector<uint8_t>& file )
@@ -141,20 +154,6 @@ void ExpectLayoutMatchesFile( const std::vector<cmf::AnimationGraphLayout>& layo
 	}
 }
 
-/** Checks that two save layouts have the same nodes, compared by name. */
-void ExpectSameLayout( const std::vector<cmf::AnimationGraphLayout>& a, const std::vector<cmf::AnimationGraphLayout>& b )
-{
-	ASSERT_EQ( a.size(), b.size() );
-	for( size_t g = 0; g < a.size(); ++g )
-	{
-		ASSERT_EQ( a[g].nodes.size(), b[g].nodes.size() ) << "graph " << g;
-		for( size_t n = 0; n < a[g].nodes.size(); ++n )
-		{
-			EXPECT_EQ( a[g].graph->GetNode( a[g].nodes[n] )->name, b[g].graph->GetNode( b[g].nodes[n] )->name ) << "graph " << g << " node " << n;
-		}
-	}
-}
-
 bool HasErrorContaining( const std::vector<std::string>& errors, const std::string& text )
 {
 	return std::any_of( errors.begin(), errors.end(), [&text]( const std::string& error ) { return error.find( text ) != std::string::npos; } );
@@ -164,76 +163,199 @@ bool HasErrorContaining( const std::vector<std::string>& errors, const std::stri
 
 // Builder serialization
 
-TEST_F( RuntimeFixture, SavedNetworkLoadsIntoBuilder )
+TEST_F( RuntimeFixture, SavedFileContainsTheNetwork )
 {
-	const auto file = BuildCompleteNetwork();
+	auto file = BuildCompleteNetwork();
+	const auto& data = GetNetworkData( file );
+	EXPECT_EQ( data.skeletonAsset, 0u );
+	EXPECT_EQ( cmf::ToStdStringView( data.skeletonName ), SKELETON_NAME );
+	ASSERT_EQ( data.assets.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.assets[0].path ), ASSET_PATH );
+	EXPECT_TRUE( data.skeleton.empty() );
+	EXPECT_TRUE( data.animations.empty() );
+	ASSERT_EQ( data.parameters.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.parameters[0].name ), "speed" );
 
-	cmf::AnimationNetworkBuilder builder( loader );
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
-	EXPECT_TRUE( builder.GetErrors().empty() );
-	EXPECT_EQ( builder.GetSkeletonPath(), ASSET_PATH );
-	ASSERT_EQ( builder.GetParameters().size(), 1u );
-	EXPECT_EQ( builder.GetParameters()[0].name, "speed" );
+	ASSERT_EQ( data.graphs.size(), 2u );
+	const auto& root = data.graphs[0];
+	EXPECT_EQ( root.nodes.size(), 3u );
+	EXPECT_EQ( root.edges.size(), 2u );
+	EXPECT_EQ( cmf::ToStdStringView( root.nodes[1].name ), "Locomotion" );
+	const auto& sub = data.graphs[1];
+	EXPECT_EQ( sub.nodes.size(), 8u );
+	EXPECT_EQ( sub.edges.size(), 8u );
 
-	const auto& root = builder.GetRootGraph();
-	EXPECT_EQ( root.GetNodes().size(), 3u );
-	EXPECT_EQ( root.GetEdges().size(), 2u );
-	const auto subgraphNode = root.GetNodes()[1];
-	EXPECT_EQ( root.GetNode( subgraphNode )->name, "Locomotion" );
-	const auto& sub = *root.GetSubgraph( subgraphNode );
-	EXPECT_EQ( sub.GetNodes().size(), 8u );
-	EXPECT_EQ( sub.GetEdges().size(), 8u );
-	EXPECT_EQ( root.GetInputName( { subgraphNode, 0 } ), "speed" );
+	const auto& sample = GetSampleNode( sub, COMPLETE_NETWORK_SAMPLE_NODE );
+	EXPECT_EQ( sample.assetIndex, 0u );
+	EXPECT_EQ( sample.embeddedAnimation, cmf::can::NO_INDEX );
+	EXPECT_EQ( cmf::ToStdStringView( sample.animationName ), MOVE_ANIMATION );
 
-	const auto random = sub.GetNodes()[7];
-	EXPECT_EQ( sub.GetNode( random )->type, cmf::AnimationNodeType::RandomSwitch );
-	const auto* randomSettings = sub.GetSettings<cmf::AnimationRandomSwitchSettings>( random );
-	ASSERT_NE( randomSettings, nullptr );
-	EXPECT_EQ( randomSettings->weights, ( std::vector<float>{ RANDOM_WEIGHTS.begin(), RANDOM_WEIGHTS.end() } ) );
-	EXPECT_TRUE( randomSettings->rerollOnActivate );
-	EXPECT_EQ( sub.GetSettings<cmf::AnimationSampleSettings>( random ), nullptr ) << "settings of another node type";
-
-	EXPECT_EQ( builder.Save(), file ) << "saving a loaded network reproduces the file";
+	ASSERT_EQ( sub.randomSwitchNodes.size(), 1u );
+	const auto& random = sub.randomSwitchNodes[0];
+	EXPECT_EQ( std::vector<float>( random.weights.begin(), random.weights.end() ), ( std::vector<float>{ RANDOM_WEIGHTS.begin(), RANDOM_WEIGHTS.end() } ) );
+	EXPECT_EQ( random.flags, cmf::can::RANDOM_SWITCH_REROLL_ON_ACTIVATE );
 }
 
-TEST_F( RuntimeFixture, EmbeddedAssetsSurviveSaving )
+TEST_F( RuntimeFixture, EmbeddedAssetsStoreOnlyTheReferencedSkeletonAndAnimations )
 {
-	const auto file = BuildCompleteNetwork( true );
-	const auto requests = loader.GetRequests().size();
+	auto file = BuildCompleteNetwork( true );
+	EXPECT_EQ( GetHeader( file ).sections.size(), 1u );
+	const auto& data = GetNetworkData( file );
+	EXPECT_TRUE( data.assets.empty() ) << "embedded assets are not listed as external assets";
+	EXPECT_EQ( data.skeletonAsset, cmf::can::NO_INDEX );
+	EXPECT_EQ( cmf::ToStdStringView( data.skeletonName ), SKELETON_NAME );
+	ASSERT_EQ( data.skeleton.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.skeleton[0].name ), SKELETON_NAME );
+	EXPECT_EQ( data.skeleton[0].bones.size(), BONE_COUNT );
+	ASSERT_EQ( data.skeleton[0].boneMasks.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.skeleton[0].boneMasks[0].name ), MASK_NAME );
 
+	// Only Move is sampled; Lift is left out
+	ASSERT_EQ( data.animations.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.animations[0].name ), MOVE_ANIMATION );
+	const auto& sample = GetSampleNode( data.graphs[1], COMPLETE_NETWORK_SAMPLE_NODE );
+	EXPECT_EQ( sample.assetIndex, cmf::can::NO_INDEX );
+	EXPECT_EQ( sample.embeddedAnimation, 0u );
+	EXPECT_EQ( cmf::ToStdStringView( sample.animationName ), MOVE_ANIMATION );
+}
+
+TEST_F( RuntimeFixture, EmbeddedAnimationsAreStoredOnce )
+{
 	cmf::AnimationNetworkBuilder builder( loader );
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
-	EXPECT_EQ( builder.GetEmbeddedAssetPaths(), std::vector<std::string>{ EMBEDDED_PATH } );
-	EXPECT_EQ( *builder.GetEmbeddedAsset( EMBEDDED_PATH ), asset.BuildCmfFile() );
-	EXPECT_NE( builder.GetSkeleton(), nullptr );
-	EXPECT_EQ( loader.GetRequests().size(), requests );
-	EXPECT_EQ( builder.Save(), file );
+	SetUpNetwork( builder );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
+	auto& root = builder.GetRootGraph();
+	const std::vector<std::string> names = { MOVE_ANIMATION, LIFT_ANIMATION, "", MOVE_ANIMATION };
+	for( const auto& name : names )
+	{
+		ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, name ) );
+	}
+	auto file = SaveNetwork( builder );
+	const auto& data = GetNetworkData( file );
+	std::vector<std::string> animationNames;
+	for( const auto& animation : data.animations )
+	{
+		animationNames.push_back( cmf::ToStdString( animation.name ) );
+	}
+	EXPECT_EQ( animationNames, ( std::vector<std::string>{ MOVE_ANIMATION, LIFT_ANIMATION } ) );
+	// The empty name selects the first animation of the file, Move. The names are kept as they were set.
+	std::vector<uint32_t> indices;
+	std::vector<std::string> storedNames;
+	for( const auto& sample : data.graphs[0].animationSampleNodes )
+	{
+		indices.push_back( sample.embeddedAnimation );
+		storedNames.push_back( cmf::ToStdString( sample.animationName ) );
+	}
+	EXPECT_EQ( indices, ( std::vector<uint32_t>{ 0, 1, 0, 0 } ) );
+	EXPECT_EQ( storedNames, names );
+	EXPECT_EQ( data.assets.size(), 1u ) << "only the external skeleton asset";
+}
+
+TEST_F( RuntimeFixture, UnreferencedEmbeddedAssetsAreNotStored )
+{
+	cmf::AnimationNetworkBuilder builder( loader );
+	SetUpNetwork( builder );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
+	auto file = SaveNetwork( builder );
+	const auto& data = GetNetworkData( file );
+	EXPECT_TRUE( data.skeleton.empty() );
+	EXPECT_TRUE( data.animations.empty() );
+	EXPECT_EQ( data.assets.size(), 1u );
+}
+
+TEST_F( RuntimeFixture, SavingFailsForMissingEmbeddedData )
+{
+	cmf::AnimationNetworkBuilder builder( loader );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
+	builder.SetSkeleton( EMBEDDED_PATH, "Missing" );
+	std::vector<uint8_t> file = { 1, 2, 3 };
+	auto result = builder.Save( file );
+	EXPECT_FALSE( result );
+	EXPECT_EQ( result.error, "The embedded asset 'embedded/character.cmf' has no skeleton named 'Missing'" );
+	EXPECT_EQ( file, ( std::vector<uint8_t>{ 1, 2, 3 } ) ) << "the file is unchanged";
+
+	builder.SetSkeleton( EMBEDDED_PATH, SKELETON_NAME );
+	auto& root = builder.GetRootGraph();
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, "Walk" ) );
+	result = builder.Save( file );
+	EXPECT_FALSE( result );
+	EXPECT_EQ( result.error, "The embedded asset 'embedded/character.cmf' has no animation named 'Walk'" );
+
+	// Missing data in external assets is only reported when the network is loaded
+	ExpectOk( root.SetAnimation( root.GetNodes()[0], ASSET_PATH, "Walk" ) );
+	ExpectOk( builder.Save( file ) );
 }
 
 TEST_F( RuntimeFixture, InvalidSectionsAreRejected )
 {
-	cmf::AnimationNetworkBuilder builder( loader );
 	auto valid = BuildCompleteNetwork( true );
 	cmf::AnimationNetwork network( loader );
-	ASSERT_EQ( GetHeader( valid ).sections.size(), 2u );
+	ASSERT_EQ( GetHeader( valid ).sections.size(), 1u );
 
-	// Unknown section types, for example the removed EditorData section
+	// Unknown section types, for example the removed EmbeddedCmf section
 	auto unknownType = valid;
-	const uint8_t unknownSectionType = 2;
-	std::memcpy( &GetHeader( unknownType ).sections[1].type, &unknownSectionType, sizeof( unknownSectionType ) );
+	const uint8_t unknownSectionType = 1;
+	std::memcpy( &GetHeader( unknownType ).sections[0].type, &unknownSectionType, sizeof( unknownSectionType ) );
 	UpdateCrc( unknownType );
 	EXPECT_EQ( network.Load( unknownType ).error, "Invalid section type" );
-	EXPECT_FALSE( builder.Load( unknownType.data(), unknownType.size() ) );
 
-	// Assets can only be embedded in EmbeddedCmf sections
-	auto assetInNetworkSection = valid;
-	auto& assets = GetNetworkData( assetInNetworkSection ).assets;
-	auto* embedded = std::find_if( assets.begin(), assets.end(), []( const cmf::can::Asset& asset ) { return asset.section != cmf::can::NO_INDEX; } );
-	ASSERT_NE( embedded, assets.end() );
-	embedded->section = 0;
-	UpdateCrc( assetInNetworkSection );
-	EXPECT_FALSE( network.Load( assetInNetworkSection ) );
-	EXPECT_FALSE( builder.Load( assetInNetworkSection.data(), assetInNetworkSection.size() ) );
+	auto noSections = valid;
+	GetHeader( noSections ).sections.byteSize = 0;
+	UpdateCrc( noSections );
+	EXPECT_EQ( network.Load( noSections ).error, "The file must have exactly one section" );
+}
+
+TEST_F( RuntimeFixture, InvalidEmbeddedDataIsRejected )
+{
+	cmf::AnimationNetwork network( loader );
+	const auto valid = BuildCompleteNetwork( true );
+	constexpr uint32_t badIndex = 42;
+
+	auto file = valid;
+	GetNetworkData( file ).skeletonAsset = 0;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "Invalid skeleton asset index" ) << "the file has no external assets";
+
+	file = valid;
+	GetSampleNode( GetNetworkData( file ).graphs[1], COMPLETE_NETWORK_SAMPLE_NODE ).embeddedAnimation = badIndex;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "Graph 1 node 2: invalid embedded animation index" );
+
+	file = valid;
+	GetNetworkData( file ).animations[0].duration = 0.f;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "Invalid embedded animation 0: Animation \"Move\" has non-positive duration" );
+
+	file = valid;
+	GetNetworkData( file ).skeleton[0].parents[CHILD_BONE] = badIndex;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "Invalid embedded skeleton: Skeleton \"Skeleton\" bone 1 has out-of-range parent index" );
+}
+
+TEST_F( RuntimeFixture, ReferencesMustBeEitherExternalOrEmbedded )
+{
+	// Embedded skeleton, one embedded and one external animation
+	cmf::AnimationNetworkBuilder builder( loader );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
+	builder.SetSkeleton( EMBEDDED_PATH, SKELETON_NAME );
+	auto& root = builder.GetRootGraph();
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, MOVE_ANIMATION ) );
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), ASSET_PATH, LIFT_ANIMATION ) );
+	const auto valid = SaveNetwork( builder );
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( valid ) );
+
+	auto file = valid;
+	GetNetworkData( file ).skeletonAsset = 0;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "The skeleton is both external and embedded" );
+
+	file = valid;
+	auto& external = GetSampleNode( GetNetworkData( file ).graphs[0], 1 );
+	ASSERT_EQ( external.assetIndex, 0u );
+	external.embeddedAnimation = 0;
+	UpdateCrc( file );
+	EXPECT_EQ( network.Load( file ).error, "Graph 0 node 1: the animation is both external and embedded" );
 }
 
 TEST_F( RuntimeFixture, SaveLayoutMatchesTheSavedFile )
@@ -259,30 +381,17 @@ TEST_F( RuntimeFixture, SaveLayoutMatchesTheSavedFile )
 	EXPECT_EQ( layout[0].graph, &root );
 	EXPECT_EQ( layout[0].nodes, root.GetNodes() );
 
-	auto file = builder.Save();
+	auto file = SaveNetwork( builder );
 	ExpectLayoutMatchesFile( layout, GetNetworkData( file ) );
-
-	cmf::AnimationNetworkBuilder reloaded( loader );
-	ASSERT_TRUE( reloaded.Load( file.data(), file.size() ) );
-	ExpectSameLayout( reloaded.GetSaveLayout(), layout );
-}
-
-TEST_F( RuntimeFixture, BuilderRejectsMalformedFilesAndKeepsItsContents )
-{
-	cmf::AnimationNetworkBuilder builder( loader );
-	networktest::SetUpNetwork( builder );
-	auto file = BuildCompleteNetwork();
-	file.back() ^= 1;
-	EXPECT_FALSE( builder.Load( file.data(), file.size() ) );
-	EXPECT_EQ( builder.GetSkeletonPath(), ASSET_PATH );
-	EXPECT_EQ( builder.GetRootGraph().GetNodes().size(), 1u );
 }
 
 TEST_F( RuntimeFixture, ClearReleasesEverything )
 {
 	cmf::AnimationNetworkBuilder builder( loader );
-	const auto file = BuildCompleteNetwork();
-	ASSERT_TRUE( builder.Load( file.data(), file.size() ) );
+	SetUpNetwork( builder );
+	ASSERT_TRUE( builder.AddParameter( { "speed", 0.f, 0.f, 1.f } ) != cmf::AnimationNetworkBuilder::INVALID_PARAMETER );
+	auto& root = builder.GetRootGraph();
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), ASSET_PATH, MOVE_ANIMATION ) );
 	builder.Clear();
 	EXPECT_TRUE( builder.GetRootGraph().GetNodes().empty() );
 	EXPECT_TRUE( builder.GetParameters().empty() );
@@ -317,8 +426,25 @@ TEST_F( RuntimeFixture, NetworkReadsEmbeddedAssetsFromTheFile )
 	ASSERT_TRUE( network.Load( file ) );
 	EXPECT_EQ( loader.GetRequests().size(), requests );
 	EXPECT_TRUE( network.IsReady() );
+	EXPECT_TRUE( network.GetErrors().empty() );
+	EXPECT_TRUE( network.GetWarnings().empty() );
 	ASSERT_NE( network.GetSkeleton(), nullptr );
 	EXPECT_EQ( cmf::ToStdStringView( network.GetSkeleton()->bones[LEAF_BONE] ), "Leaf" );
+
+	const auto& sample = GetSampleNode( network.GetData()->graphs[1], COMPLETE_NETWORK_SAMPLE_NODE );
+	const auto* animation = network.GetAnimation( sample );
+	ASSERT_NE( animation, nullptr );
+	EXPECT_EQ( cmf::ToStdStringView( animation->name ), MOVE_ANIMATION );
+	EXPECT_EQ( animation->duration, ANIMATION_DURATION );
+}
+
+TEST_F( RuntimeFixture, NetworkResolvesExternalAnimations )
+{
+	const auto file = BuildCompleteNetwork();
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( file ) );
+	const auto& sample = GetSampleNode( network.GetData()->graphs[1], COMPLETE_NETWORK_SAMPLE_NODE );
+	EXPECT_EQ( network.GetAnimation( sample ), asset.data.animations.data() );
 }
 
 TEST_F( RuntimeFixture, NetworkWaitsForDeferredAssets )
@@ -353,7 +479,7 @@ TEST_F( RuntimeFixture, IncompleteNetworkLoadsWithErrors )
 	ASSERT_TRUE( builder.GetRootGraph().SetAnimation( sample, ASSET_PATH, "Missing" ) );
 
 	cmf::AnimationNetwork network( loader );
-	ASSERT_TRUE( network.Load( builder.Save() ) );
+	ASSERT_TRUE( network.Load( SaveNetwork( builder ) ) );
 	EXPECT_FALSE( network.IsReady() );
 	const auto errors = network.GetErrors();
 	EXPECT_TRUE( HasErrorContaining( errors, "graph 0: Output #0: input 'pose' is not connected" ) );

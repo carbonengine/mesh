@@ -310,39 +310,6 @@ void Document::ForgetEmbeddedFiles()
 	m_embeddedFiles.clear();
 }
 
-void Document::RenameAssetReference( const std::string& from, const std::string& to )
-{
-	if( from == to )
-	{
-		return;
-	}
-	if( m_network.GetSkeletonPath() == from )
-	{
-		m_network.SetSkeleton( to, m_network.GetSkeletonName() );
-	}
-	for( const auto& layout : m_network.GetSaveLayout() )
-	{
-		// The document owns the network, so its graphs can be modified
-		auto& graph = const_cast<cmf::AnimationGraphBuilder&>( *layout.graph ); // NOLINT(cppcoreguidelines-pro-type-const-cast): see above
-		for( const auto id : layout.nodes )
-		{
-			const auto* sample = graph.GetSettings<cmf::AnimationSampleSettings>( id );
-			if( sample != nullptr && sample->assetPath == from )
-			{
-				static_cast<void>( graph.SetAnimation( id, to, sample->animationName ) );
-			}
-		}
-	}
-	auto previewMeshes = m_previewMeshes;
-	std::replace( previewMeshes.begin(), previewMeshes.end(), from, to );
-	SetPreviewMeshes( std::move( previewMeshes ) );
-	if( m_embeddedAssets.count( from ) != 0 )
-	{
-		RemoveEmbeddedAsset( from );
-		static_cast<void>( EmbedAsset( to ) );
-	}
-	++m_editorRevision;
-}
 
 std::string Document::Serialize( const std::filesystem::path& baseDirectory ) const
 {
@@ -519,80 +486,6 @@ const std::filesystem::path& Document::GetFilePath() const
 	return m_filePath;
 }
 
-bool Document::ImportCan( const std::vector<uint8_t>& file, std::string& error, std::vector<OrphanedAsset>* orphans )
-{
-	const auto result = m_network.Load( file.data(), file.size() );
-	if( !result )
-	{
-		error = result.error;
-		return false;
-	}
-	// Load replaced the network: clear the editor state, but not the network
-	m_graphs.clear();
-	m_previewMeshes.clear();
-	m_embeddedAssets.clear();
-	m_embeddedErrors.clear();
-	m_embeddedFiles.clear();
-	m_exportPath.clear();
-	m_filePath.clear();
-	for( const auto& reference : m_network.GetEmbeddedAssetPaths() )
-	{
-		OrphanedAsset asset{ reference, m_resolver->Resolve( reference ), *m_network.GetEmbeddedAsset( reference ) };
-		m_network.RemoveEmbeddedAsset( reference );
-		m_embeddedAssets.insert( reference );
-		std::error_code ec;
-		if( asset.resolvedPath && std::filesystem::is_regular_file( *asset.resolvedPath, ec ) && LoadEmbeddedAsset( reference ) )
-		{
-			continue;
-		}
-		m_embeddedErrors[reference] = "the embedded data of the imported network is not available as a file";
-		if( orphans != nullptr )
-		{
-			orphans->push_back( std::move( asset ) );
-		}
-	}
-	PlaceAllUnpositionedNodes();
-	++m_editorRevision;
-	return true;
-}
-
-bool Document::ImportFile( const std::filesystem::path& path, std::string& error, std::vector<OrphanedAsset>* orphans )
-{
-	std::vector<uint8_t> bytes;
-	if( !ReadBytes( path, bytes, error ) )
-	{
-		return false;
-	}
-	if( !ImportCan( bytes, error, orphans ) )
-	{
-		error = "'" + path.u8string() + "' is not a valid animation network: " + error;
-		return false;
-	}
-	return true;
-}
-
-bool Document::SaveOrphanedAsset( const OrphanedAsset& asset, const std::filesystem::path& path, std::string& error )
-{
-	std::error_code ec;
-	if( path.has_parent_path() )
-	{
-		std::filesystem::create_directories( path.parent_path(), ec );
-	}
-	if( !WriteBytes( path, asset.bytes.data(), asset.bytes.size(), error ) )
-	{
-		return false;
-	}
-	const auto reference = m_resolver->MakeReference( path );
-	RemoveEmbeddedAsset( asset.reference );
-	RenameAssetReference( asset.reference, reference );
-	const auto result = EmbedAsset( reference );
-	if( !result )
-	{
-		error = result.error;
-		return false;
-	}
-	return true;
-}
 
 const std::filesystem::path& Document::GetExportPath() const
 {
@@ -630,7 +523,13 @@ bool Document::Export( const std::filesystem::path& path, std::string& error ) c
 		error = "The network can't be exported:" + problems;
 		return false;
 	}
-	const auto bytes = exported.GetNetwork().Save();
+	std::vector<uint8_t> bytes;
+	const auto result = exported.GetNetwork().Save( bytes );
+	if( !result )
+	{
+		error = "The network can't be exported:\n" + result.error;
+		return false;
+	}
 	return WriteBytes( path, bytes.data(), bytes.size(), error );
 }
 

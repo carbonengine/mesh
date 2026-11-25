@@ -231,7 +231,9 @@ void PreviewController::UpdateNetwork( Document& document )
 	}
 	m_builtGeneration = generation;
 	m_instance.reset();
-	if( !m_network.Load( builder.Save() ) )
+	// A network that can't be saved, for example because an embedded animation is missing, shows the rest pose
+	std::vector<uint8_t> file;
+	if( !builder.Save( file ) || !m_network.Load( std::move( file ) ) )
 	{
 		return;
 	}

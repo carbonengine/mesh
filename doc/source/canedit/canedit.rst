@@ -9,7 +9,7 @@ CanEdit saves networks as documents (``.cane`` files, see `Documents and Export`
 which the runtime loads.
 
 CanEdit is built with the other tools (``-DBUILD_TOOLS=ON``). Start it without arguments for a new network, or pass a
-``.cane`` document to open it (or a ``.can`` file to import it):
+``.cane`` document to open it:
 
 .. code-block:: bash
 
@@ -110,8 +110,8 @@ Keyboard and Mouse
     * - Ctrl+E, Ctrl+Shift+E
       - Export, export as
 
-**Edit > Auto Arrange** lays out the open graph automatically. It is also applied to imported ``.can`` files, which
-have no node positions.
+**Edit > Auto Arrange** lays out the open graph automatically. It is also applied to nodes without a position when a
+document is opened, for example in documents written by other tools.
 
 Preview
 -------
@@ -162,9 +162,10 @@ directory of a prefix.
 Embedded Assets
 ---------------
 
-An embedded asset is a CMF file that is packed into the exported ``.can`` file. References to its path then use the
-embedded copy instead of loading the file, which makes the exported network self-contained at the cost of a larger
-file.
+An embedded asset is a CMF file whose contents are packed into the exported ``.can`` file. References to its path
+then use the embedded copy instead of loading the file, which makes the exported network self-contained at the cost
+of a larger file. Only the skeleton and the animations the network uses from the file are exported; meshes and
+unused skeletons and animations are left out.
 
 **Embed File...** in the **Problems and Assets** panel marks a file as embedded. The document only stores its
 reference: the file is read when the document is opened, when **File > Reload Assets** is used and again when the
@@ -172,7 +173,8 @@ network is exported, so the exported network always contains the current file. U
 before.
 
 An embedded file that can't be read is listed with the error in the panel and the network uses the asset loader for
-its path, as if it weren't embedded. A network whose embedded files can't be read is not exported.
+its path, as if it weren't embedded. A network whose embedded files can't be read is not exported, and neither is a
+network that uses a skeleton or animation an embedded file doesn't contain.
 
 Documents and Export
 --------------------
@@ -186,17 +188,11 @@ asks for the path, and **Export As...** (Ctrl+Shift+E) always asks. The export p
 to the document file, so changing it is a change of the document. Exporting doesn't save the document.
 
 Networks with errors (see the **Problems and Assets** panel) are not exported. Assets that are still loading and
-warnings, such as missing animations, don't prevent the export.
+warnings, such as missing external animations, don't prevent the export. Animations missing from embedded files do,
+see `Embedded Assets`_.
 
-Importing CAN files
-^^^^^^^^^^^^^^^^^^^
-
-**File > Open** also opens ``.can`` files, as do dropping them on the window and passing them on the command line. An
-imported network becomes a new, unsaved document; its nodes are laid out automatically.
-
-Embedded files of the imported network whose reference resolves to an existing file use that file. For the others,
-CanEdit asks whether to save the embedded data to a file, because documents only store references. Saving it to a
-different location than its reference resolves to changes the references to it in the network.
+Exported ``.can`` files can't be opened in CanEdit: they only contain what the runtime needs. Keep the ``.cane``
+document and export it again after changes.
 
 Document Format
 ^^^^^^^^^^^^^^^

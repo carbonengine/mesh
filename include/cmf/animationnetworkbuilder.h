@@ -368,7 +368,8 @@ struct AnimationGraphLayout
 * and references to the skeleton and animations it uses.
 *
 * The builder is meant for tools. It favors simple data structures over memory efficiency and saves networks in the
-* CAN format (Save), which AnimationNetwork loads for playback. Load reads a saved network back for editing.
+* CAN format (Save), which AnimationNetwork loads for playback. CAN files can't be loaded back into a builder: they
+* only keep the parts of embedded assets the network uses, so tools store the network in their own format.
 *
 * Assets referenced by path are loaded through the AnimationAssetLoader passed to the constructor unless an
 * embedded asset with the same path exists (see EmbedAsset); they are needed to validate the network against the
@@ -402,7 +403,8 @@ public:
 	[[nodiscard]] CARBON_MESH_EXPORT const Skeleton* GetSkeleton() const;
 
 	/** @brief Embeds a CMF file into the network. References to the path resolve to the embedded data instead of
-	* going through the asset loader, and the file is stored when the network is saved.
+	* going through the asset loader. Save stores only the skeleton and the animations the network references from the
+	* file; meshes and the other skeletons and animations are left out.
 	* @param assetPath Path under which the asset is referenced.
 	* @param cmfFile Contents of a CMF file. The file is validated.
 	*/
@@ -450,17 +452,16 @@ public:
 	[[nodiscard]] CARBON_MESH_EXPORT const cmf::Data* GetAssetData( std::string_view assetPath ) const;
 
 	/** @brief Saves the network in the CAN format. Node handles are not stored: nodes are numbered in slot order
-	* without removed nodes, so handles change when a network with removed nodes is saved and loaded again. */
-	[[nodiscard]] CARBON_MESH_EXPORT std::vector<uint8_t> Save() const;
-
-	/** @brief Replaces the network with the contents of a CAN file.
-	* @return An error if the file is malformed; the network is unchanged in that case.
+	* without removed nodes (see GetSaveLayout).
+	*
+	* References to embedded assets are resolved when saving, and the referenced skeleton and animations are stored
+	* in the file. Saving fails if one of them is not found in its embedded asset.
+	* @param file Receives the contents of the CAN file. It is left unchanged if saving fails.
 	*/
-	CARBON_MESH_EXPORT ValidationResult Load( const void* file, size_t size );
+	[[nodiscard]] CARBON_MESH_EXPORT ValidationResult Save( std::vector<uint8_t>& file ) const;
 
 	/** @brief Returns all graphs in the order Save stores them, starting with the root graph, with their live nodes
-	* in stored order. Use it to associate data with nodes of a saved file. Right after Load of a file written by Save,
-	* the layout matches the file. */
+	* in stored order. Use it to associate data with nodes of a saved file. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<AnimationGraphLayout> GetSaveLayout() const;
 
 	/** @brief Removes all nodes, parameters, embedded assets and the skeleton reference. */
@@ -492,7 +493,7 @@ private:
 
 	struct EmbeddedAsset
 	{
-		/** Original file contents, as stored when saving the network. */
+		/** Original file contents, returned by GetEmbeddedAsset. */
 		std::vector<uint8_t> file;
 		/** Copy of the file with offsets converted to pointers; data points into it. */
 		std::vector<uint8_t> loaded;
