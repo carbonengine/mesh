@@ -110,7 +110,8 @@ CanEdit, which have no node positions.
 Preview
 -------
 
-The preview plays the network on the preview mesh, or shows the skeleton when no mesh is set. Set the mesh in the
+The preview plays the network on the preview mesh. When no preview mesh is set, it shows the skeleton file, including
+any meshes that file contains; if it has none, the bones are always drawn. Set the mesh in the
 **Properties** panel with no node selected, or drop a ``.cmf`` file on the window. The mesh is bound to the network
 skeleton by bone names; bones that are not in the network skeleton keep their bind pose. **Show skeleton** draws the
 bones on top of the mesh.

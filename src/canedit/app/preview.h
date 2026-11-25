@@ -26,7 +26,7 @@ constexpr float DEFAULT_TIMELINE_LENGTH = 10.f;
 *
 * The network is saved and loaded into a runtime network shortly after it changes. Playback time and parameter
 * values are kept across rebuilds. The model is the preview mesh of the document, or the skeleton file when no mesh
-* is set; the skeleton is always drawn when there is no mesh. */
+* is set; the skeleton is always drawn when the model has no meshes. */
 class PreviewController
 {
 public:
@@ -86,6 +86,8 @@ private:
 	// Model
 	std::string m_modelReference;
 	bool m_modelIsMesh = false;
+	/** The loaded model has meshes to draw; without them the skeleton is the only thing to see. */
+	bool m_modelHasMeshes = false;
 	std::string m_modelError;
 	CcpMath::Sphere m_bounds{};
 

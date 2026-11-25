@@ -108,6 +108,7 @@ void PreviewController::UpdateModel( Document& document )
 	m_modelReference = reference;
 	m_modelIsMesh = isMesh;
 	m_modelError.clear();
+	m_modelHasMeshes = false;
 	m_scene.SetData( nullptr );
 	if( reference.empty() )
 	{
@@ -145,6 +146,8 @@ void PreviewController::UpdateModel( Document& document )
 	{
 		return;
 	}
+	// A skeleton file can contain the skinned mesh too
+	m_modelHasMeshes = !content->m_cmfData->meshes.empty();
 	const auto shaders = SceneRenderer::GetAvailableShaders( *content );
 	if( const auto shader = SceneRenderer::ChooseShader( shaders, "" ) )
 	{
@@ -282,7 +285,7 @@ void PreviewController::Render()
 		return;
 	}
 	DebugDrawSettings settings;
-	settings.bones = m_showSkeleton || !m_modelIsMesh;
+	settings.bones = m_showSkeleton || !m_modelHasMeshes;
 	settings.joints = settings.bones;
 	settings.radius = m_bounds.radius > 0.f ? m_bounds.radius : 1.f;
 	m_scene.Render( m_camera, settings );
