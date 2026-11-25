@@ -259,7 +259,7 @@ void Application::OnDrop( const std::vector<std::string>& paths )
 		if( HasExtension( path, ".cmf" ) )
 		{
 			const ScopedEdit edit( *m_session );
-			m_document->SetPreviewMesh( m_resolver.MakeReference( std::filesystem::u8path( path ) ) );
+			m_document->AddPreviewMesh( m_resolver.MakeReference( std::filesystem::u8path( path ) ) );
 		}
 	}
 }

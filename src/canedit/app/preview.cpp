@@ -83,9 +83,10 @@ void PreviewController::BeginFrame()
 
 void PreviewController::Reload()
 {
-	m_scene.SetData( nullptr );
-	m_modelReference.clear();
-	m_modelError.clear();
+	m_scene.ClearData();
+	m_modelReferences.clear();
+	m_modelErrors.clear();
+	m_modelHasMeshes = false;
 	m_instance.reset();
 	m_network.Load( {} );
 	m_builtGeneration = 0;
@@ -95,9 +96,14 @@ void PreviewController::Reload()
 void PreviewController::UpdateModel( Document& document )
 {
 	const auto& builder = document.GetNetwork();
-	const bool isMesh = !document.GetPreviewMesh().empty();
-	const auto& reference = isMesh ? document.GetPreviewMesh() : builder.GetSkeletonPath();
-	if( reference == m_modelReference && isMesh == m_modelIsMesh && ( m_scene.GetModel() != nullptr || !m_modelError.empty() || reference.empty() ) )
+	const auto& meshes = document.GetPreviewMeshes();
+	const bool isMesh = !meshes.empty();
+	auto references = meshes;
+	if( !isMesh && !builder.GetSkeletonPath().empty() )
+	{
+		references.push_back( builder.GetSkeletonPath() );
+	}
+	if( references == m_modelReferences && isMesh == m_modelIsMesh && ( m_scene.GetModelCount() > 0 || !m_modelErrors.empty() || references.empty() ) )
 	{
 		return;
 	}
@@ -105,16 +111,51 @@ void PreviewController::UpdateModel( Document& document )
 	{
 		return;
 	}
-	m_modelReference = reference;
+	m_modelReferences = std::move( references );
 	m_modelIsMesh = isMesh;
-	m_modelError.clear();
+	m_modelErrors.clear();
 	m_modelHasMeshes = false;
-	m_scene.SetData( nullptr );
-	if( reference.empty() )
+	m_scene.ClearData();
+
+	CcpMath::Sphere bounds; // Starts empty
+	for( const auto& reference : m_modelReferences )
+	{
+		std::string error;
+		const auto content = LoadModel( builder, reference, error );
+		if( !content )
+		{
+			m_modelErrors.push_back( ( isMesh ? "Preview mesh: " : "Skeleton: " ) + error );
+			continue;
+		}
+		auto* model = m_scene.AddData( content );
+		if( model == nullptr )
+		{
+			continue;
+		}
+		// A skeleton file can contain the skinned mesh too
+		m_modelHasMeshes = m_modelHasMeshes || !content->m_cmfData->meshes.empty();
+		const auto shaders = SceneRenderer::GetAvailableShaders( *content );
+		if( const auto shader = SceneRenderer::ChooseShader( shaders, "" ) )
+		{
+			model->SetShader( shader->first, shader->second );
+		}
+		bounds.Include( content->GetBoundingSphere() );
+	}
+	if( m_scene.GetModelCount() == 0 )
 	{
 		return;
 	}
+	m_bounds = bounds;
+	if( m_bounds.radius < MIN_RADIUS )
+	{
+		// For example a skeleton whose bones are all at the origin
+		m_bounds.radius = 1.f;
+	}
+	m_camera.Reset( m_bounds );
+}
 
+std::shared_ptr<CmfContent> PreviewController::LoadModel( const cmf::AnimationNetworkBuilder& builder, const std::string& reference, std::string& error ) const
+{
 	std::shared_ptr<CmfContent> content;
 	if( const auto* embedded = builder.GetEmbeddedAsset( reference ) )
 	{
@@ -122,44 +163,18 @@ void PreviewController::UpdateModel( Document& document )
 	}
 	else
 	{
-		std::string error;
 		const auto file = m_loader->LoadUnmanaged( reference, error );
-		if( file )
+		if( !file )
 		{
-			content = MakeContent( file->GetBytes(), reference );
+			return nullptr;
 		}
-		else
-		{
-			m_modelError = ( isMesh ? "Preview mesh: " : "Skeleton: " ) + error;
-		}
+		content = MakeContent( file->GetBytes(), reference );
 	}
 	if( !content )
 	{
-		if( m_modelError.empty() )
-		{
-			m_modelError = "Preview model '" + reference + "' could not be loaded";
-		}
-		return;
+		error = "'" + reference + "' is not a valid CMF file";
 	}
-	auto* model = m_scene.SetData( content );
-	if( model == nullptr )
-	{
-		return;
-	}
-	// A skeleton file can contain the skinned mesh too
-	m_modelHasMeshes = !content->m_cmfData->meshes.empty();
-	const auto shaders = SceneRenderer::GetAvailableShaders( *content );
-	if( const auto shader = SceneRenderer::ChooseShader( shaders, "" ) )
-	{
-		model->SetShader( shader->first, shader->second );
-	}
-	m_bounds = content->GetBoundingSphere();
-	if( m_bounds.radius < MIN_RADIUS )
-	{
-		// For example a skeleton whose bones are all at the origin
-		m_bounds.radius = 1.f;
-	}
-	m_camera.Reset( m_bounds );
+	return content;
 }
 
 void PreviewController::StartInstance()
@@ -228,8 +243,7 @@ void PreviewController::UpdateNetwork( Document& document )
 
 void PreviewController::ApplyPose( const cmf::AnimationNetworkBuilder& builder )
 {
-	auto* model = m_scene.GetModel();
-	if( model == nullptr )
+	if( m_scene.GetModelCount() == 0 )
 	{
 		return;
 	}
@@ -246,10 +260,15 @@ void PreviewController::ApplyPose( const cmf::AnimationNetworkBuilder& builder )
 	{
 		return;
 	}
-	const auto& content = model->GetContent();
-	for( size_t i = 0; i < content->m_cmfData->skeletons.size(); ++i )
+	// Every model is bound to the network skeleton by bone names, so all of them take the same pose
+	for( size_t m = 0; m < m_scene.GetModelCount(); ++m )
 	{
-		model->SetPose( static_cast<uint8_t>( i ), m_pose );
+		auto& model = m_scene.GetModel( m );
+		const auto& content = model.GetContent();
+		for( size_t i = 0; i < content->m_cmfData->skeletons.size(); ++i )
+		{
+			model.SetPose( static_cast<uint8_t>( i ), m_pose );
+		}
 	}
 }
 
@@ -345,15 +364,15 @@ void PreviewController::DrawViewport()
 		drawList->AddText( textPosition, color, text.c_str() );
 		textPosition.y += lineHeight;
 	};
-	if( !m_modelError.empty() )
+	for( const auto& error : m_modelErrors )
 	{
-		overlay( IM_COL32( 255, 120, 100, 255 ), m_modelError );
+		overlay( IM_COL32( 255, 120, 100, 255 ), error );
 	}
 	if( !m_network.IsReady() )
 	{
 		overlay( IM_COL32( 255, 190, 90, 255 ), "Network can't be evaluated, showing the bind pose" );
 	}
-	if( m_modelReference.empty() )
+	if( m_modelReferences.empty() )
 	{
 		overlay( IM_COL32( 200, 200, 200, 255 ), "Set a skeleton or preview mesh to see the network" );
 	}
@@ -410,9 +429,9 @@ bool PreviewController::IsNetworkReady() const
 	return m_network.IsReady();
 }
 
-const std::string& PreviewController::GetModelError() const
+const std::vector<std::string>& PreviewController::GetModelErrors() const
 {
-	return m_modelError;
+	return m_modelErrors;
 }
 
 float PreviewController::GetParameterValue( const cmf::AnimationParameter& parameter ) const

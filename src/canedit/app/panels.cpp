@@ -283,28 +283,53 @@ void PropertiesPanel::DrawNetwork( AppContext& context )
 		network.SetSkeleton( network.GetSkeletonPath(), name );
 	}
 
-	SectionHeader( "Preview Mesh" );
-	ImGui::TextColored( HINT_TEXT, "Mesh shown in the preview, stored with the editor data." );
-	ImGui::SetNextItemWidth( -ImGui::GetFrameHeight() * BROWSE_CLEAR_BUTTONS_SPACE );
-	if( CommitText( m_text, "previewMesh", "##previewMesh", document.GetPreviewMesh(), reference ) )
+	SectionHeader( "Preview Meshes" );
+	ImGui::TextColored( HINT_TEXT, "Meshes shown together in the preview, stored with the editor data." );
+	// Edits apply to a copy, so that the list isn't changed while it is drawn
+	auto meshes = document.GetPreviewMeshes();
+	bool meshesChanged = false;
+	for( size_t i = 0; i < meshes.size(); ++i )
 	{
-		const ScopedEdit edit( session );
-		document.SetPreviewMesh( reference );
-	}
-	ImGui::SameLine();
-	if( ImGui::Button( "Browse##mesh" ) )
-	{
-		if( const auto browsed = BrowseReference( context, "Select Preview Mesh" ) )
+		ImGui::PushID( static_cast<int>( i ) );
+		ImGui::SetNextItemWidth( -ImGui::GetFrameHeight() * BROWSE_CLEAR_BUTTONS_SPACE );
+		if( CommitText( m_text, "previewMesh" + std::to_string( i ), "##previewMesh", meshes[i], reference ) )
 		{
-			const ScopedEdit edit( session );
-			document.SetPreviewMesh( *browsed );
+			meshes[i] = reference;
+			meshesChanged = true;
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Browse" ) )
+		{
+			if( const auto browsed = BrowseReference( context, "Select Preview Mesh" ) )
+			{
+				meshes[i] = *browsed;
+				meshesChanged = true;
+			}
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Remove" ) )
+		{
+			meshes[i].clear(); // Empty references are dropped from the list
+			meshesChanged = true;
+		}
+		ImGui::PopID();
+	}
+	if( meshes.empty() )
+	{
+		ImGui::TextColored( HINT_TEXT, "None: the preview shows the skeleton file." );
+	}
+	if( ImGui::Button( "Add Mesh..." ) )
+	{
+		if( const auto browsed = BrowseReference( context, "Add Preview Mesh" ) )
+		{
+			meshes.push_back( *browsed );
+			meshesChanged = true;
 		}
 	}
-	ImGui::SameLine();
-	if( ImGui::Button( "Clear##mesh" ) )
+	if( meshesChanged )
 	{
 		const ScopedEdit edit( session );
-		document.SetPreviewMesh( "" );
+		document.SetPreviewMeshes( std::move( meshes ) );
 	}
 
 	SectionHeader( "Network" );
@@ -866,8 +891,8 @@ void AssetsPanel::Draw( AppContext& context )
 	const auto errors = network.GetErrors();
 	const auto warnings = network.GetWarnings();
 	const auto loadErrors = context.loader->GetErrors();
-	const auto& modelError = context.preview->GetModelError();
-	if( errors.empty() && warnings.empty() && loadErrors.empty() && modelError.empty() )
+	const auto& modelErrors = context.preview->GetModelErrors();
+	if( errors.empty() && warnings.empty() && loadErrors.empty() && modelErrors.empty() )
 	{
 		ImGui::TextColored( OK_TEXT, "No problems" );
 	}
@@ -875,9 +900,9 @@ void AssetsPanel::Draw( AppContext& context )
 	{
 		ImGui::TextColored( ERROR_TEXT, "%s", error.c_str() );
 	}
-	if( !modelError.empty() )
+	for( const auto& error : modelErrors )
 	{
-		ImGui::TextColored( ERROR_TEXT, "%s", modelError.c_str() );
+		ImGui::TextColored( ERROR_TEXT, "%s", error.c_str() );
 	}
 	for( const auto& error : errors )
 	{

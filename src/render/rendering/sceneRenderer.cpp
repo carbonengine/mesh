@@ -30,7 +30,7 @@ SceneRenderer::SceneRenderer( const std::shared_ptr<Renderer>& renderer ) :
 
 SceneRenderer::~SceneRenderer()
 {
-	ReleaseModel();
+	ReleaseModels();
 }
 
 VkResult SceneRenderer::Initialize( uint32_t width, uint32_t height )
@@ -66,33 +66,37 @@ void SceneRenderer::SetClearColor( float r, float g, float b )
 	m_graphicsCommandBuffer.SetClearColor( r, g, b );
 }
 
-void SceneRenderer::ReleaseModel()
+void SceneRenderer::ReleaseModels()
 {
+	if( m_models.empty() )
+	{
+		return;
+	}
 	auto* logicalDevice = m_renderer->GetDevice()->GetLogicalDevice();
 	vkDeviceWaitIdle( logicalDevice );
-
-	if( m_model != nullptr )
-	{
-		m_model.reset();
-	}
+	m_models.clear();
 }
 
 void SceneRenderer::Update( const Camera& camera )
 {
-	if( m_model != nullptr )
+	for( auto& model : m_models )
 	{
-		m_model->Update( camera );
+		model->Update( camera );
 	}
 }
 
 void SceneRenderer::PrePass()
 {
-	if( m_model != nullptr )
+	if( m_models.empty() )
 	{
-		m_computeCommandBuffer.Begin( m_renderer.get() );
-		m_model->PrepareModel( m_computeCommandBuffer );
-		m_computeCommandBuffer.End();
+		return;
 	}
+	m_computeCommandBuffer.Begin( m_renderer.get() );
+	for( auto& model : m_models )
+	{
+		model->PrepareModel( m_computeCommandBuffer );
+	}
+	m_computeCommandBuffer.End();
 }
 
 void SceneRenderer::Render( const Camera& camera, const DebugDrawSettings& debugSettings )
@@ -108,19 +112,19 @@ void SceneRenderer::Render( const Camera& camera, const DebugDrawSettings& debug
 
 	m_graphicsCommandBuffer.Begin( m_renderer.get() );
 
-	if( m_model != nullptr )
+	for( auto& model : m_models )
 	{
-		m_model->Render( m_graphicsCommandBuffer, camera );
+		model->Render( m_graphicsCommandBuffer, camera );
 
-		m_model->RenderDebug( m_graphicsCommandBuffer, camera );
+		model->RenderDebug( m_graphicsCommandBuffer, camera );
 	}
 
 	m_graphicsCommandBuffer.End();
 
 	m_depthLessDebugCommandBuffer.Begin( m_renderer.get() );
-	if( m_model != nullptr )
+	for( auto& model : m_models )
 	{
-		m_model->RenderNoDepthDebug( m_depthLessDebugCommandBuffer, camera, debugSettings );
+		model->RenderNoDepthDebug( m_depthLessDebugCommandBuffer, camera, debugSettings );
 	}
 	m_depthLessDebugCommandBuffer.End();
 
@@ -168,20 +172,43 @@ std::optional<SceneRenderer::ShaderEntry> SceneRenderer::ChooseShader( const Sha
 
 ModelRenderable* SceneRenderer::SetData( const std::shared_ptr<CmfContent>& data )
 {
-	ReleaseModel();
+	ReleaseModels();
 
 	if( data == nullptr )
 	{
 		Log::Error( "No model data provided to SceneRenderer::SetData" );
 		return nullptr;
 	}
+	return AddData( data );
+}
 
-	m_model = std::make_unique<ModelRenderable>( data, m_renderer );
-	m_model->Initialize();
-	return m_model.get();
+ModelRenderable* SceneRenderer::AddData( const std::shared_ptr<CmfContent>& data )
+{
+	if( data == nullptr )
+	{
+		return nullptr;
+	}
+	auto model = std::make_unique<ModelRenderable>( data, m_renderer );
+	model->Initialize();
+	return m_models.emplace_back( std::move( model ) ).get();
+}
+
+void SceneRenderer::ClearData()
+{
+	ReleaseModels();
 }
 
 ModelRenderable* SceneRenderer::GetModel() const
 {
-	return m_model.get();
+	return m_models.empty() ? nullptr : m_models.front().get();
+}
+
+size_t SceneRenderer::GetModelCount() const
+{
+	return m_models.size();
+}
+
+ModelRenderable& SceneRenderer::GetModel( size_t index ) const
+{
+	return *m_models[index];
 }

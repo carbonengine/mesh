@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <set>
@@ -66,6 +67,39 @@ void FillPositions( std::map<uint32_t, Vec2>& positions, const std::map<uint32_t
 	}
 }
 
+// Drops empty and repeated references, keeping the order of the rest
+std::vector<std::string> CleanReferences( std::vector<std::string> references )
+{
+	std::set<std::string> seen;
+	const auto removed = std::remove_if( references.begin(), references.end(), [&seen]( const std::string& reference ) {
+		return reference.empty() || !seen.insert( reference ).second;
+	} );
+	references.erase( removed, references.end() );
+	return references;
+}
+
+// Reads the preview meshes from the editor data, including the single "previewMesh" of earlier files
+std::vector<std::string> ReadPreviewMeshes( const nlohmann::json& source )
+{
+	std::vector<std::string> references;
+	const auto meshes = source.find( "previewMeshes" );
+	if( meshes != source.end() && meshes->is_array() )
+	{
+		for( const auto& mesh : *meshes )
+		{
+			if( mesh.is_string() )
+			{
+				references.push_back( mesh.get<std::string>() );
+			}
+		}
+	}
+	const auto legacy = source.find( "previewMesh" );
+	if( legacy != source.end() && legacy->is_string() )
+	{
+		references.push_back( legacy->get<std::string>() );
+	}
+	return CleanReferences( std::move( references ) );
+}
 }
 
 Document::Document( cmf::AnimationAssetLoader& loader ) :
@@ -140,18 +174,26 @@ void Document::SetView( const cmf::AnimationGraphBuilder& graph, const GraphView
 	m_graphs[&graph].view = view;
 }
 
-const std::string& Document::GetPreviewMesh() const
+const std::vector<std::string>& Document::GetPreviewMeshes() const
 {
-	return m_previewMesh;
+	return m_previewMeshes;
 }
 
-void Document::SetPreviewMesh( std::string reference )
+void Document::SetPreviewMeshes( std::vector<std::string> references )
 {
-	if( reference != m_previewMesh )
+	references = CleanReferences( std::move( references ) );
+	if( references != m_previewMeshes )
 	{
-		m_previewMesh = std::move( reference );
+		m_previewMeshes = std::move( references );
 		++m_editorRevision;
 	}
+}
+
+void Document::AddPreviewMesh( std::string reference )
+{
+	auto references = m_previewMeshes;
+	references.push_back( std::move( reference ) );
+	SetPreviewMeshes( std::move( references ) );
 }
 
 void Document::PlaceUnpositionedNodes( const cmf::AnimationGraphBuilder& graph )
@@ -185,9 +227,9 @@ std::vector<uint8_t> Document::WriteEditorData() const
 	nlohmann::json json;
 	json["format"] = FORMAT_NAME;
 	json["version"] = EDITOR_DATA_VERSION;
-	if( !m_previewMesh.empty() )
+	if( !m_previewMeshes.empty() )
 	{
-		json["previewMesh"] = m_previewMesh;
+		json["previewMeshes"] = m_previewMeshes;
 	}
 	auto& graphs = json["graphs"];
 	graphs = nlohmann::json::array();
@@ -220,12 +262,12 @@ std::vector<uint8_t> Document::WriteEditorData() const
 void Document::ReadEditorData( const std::vector<uint8_t>& data )
 {
 	m_graphs.clear();
-	m_previewMesh.clear();
+	m_previewMeshes.clear();
 	const auto layout = m_network.GetSaveLayout();
 	const auto json = nlohmann::json::parse( data.begin(), data.end(), nullptr, false );
 	if( !json.is_discarded() && json.is_object() && json.value( "format", "" ) == FORMAT_NAME )
 	{
-		m_previewMesh = json.value( "previewMesh", "" );
+		m_previewMeshes = ReadPreviewMeshes( json );
 		const auto graphs = json.find( "graphs" );
 		if( graphs != json.end() && graphs->is_array() )
 		{
@@ -279,7 +321,7 @@ void Document::New()
 {
 	m_network.Clear();
 	m_graphs.clear();
-	m_previewMesh.clear();
+	m_previewMeshes.clear();
 	m_filePath.clear();
 	auto& root = m_network.GetRootGraph();
 	const auto output = root.AddNode( cmf::AnimationNodeType::Output );

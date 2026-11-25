@@ -18,6 +18,7 @@ constexpr Vec2 LOOSE_POSITION = { 50.f, 400.f };
 constexpr Vec2 INNER_POSITION = { 10.f, -10.f };
 constexpr canedit::GraphView SUBGRAPH_VIEW = { { 1.f, 2.f }, 0.5f };
 constexpr canedit::GraphView OTHER_VIEW = { { 5.f, 5.f }, 2.f };
+constexpr const char* HEAD_REFERENCE = "res:/characters/head.cmf";
 
 std::vector<Vec2> GetPositions( const canedit::Document& document, const cmf::AnimationGraphBuilder& graph )
 {
@@ -58,7 +59,7 @@ TEST_F( EditorFixture, EditorDataSurvivesSavingAndLoading )
 	const auto inner = subgraph.AddNode( cmf::AnimationNodeType::RestPose );
 	document.SetNodePosition( subgraph, inner, INNER_POSITION );
 	document.SetView( subgraph, SUBGRAPH_VIEW );
-	document.SetPreviewMesh( CHARACTER_REFERENCE );
+	document.SetPreviewMeshes( { CHARACTER_REFERENCE, HEAD_REFERENCE } );
 
 	const auto path = directory.GetPath() / "network.can";
 	std::string error;
@@ -69,7 +70,7 @@ TEST_F( EditorFixture, EditorDataSurvivesSavingAndLoading )
 	ASSERT_TRUE( loaded.LoadFile( path, error ) ) << error;
 	EXPECT_FALSE( loaded.IsModified() );
 	EXPECT_EQ( loaded.GetFilePath(), path );
-	EXPECT_EQ( loaded.GetPreviewMesh(), CHARACTER_REFERENCE );
+	EXPECT_EQ( loaded.GetPreviewMeshes(), ( std::vector<std::string>{ CHARACTER_REFERENCE, HEAD_REFERENCE } ) );
 	const auto& loadedRoot = loaded.GetNetwork().GetRootGraph();
 	const auto nodes = loadedRoot.GetNodes();
 	ASSERT_EQ( nodes.size(), 4u );
@@ -83,18 +84,71 @@ TEST_F( EditorFixture, EditorDataSurvivesSavingAndLoading )
 
 TEST_F( EditorFixture, EditorDataIsJson )
 {
-	document.SetPreviewMesh( "mesh.cmf" );
+	document.SetPreviewMeshes( { "body.cmf", "head.cmf" } );
 	const auto file = document.Serialize();
 	const auto& editorData = document.GetNetwork().GetEditorData();
 	const auto json = nlohmann::json::parse( editorData.begin(), editorData.end() );
 	EXPECT_EQ( json["format"], "canedit" );
 	EXPECT_EQ( json["version"], canedit::Document::EDITOR_DATA_VERSION );
-	EXPECT_EQ( json["previewMesh"], "mesh.cmf" );
+	EXPECT_EQ( json["previewMeshes"], nlohmann::json::array( { "body.cmf", "head.cmf" } ) );
+	EXPECT_FALSE( json.contains( "previewMesh" ) );
 	EXPECT_EQ( json["graphs"].size(), 1u );
 
 	// Other clients load the network and skip the editor data
 	cmf::AnimationNetwork network( loader );
 	EXPECT_TRUE( network.Load( file ) );
+}
+
+TEST_F( EditorFixture, PreviewMeshesSkipEmptyAndRepeatedReferences )
+{
+	document.MarkUnmodified();
+	document.AddPreviewMesh( "body.cmf" );
+	EXPECT_TRUE( document.IsModified() );
+	document.AddPreviewMesh( "head.cmf" );
+	document.AddPreviewMesh( "body.cmf" );
+	document.AddPreviewMesh( "" );
+	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "body.cmf", "head.cmf" } ) );
+
+	document.SetPreviewMeshes( { "", "head.cmf", "head.cmf", "hair.cmf" } );
+	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "head.cmf", "hair.cmf" } ) );
+
+	// Setting the same list is not a modification
+	document.MarkUnmodified();
+	document.SetPreviewMeshes( { "head.cmf", "hair.cmf" } );
+	EXPECT_FALSE( document.IsModified() );
+	document.SetPreviewMeshes( {} );
+	EXPECT_TRUE( document.IsModified() );
+	EXPECT_TRUE( document.GetPreviewMeshes().empty() );
+}
+
+TEST_F( EditorFixture, PreviewMeshEditsCanBeUndone )
+{
+	{
+		const canedit::ScopedEdit edit( session );
+		document.AddPreviewMesh( "body.cmf" );
+	}
+	{
+		const canedit::ScopedEdit edit( session );
+		document.AddPreviewMesh( "head.cmf" );
+	}
+	ASSERT_TRUE( session.CanUndo() );
+	ASSERT_TRUE( session.Undo() );
+	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "body.cmf" } ) );
+	ASSERT_TRUE( session.Redo() );
+	EXPECT_EQ( document.GetPreviewMeshes(), ( std::vector<std::string>{ "body.cmf", "head.cmf" } ) );
+}
+
+TEST_F( EditorFixture, SinglePreviewMeshOfEarlierFilesIsRead )
+{
+	const nlohmann::json json = { { "format", "canedit" }, { "version", 1 }, { "previewMesh", "mesh.cmf" } };
+	const auto text = json.dump();
+	document.GetNetwork().SetEditorData( { text.begin(), text.end() } );
+	const auto file = document.GetNetwork().Save();
+
+	canedit::Document loaded( loader );
+	std::string error;
+	ASSERT_TRUE( loaded.Deserialize( file, error ) ) << error;
+	EXPECT_EQ( loaded.GetPreviewMeshes(), ( std::vector<std::string>{ "mesh.cmf" } ) );
 }
 
 TEST_F( EditorFixture, NetworksWithoutEditorDataAreLaidOut )

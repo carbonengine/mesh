@@ -110,11 +110,15 @@ CanEdit, which have no node positions.
 Preview
 -------
 
-The preview plays the network on the preview mesh. When no preview mesh is set, it shows the skeleton file, including
-any meshes that file contains; if it has none, the bones are always drawn. Set the mesh in the
-**Properties** panel with no node selected, or drop a ``.cmf`` file on the window. The mesh is bound to the network
-skeleton by bone names; bones that are not in the network skeleton keep their bind pose. **Show skeleton** draws the
-bones on top of the mesh.
+The preview plays the network on the preview meshes. A character can be made of several files, for example a body and
+a head saved separately: all preview meshes are drawn together with the same pose. When no preview mesh is set, the
+preview shows the skeleton file, including any meshes that file contains; if it has none, the bones are always drawn.
+
+Edit the list under **Preview Meshes** in the **Properties** panel with no node selected: **Add Mesh...** adds a file,
+and each entry can be edited, browsed for again or removed. Dropping ``.cmf`` files on the window adds them to the list.
+Each mesh is bound to the network skeleton by bone names; bones that are not in the network skeleton keep their bind
+pose. **Show skeleton** draws the bones on top of the meshes. A mesh that fails to load is reported in the preview and
+in the **Problems and Assets** panel, and the other meshes are still shown.
 
 Drag with the left mouse button to orbit, the right button to pan, and use the wheel or the middle button to zoom. F
 frames the model.
@@ -158,7 +162,7 @@ use the embedded file, which makes the network self-contained at the cost of a l
 Editor Data
 -----------
 
-CanEdit stores node positions, the pan and zoom of each graph and the preview mesh in the EditorData section of the
+CanEdit stores node positions, the pan and zoom of each graph and the preview meshes in the EditorData section of the
 ``.can`` file (see :doc:`../cmf/animationNetworkFormat`). Other programs that load the network ignore the section.
 Its contents are UTF-8 JSON:
 
@@ -166,8 +170,8 @@ Its contents are UTF-8 JSON:
 
     {
         "format": "canedit",
-        "version": 1,
-        "previewMesh": "res:/characters/soldier.cmf",
+        "version": 2,
+        "previewMeshes": [ "res:/characters/soldier.cmf", "res:/characters/soldier_head.cmf" ],
         "graphs": [
             {
                 "view": [ -120.0, -40.0, 1.0 ],
@@ -175,6 +179,9 @@ Its contents are UTF-8 JSON:
             }
         ]
     }
+
+``previewMeshes`` lists the preview meshes. Version 1 files stored a single ``previewMesh`` string instead; CanEdit
+still reads it.
 
 ``graphs`` has one entry per graph in file order (the root graph first). ``view`` is the graph position at the top
 left corner of the view followed by the zoom. ``nodes`` holds the position of each node of the graph in file order, or

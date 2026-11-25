@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace canedit
 {
@@ -25,8 +26,8 @@ constexpr float DEFAULT_TIMELINE_LENGTH = 10.f;
 /** Evaluates the edited network and shows the result on a skinned model.
 *
 * The network is saved and loaded into a runtime network shortly after it changes. Playback time and parameter
-* values are kept across rebuilds. The model is the preview mesh of the document, or the skeleton file when no mesh
-* is set; the skeleton is always drawn when the model has no meshes. */
+* values are kept across rebuilds. The models are the preview meshes of the document, drawn together, or the skeleton
+* file when no mesh is set; the skeleton is always drawn when the models have no meshes. */
 class PreviewController
 {
 public:
@@ -56,8 +57,8 @@ public:
 	void Reload();
 
 	[[nodiscard]] bool IsNetworkReady() const;
-	/** Problems of the preview itself, such as a preview mesh that failed to load. */
-	[[nodiscard]] const std::string& GetModelError() const;
+	/** Problems of the preview itself, such as preview meshes that failed to load. */
+	[[nodiscard]] const std::vector<std::string>& GetModelErrors() const;
 
 	/** Preview values of the control parameters, by name. */
 	[[nodiscard]] float GetParameterValue( const cmf::AnimationParameter& parameter ) const;
@@ -66,6 +67,8 @@ public:
 
 private:
 	void UpdateModel( Document& document );
+	/** Loads a model file, preferring an embedded copy. Returns nullptr and sets the error when it can't be loaded. */
+	[[nodiscard]] std::shared_ptr<CmfContent> LoadModel( const cmf::AnimationNetworkBuilder& builder, const std::string& reference, std::string& error ) const;
 	void UpdateNetwork( Document& document );
 	/** Creates a new instance at time 0 with the current parameter values. */
 	void StartInstance();
@@ -84,11 +87,12 @@ private:
 	bool m_cameraDrag = false;
 
 	// Model
-	std::string m_modelReference;
+	/** Files shown in the preview: the preview meshes, or the skeleton file when there are none. */
+	std::vector<std::string> m_modelReferences;
 	bool m_modelIsMesh = false;
-	/** The loaded model has meshes to draw; without them the skeleton is the only thing to see. */
+	/** The loaded models have meshes to draw; without them the skeleton is the only thing to see. */
 	bool m_modelHasMeshes = false;
-	std::string m_modelError;
+	std::vector<std::string> m_modelErrors;
 	CcpMath::Sphere m_bounds{};
 
 	// Network

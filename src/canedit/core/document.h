@@ -57,12 +57,12 @@ struct NodeLocation
 using GraphPath = std::vector<cmf::AnimationNodeId>;
 
 /** An animation network being edited, with the editor data stored alongside it (node positions, graph views and
-* the preview mesh). */
+* the preview meshes). */
 class Document
 {
 public:
-	/** Version of the editor data format. */
-	static constexpr int EDITOR_DATA_VERSION = 1;
+	/** Version of the editor data format. Version 2 replaced the single "previewMesh" with a "previewMeshes" list. */
+	static constexpr int EDITOR_DATA_VERSION = 2;
 
 	explicit Document( cmf::AnimationAssetLoader& loader );
 
@@ -81,9 +81,12 @@ public:
 	[[nodiscard]] GraphView GetView( const cmf::AnimationGraphBuilder& graph ) const;
 	void SetView( const cmf::AnimationGraphBuilder& graph, const GraphView& view );
 
-	/** Reference of the mesh shown in the preview. */
-	[[nodiscard]] const std::string& GetPreviewMesh() const;
-	void SetPreviewMesh( std::string reference );
+	/** References of the meshes shown together in the preview, for example a body and a head saved in separate files. */
+	[[nodiscard]] const std::vector<std::string>& GetPreviewMeshes() const;
+	/** Replaces the preview meshes. Empty and repeated references are dropped. */
+	void SetPreviewMeshes( std::vector<std::string> references );
+	/** Adds a preview mesh, unless the reference is empty or already in the list. */
+	void AddPreviewMesh( std::string reference );
 
 	/** Places nodes without a position, using an automatic layout of the graph. */
 	void PlaceUnpositionedNodes( const cmf::AnimationGraphBuilder& graph );
@@ -133,7 +136,7 @@ private:
 
 	cmf::AnimationNetworkBuilder m_network;
 	std::map<const cmf::AnimationGraphBuilder*, GraphState> m_graphs;
-	std::string m_previewMesh;
+	std::vector<std::string> m_previewMeshes;
 	std::filesystem::path m_filePath;
 	uint64_t m_editorRevision = 0;
 	uint64_t m_savedRevision = 0;

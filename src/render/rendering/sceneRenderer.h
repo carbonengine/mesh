@@ -38,9 +38,16 @@ public:
 	void PrePass();
 	void Render( const Camera& camera, const DebugDrawSettings& debugSettings );
 
-	/// Replaces the rendered model, returns the new model or nullptr when there is no data
+	/// Replaces the rendered models with a single model, returns the new model or nullptr when there is no data
 	ModelRenderable* SetData( const std::shared_ptr<CmfContent>& data );
+	/// Adds a model rendered together with the existing ones, returns the new model or nullptr when there is no data
+	ModelRenderable* AddData( const std::shared_ptr<CmfContent>& data );
+	/// Removes all rendered models
+	void ClearData();
+	/// Returns the first rendered model, or nullptr when there is none
 	[[nodiscard]] ModelRenderable* GetModel() const;
+	[[nodiscard]] size_t GetModelCount() const;
+	[[nodiscard]] ModelRenderable& GetModel( size_t index ) const;
 
 	/// Lists the visualization shaders that can render the given content
 	static ShaderList GetAvailableShaders( const CmfContent& data );
@@ -48,12 +55,12 @@ public:
 	static std::optional<ShaderEntry> ChooseShader( const ShaderList& shaders, const std::string& currentShaderName );
 
 private:
-	void ReleaseModel();
+	void ReleaseModels();
 
 	GraphicsCommandBuffer m_depthLessDebugCommandBuffer;
 	GraphicsCommandBuffer m_graphicsCommandBuffer;
 	ComputeCommandBuffer m_computeCommandBuffer{};
-	std::unique_ptr<ModelRenderable> m_model{ nullptr };
+	std::vector<std::unique_ptr<ModelRenderable>> m_models;
 	std::shared_ptr<Renderer> m_renderer{ nullptr };
 	const RenderTarget* m_renderTarget{ nullptr };
 };
