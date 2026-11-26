@@ -212,6 +212,8 @@ void PreviewController::SeekTo( float time )
 	{
 		const auto step = std::min( SEEK_STEP, time - m_time );
 		m_instance->Update( step );
+		// State machines take their transitions when the pose is evaluated, so evaluate every step like playback does
+		m_instance->Evaluate();
 		m_time += step;
 	}
 }
