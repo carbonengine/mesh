@@ -18,7 +18,6 @@ public:
 	void SetSize( uint32_t width, uint32_t height );
 
 private:
-
 	std::shared_ptr<const Renderer> m_renderer{ nullptr };
 
 	PrimitiveRenderable m_axis;
