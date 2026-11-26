@@ -42,7 +42,7 @@ Editing Networks
 Adding nodes
    Click a node type in the **Nodes** panel to add it in the middle of the graph view, or drag it onto the graph.
    Right-click empty space for the same list. Node types that the open graph can't hold are disabled: the root graph
-   has a single Output node and no SubgraphInput nodes.
+   and the graphs of states have a single Output node and no SubgraphInput nodes.
 
 Connecting sockets
    Drag from an output socket to an input socket, or the other way around. Sockets and edges are colored by the type
@@ -65,6 +65,10 @@ Subgraphs
    path from the root graph; click an entry, or press Backspace, to go back. SubgraphInput and Output nodes in a
    subgraph define the sockets of the Subgraph node.
 
+State machines
+   Double-click a StateMachine node, or select it and press Enter, to open the state machine view: states are drawn as
+   boxes and transitions as arrows. See `Editing State Machines`_.
+
 Parameters
    The **Parameters** panel lists the control parameters of the network. Add a parameter by typing its name and
    pressing Add, and drag a parameter onto the graph to create a Parameter node for it. The ``...`` button edits its
@@ -77,6 +81,34 @@ Copy and paste
    Copied nodes are put on the system clipboard as text, together with the edges between them, the contents of
    subgraphs and the definitions of the parameters they use. They can be pasted into another graph, another network
    or another running editor. Parameters that don't exist in the target network are added.
+
+Editing State Machines
+^^^^^^^^^^^^^^^^^^^^^^
+
+A StateMachine node plays one of its states at a time and switches between them along transitions (see
+:doc:`../cmf/animationNetwork` for how they behave). The state machine view, opened from the node, shows its states
+and transitions:
+
+* Right-click empty space and choose **Add State** to add a state. A new state has an Output node, waiting for the
+  pose of the state to be connected.
+* Double-click a state, or select it and press Enter, to open its graph and edit it like any other graph. The bar
+  above the graph shows the state machine and the state; Backspace goes back to the state machine view.
+* Drag from the edge of a state onto another state to add a transition; the mouse cursor changes to a hand on the
+  edge. A transition from a state back to itself is added with **Add Transition To** in the context menu of the state.
+* Click a state or a transition to select it, and drag states to move them. Delete removes the selected states, with
+  their transitions, or the selected transition.
+
+The start state has a green border and an arrow pointing at it; set it with **Set as Start State** in the context menu
+of a state or in the **Properties** panel. While the preview plays, the current state is highlighted.
+
+With a state selected, the **Properties** panel edits its name and lists its transitions. With a transition selected,
+it edits the condition: an expression over the parameters and ``stateTime``, the end of the animation of the state, or
+a timeout. It also edits the blend duration. Transitions with problems, such as an expression that doesn't parse, are
+drawn red and explained in the panel. With nothing selected, the panel edits the node: its name, its start state and
+whether it resumes its previous state when it becomes active again.
+
+Copying a StateMachine node copies its states, their graphs and its transitions, together with the parameters its
+transition expressions use. States themselves can't be copied.
 
 Keyboard and Mouse
 ^^^^^^^^^^^^^^^^^^
@@ -92,17 +124,17 @@ Keyboard and Mouse
     * - Middle drag, right drag, Space + drag
       - Pan the graph
     * - Delete
-      - Delete the selected nodes or edge
+      - Delete the selected nodes or edge, or the selected states or transition
     * - Ctrl+C, Ctrl+X, Ctrl+V
       - Copy, cut and paste nodes (pasted at the mouse position)
     * - Ctrl+D
       - Duplicate the selected nodes
     * - Ctrl+A
-      - Select all nodes of the open graph
+      - Select all nodes of the open graph, or all states of the open state machine
     * - F, Home
       - Frame the selected nodes, frame all nodes
     * - Enter, Backspace
-      - Open the selected subgraph, go back to the parent graph
+      - Open the selected subgraph, state machine or state, go back
     * - Ctrl+Z, Ctrl+Y (Ctrl+Shift+Z)
       - Undo, redo
     * - Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S
@@ -110,7 +142,8 @@ Keyboard and Mouse
     * - Ctrl+E, Ctrl+Shift+E
       - Export, export as
 
-**Edit > Auto Arrange** lays out the open graph automatically. It is also applied to nodes without a position when a
+**Edit > Auto Arrange** lays out the open graph automatically, or arranges the states of the open state machine in a
+grid. It is also applied to nodes without a position when a
 document is opened, for example in documents written by other tools.
 
 Preview

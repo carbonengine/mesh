@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iterator>
 
@@ -17,6 +18,11 @@ namespace
 {
 
 using Json = nlohmann::json;
+
+/** Grid used to place states without a position in a state machine view. */
+constexpr float STATE_SPACING_X = 260.f;
+constexpr float STATE_SPACING_Y = 140.f;
+constexpr uint32_t STATE_GRID_COLUMNS = 4;
 
 // Adds the positions of nodes that don't have one yet
 void FillPositions( std::map<uint32_t, Vec2>& positions, const std::map<uint32_t, Vec2>& layout, const std::vector<cmf::AnimationNodeId>& nodes )
@@ -125,15 +131,45 @@ const cmf::AnimationNetworkBuilder& Document::GetNetwork() const
 cmf::AnimationGraphBuilder* Document::FindGraph( const GraphPath& path )
 {
 	auto* graph = &m_network.GetRootGraph();
-	for( const auto id : path )
+	for( size_t i = 0; i < path.size(); ++i )
 	{
-		graph = graph->GetSubgraph( id );
+		const auto& step = path[i];
+		if( step.state != NO_STATE )
+		{
+			graph = graph->GetStateGraph( step.node, step.state );
+		}
+		else if( graph->GetSettings<cmf::AnimationStateMachineSettings>( step.node ) != nullptr )
+		{
+			// A state machine view shows the states of the node; it can only be the last step
+			if( i + 1 != path.size() )
+			{
+				return nullptr;
+			}
+		}
+		else
+		{
+			graph = graph->GetSubgraph( step.node );
+		}
 		if( graph == nullptr )
 		{
 			return nullptr;
 		}
 	}
 	return graph;
+}
+
+cmf::AnimationNodeId Document::FindStateMachine( const GraphPath& path ) const
+{
+	if( path.empty() || path.back().state != NO_STATE )
+	{
+		return {};
+	}
+	const auto* graph = FindGraph( path );
+	if( graph == nullptr || graph->GetSettings<cmf::AnimationStateMachineSettings>( path.back().node ) == nullptr )
+	{
+		return {};
+	}
+	return path.back().node;
 }
 
 const cmf::AnimationGraphBuilder* Document::FindGraph( const GraphPath& path ) const
@@ -177,6 +213,83 @@ GraphView Document::GetView( const cmf::AnimationGraphBuilder& graph ) const
 void Document::SetView( const cmf::AnimationGraphBuilder& graph, const GraphView& view )
 {
 	m_graphs[&graph].view = view;
+}
+
+std::optional<Vec2> Document::GetStatePosition( const cmf::AnimationGraphBuilder& stateGraph ) const
+{
+	const auto it = m_statePositions.find( &stateGraph );
+	return it == m_statePositions.end() ? std::nullopt : std::optional<Vec2>( it->second );
+}
+
+void Document::SetStatePosition( const cmf::AnimationGraphBuilder& stateGraph, Vec2 position )
+{
+	const auto it = m_statePositions.find( &stateGraph );
+	if( it != m_statePositions.end() && it->second == position )
+	{
+		return;
+	}
+	m_statePositions[&stateGraph] = position;
+	++m_editorRevision;
+}
+
+GraphView Document::GetStateMachineView( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
+{
+	const auto it = m_graphs.find( &graph );
+	if( it == m_graphs.end() )
+	{
+		return {};
+	}
+	const auto view = it->second.stateMachineViews.find( node.index );
+	return view == it->second.stateMachineViews.end() ? GraphView{} : view->second;
+}
+
+void Document::SetStateMachineView( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const GraphView& view )
+{
+	m_graphs[&graph].stateMachineViews[node.index] = view;
+}
+
+void Document::PlaceUnpositionedStates( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
+{
+	const auto* settings = graph.GetSettings<cmf::AnimationStateMachineSettings>( node );
+	if( settings == nullptr )
+	{
+		return;
+	}
+	const auto stateCount = static_cast<uint32_t>( settings->stateNames.size() );
+	std::vector<Vec2> taken;
+	for( uint32_t state = 0; state < stateCount; ++state )
+	{
+		if( const auto position = GetStatePosition( *graph.GetStateGraph( node, state ) ) )
+		{
+			taken.push_back( *position );
+		}
+	}
+	// Free cells of a grid, in row order
+	uint32_t cell = 0;
+	for( uint32_t state = 0; state < stateCount; ++state )
+	{
+		const auto& stateGraph = *graph.GetStateGraph( node, state );
+		if( GetStatePosition( stateGraph ) )
+		{
+			continue;
+		}
+		while( true )
+		{
+			const auto column = cell % STATE_GRID_COLUMNS;
+			const auto row = cell / STATE_GRID_COLUMNS;
+			const Vec2 candidate{ static_cast<float>( column ) * STATE_SPACING_X, static_cast<float>( row ) * STATE_SPACING_Y };
+			++cell;
+			const bool free = std::none_of( taken.begin(), taken.end(), [&candidate]( const Vec2& position ) {
+				return std::abs( position.x - candidate.x ) < STATE_SPACING_X * 0.5f && std::abs( position.y - candidate.y ) < STATE_SPACING_Y * 0.5f; // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers): half a grid cell
+			} );
+			if( free )
+			{
+				SetStatePosition( stateGraph, candidate );
+				taken.push_back( candidate );
+				break;
+			}
+		}
+	}
 }
 
 const std::vector<std::string>& Document::GetPreviewMeshes() const
@@ -227,11 +340,30 @@ void Document::AutoLayout( const cmf::AnimationGraphBuilder& graph )
 	++m_editorRevision;
 }
 
+void Document::AutoLayoutStates( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
+{
+	const auto* settings = graph.GetSettings<cmf::AnimationStateMachineSettings>( node );
+	if( settings == nullptr )
+	{
+		return;
+	}
+	for( uint32_t state = 0; state < settings->stateNames.size(); ++state )
+	{
+		m_statePositions.erase( graph.GetStateGraph( node, state ) );
+	}
+	++m_editorRevision;
+	PlaceUnpositionedStates( graph, node );
+}
+
 void Document::PlaceAllUnpositionedNodes()
 {
 	for( const auto& layout : m_network.GetSaveLayout() )
 	{
 		PlaceUnpositionedNodes( *layout.graph );
+		for( const auto id : layout.nodes )
+		{
+			PlaceUnpositionedStates( *layout.graph, id );
+		}
 	}
 }
 
@@ -345,6 +477,7 @@ void Document::Reset()
 {
 	m_network.Clear();
 	m_graphs.clear();
+	m_statePositions.clear();
 	m_previewMeshes.clear();
 	m_embeddedAssets.clear();
 	m_embeddedErrors.clear();
@@ -585,34 +718,41 @@ std::pair<cmf::AnimationGraphBuilder*, cmf::AnimationNodeId> Document::Find( con
 	return { graph, layout[location.graph].nodes[location.node] };
 }
 
-std::vector<NodeLocation> Document::LocatePath( const GraphPath& path ) const
+std::vector<PathLocation> Document::LocatePath( const GraphPath& path ) const
 {
-	std::vector<NodeLocation> locations;
-	const auto* graph = &m_network.GetRootGraph();
-	for( const auto id : path )
+	std::vector<PathLocation> locations;
+	GraphPath partial;
+	for( const auto& step : path )
 	{
-		const auto location = Locate( *graph, id );
-		graph = graph->GetSubgraph( id );
-		if( !location || graph == nullptr )
+		const auto* graph = FindGraph( partial );
+		partial.push_back( step );
+		const auto location = graph != nullptr ? Locate( *graph, step.node ) : std::nullopt;
+		if( !location || FindGraph( partial ) == nullptr )
 		{
 			break;
 		}
-		locations.push_back( *location );
+		locations.push_back( { *location, step.state } );
 	}
 	return locations;
 }
 
-GraphPath Document::FindPath( const std::vector<NodeLocation>& locations )
+GraphPath Document::FindPath( const std::vector<PathLocation>& locations )
 {
 	GraphPath path;
 	for( const auto& location : locations )
 	{
-		const auto [graph, id] = Find( location );
-		if( graph == nullptr || graph != FindGraph( path ) || graph->GetSubgraph( id ) == nullptr )
+		const auto [graph, id] = Find( location.node );
+		if( graph == nullptr || graph != FindGraph( path ) )
 		{
 			break;
 		}
-		path.push_back( id );
+		path.push_back( { id, location.state } );
+		// Only Subgraph and StateMachine nodes can be entered
+		if( FindGraph( path ) == nullptr || ( location.state == NO_STATE && graph->GetSubgraph( id ) == nullptr && !FindStateMachine( path ).IsSet() ) )
+		{
+			path.pop_back();
+			break;
+		}
 	}
 	return path;
 }

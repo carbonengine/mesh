@@ -22,6 +22,8 @@ set(CANEDIT_SOURCES
     panels.h
     preview.cpp
     preview.h
+    stateMachineCanvas.cpp
+    stateMachineCanvas.h
     stdafx.h
 )
 if(WIN32)

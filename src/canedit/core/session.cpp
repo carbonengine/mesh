@@ -3,6 +3,9 @@
 #include "session.h"
 
 #include <algorithm>
+#include <functional>
+#include <numeric>
+#include <tuple>
 
 namespace canedit
 {
@@ -26,8 +29,7 @@ void EditorSession::Reset()
 {
 	m_history.Clear();
 	m_graphPath.clear();
-	m_selection.clear();
-	m_selectedEdge.reset();
+	ClearAllSelections();
 	m_editDepth = 0;
 }
 
@@ -54,8 +56,7 @@ cmf::AnimationGraphBuilder& EditorSession::GetGraph()
 	if( graph == nullptr )
 	{
 		m_graphPath.clear();
-		m_selection.clear();
-		m_selectedEdge.reset();
+		ClearAllSelections();
 		graph = &m_document->GetNetwork().GetRootGraph();
 	}
 	return *graph;
@@ -67,6 +68,11 @@ const cmf::AnimationGraphBuilder& EditorSession::GetGraph() const
 	return graph != nullptr ? *graph : m_document->GetNetwork().GetRootGraph();
 }
 
+cmf::AnimationNodeId EditorSession::GetStateMachine() const
+{
+	return m_document->FindStateMachine( m_graphPath );
+}
+
 void EditorSession::OpenGraph( GraphPath path )
 {
 	if( m_document->FindGraph( path ) == nullptr )
@@ -76,19 +82,40 @@ void EditorSession::OpenGraph( GraphPath path )
 	if( path != m_graphPath )
 	{
 		m_graphPath = std::move( path );
-		m_selection.clear();
-		m_selectedEdge.reset();
+		ClearAllSelections();
 	}
+}
+
+bool EditorSession::CanEnter( cmf::AnimationNodeId node ) const
+{
+	if( GetStateMachine().IsSet() )
+	{
+		return false;
+	}
+	const auto& graph = GetGraph();
+	return graph.GetSubgraph( node ) != nullptr || graph.GetSettings<cmf::AnimationStateMachineSettings>( node ) != nullptr;
 }
 
 bool EditorSession::EnterSubgraph( cmf::AnimationNodeId node )
 {
-	if( GetGraph().GetSubgraph( node ) == nullptr )
+	if( !CanEnter( node ) )
 	{
 		return false;
 	}
 	auto path = m_graphPath;
-	path.push_back( node );
+	path.push_back( { node, NO_STATE } );
+	OpenGraph( std::move( path ) );
+	return true;
+}
+
+bool EditorSession::EnterState( uint32_t state )
+{
+	if( !GetStateMachine().IsSet() || state >= GetStateCount() )
+	{
+		return false;
+	}
+	auto path = m_graphPath;
+	path.back().state = state;
 	OpenGraph( std::move( path ) );
 	return true;
 }
@@ -100,10 +127,18 @@ bool EditorSession::LeaveSubgraph()
 		return false;
 	}
 	auto path = m_graphPath;
-	const auto subgraphNode = path.back();
+	const auto last = path.back();
+	if( last.state != NO_STATE )
+	{
+		// Back to the state machine view, with the state that was open selected
+		path.back().state = NO_STATE;
+		OpenGraph( std::move( path ) );
+		SelectState( last.state );
+		return true;
+	}
 	path.pop_back();
 	OpenGraph( std::move( path ) );
-	Select( subgraphNode );
+	Select( last.node );
 	return true;
 }
 
@@ -145,13 +180,19 @@ void EditorSession::SetSelection( std::vector<cmf::AnimationNodeId> nodes )
 
 void EditorSession::SelectAll()
 {
+	if( GetStateMachine().IsSet() )
+	{
+		std::vector<uint32_t> states( GetStateCount() );
+		std::iota( states.begin(), states.end(), 0u );
+		SetSelectedStates( std::move( states ) );
+		return;
+	}
 	SetSelection( GetGraph().GetNodes() );
 }
 
 void EditorSession::ClearSelection()
 {
-	m_selection.clear();
-	m_selectedEdge.reset();
+	ClearAllSelections();
 }
 
 const std::optional<cmf::AnimationSocketRef>& EditorSession::GetSelectedEdge() const
@@ -163,6 +204,71 @@ void EditorSession::SelectEdge( cmf::AnimationSocketRef input )
 {
 	m_selection.clear();
 	m_selectedEdge = input;
+}
+
+uint32_t EditorSession::GetStateCount() const
+{
+	const auto stateMachine = GetStateMachine();
+	if( !stateMachine.IsSet() )
+	{
+		return 0;
+	}
+	return static_cast<uint32_t>( GetGraph().GetSettings<cmf::AnimationStateMachineSettings>( stateMachine )->stateNames.size() );
+}
+
+const std::vector<uint32_t>& EditorSession::GetSelectedStates() const
+{
+	return m_selectedStates;
+}
+
+bool EditorSession::IsStateSelected( uint32_t state ) const
+{
+	return std::find( m_selectedStates.begin(), m_selectedStates.end(), state ) != m_selectedStates.end();
+}
+
+void EditorSession::SelectState( uint32_t state, bool add )
+{
+	m_selectedTransition.reset();
+	if( !add )
+	{
+		m_selectedStates.clear();
+	}
+	if( state < GetStateCount() && !IsStateSelected( state ) )
+	{
+		m_selectedStates.push_back( state );
+	}
+}
+
+void EditorSession::DeselectState( uint32_t state )
+{
+	m_selectedStates.erase( std::remove( m_selectedStates.begin(), m_selectedStates.end(), state ), m_selectedStates.end() );
+}
+
+void EditorSession::SetSelectedStates( std::vector<uint32_t> states )
+{
+	m_selectedTransition.reset();
+	const auto count = GetStateCount();
+	states.erase( std::remove_if( states.begin(), states.end(), [count]( uint32_t state ) { return state >= count; } ), states.end() );
+	m_selectedStates = std::move( states );
+}
+
+const std::optional<uint32_t>& EditorSession::GetSelectedTransition() const
+{
+	return m_selectedTransition;
+}
+
+void EditorSession::SelectTransition( uint32_t transition )
+{
+	m_selectedStates.clear();
+	m_selectedTransition = transition;
+}
+
+void EditorSession::ClearAllSelections()
+{
+	m_selection.clear();
+	m_selectedEdge.reset();
+	m_selectedStates.clear();
+	m_selectedTransition.reset();
 }
 
 Snapshot EditorSession::Capture()
@@ -178,6 +284,8 @@ Snapshot EditorSession::Capture()
 			snapshot.selection.push_back( *location );
 		}
 	}
+	snapshot.selectedStates = m_selectedStates;
+	snapshot.selectedTransition = m_selectedTransition;
 	return snapshot;
 }
 
@@ -186,10 +294,20 @@ void EditorSession::Restore( const Snapshot& snapshot )
 	// Views and the export path are not part of the edit history: keep the current ones
 	const auto exportPath = m_document->GetExportPath();
 	std::vector<GraphView> views;
+	std::vector<std::tuple<size_t, size_t, GraphView>> stateMachineViews;
 	const auto& network = m_document->GetNetwork();
-	for( const auto& layout : network.GetSaveLayout() )
+	const auto previousLayout = network.GetSaveLayout();
+	for( size_t g = 0; g < previousLayout.size(); ++g )
 	{
-		views.push_back( m_document->GetView( *layout.graph ) );
+		const auto& graph = *previousLayout[g].graph;
+		views.push_back( m_document->GetView( graph ) );
+		for( size_t n = 0; n < previousLayout[g].nodes.size(); ++n )
+		{
+			if( graph.GetSettings<cmf::AnimationStateMachineSettings>( previousLayout[g].nodes[n] ) != nullptr )
+			{
+				stateMachineViews.emplace_back( g, n, m_document->GetStateMachineView( graph, previousLayout[g].nodes[n] ) );
+			}
+		}
 	}
 	std::string error;
 	if( !m_document->Deserialize( snapshot.document, error ) )
@@ -202,9 +320,15 @@ void EditorSession::Restore( const Snapshot& snapshot )
 	{
 		m_document->SetView( *layout[i].graph, views[i] );
 	}
+	for( const auto& [g, n, view] : stateMachineViews )
+	{
+		if( g < layout.size() && n < layout[g].nodes.size() )
+		{
+			m_document->SetStateMachineView( *layout[g].graph, layout[g].nodes[n], view );
+		}
+	}
 	m_graphPath = m_document->FindPath( snapshot.graphPath );
-	m_selection.clear();
-	m_selectedEdge.reset();
+	ClearAllSelections();
 	for( const auto& location : snapshot.selection )
 	{
 		const auto [graph, id] = m_document->Find( location );
@@ -212,6 +336,12 @@ void EditorSession::Restore( const Snapshot& snapshot )
 		{
 			m_selection.push_back( id );
 		}
+	}
+	SetSelectedStates( snapshot.selectedStates );
+	const auto stateMachine = GetStateMachine();
+	if( snapshot.selectedTransition && stateMachine.IsSet() && *snapshot.selectedTransition < GetGraph().GetSettings<cmf::AnimationStateMachineSettings>( stateMachine )->transitions.size() )
+	{
+		m_selectedTransition = snapshot.selectedTransition;
 	}
 }
 
@@ -317,6 +447,11 @@ void EditorSession::DeleteSelection()
 		return;
 	}
 	const ScopedEdit edit( *this );
+	if( GetStateMachine().IsSet() )
+	{
+		DeleteStateSelection();
+		return;
+	}
 	auto& graph = GetGraph();
 	if( m_selectedEdge )
 	{
@@ -381,7 +516,7 @@ bool EditorSession::Disconnect( cmf::AnimationSocketRef to )
 
 std::string EditorSession::CopySelection() const
 {
-	if( m_selection.empty() )
+	if( m_selection.empty() || GetStateMachine().IsSet() )
 	{
 		return {};
 	}
@@ -406,6 +541,12 @@ PasteResult EditorSession::Paste( std::string_view text, Vec2 origin )
 		result.error = "The network can't be edited without a skeleton";
 		return result;
 	}
+	if( GetStateMachine().IsSet() )
+	{
+		PasteResult result;
+		result.error = "Nodes can't be pasted into a state machine; open a state to paste them into its graph";
+		return result;
+	}
 	BeginEdit();
 	auto result = PasteNodes( *m_document, GetGraph(), text, origin );
 	if( !result.error.empty() )
@@ -425,7 +566,113 @@ void EditorSession::AutoLayout()
 		return;
 	}
 	const ScopedEdit edit( *this );
+	const auto stateMachine = GetStateMachine();
+	if( stateMachine.IsSet() )
+	{
+		m_document->AutoLayoutStates( GetGraph(), stateMachine );
+		return;
+	}
 	m_document->AutoLayout( GetGraph() );
 }
 
+void EditorSession::DeleteStateSelection()
+{
+	auto& graph = GetGraph();
+	const auto stateMachine = GetStateMachine();
+	if( m_selectedTransition )
+	{
+		static_cast<void>( graph.RemoveTransition( stateMachine, *m_selectedTransition ) );
+		m_selectedTransition.reset();
+	}
+	// Remove from the last state, so that the indices of the remaining selected states don't shift
+	auto states = m_selectedStates;
+	std::sort( states.begin(), states.end(), std::greater<>() );
+	for( const auto state : states )
+	{
+		static_cast<void>( graph.RemoveState( stateMachine, state ) );
+	}
+	m_selectedStates.clear();
+}
+
+uint32_t EditorSession::AddState( Vec2 position )
+{
+	const auto stateMachine = GetStateMachine();
+	if( !CanEdit() || !stateMachine.IsSet() )
+	{
+		return NO_STATE;
+	}
+	const ScopedEdit edit( *this );
+	auto& graph = GetGraph();
+	const auto& names = graph.GetSettings<cmf::AnimationStateMachineSettings>( stateMachine )->stateNames;
+	std::string name;
+	for( size_t number = names.size() + 1;; ++number )
+	{
+		name = "State " + std::to_string( number );
+		if( std::find( names.begin(), names.end(), name ) == names.end() )
+		{
+			break;
+		}
+	}
+	const auto state = graph.AddState( stateMachine, name );
+	if( state == cmf::AnimationGraphBuilder::INVALID_INDEX )
+	{
+		return NO_STATE;
+	}
+	// A new state starts with an Output node, like a new document
+	auto& stateGraph = *graph.GetStateGraph( stateMachine, state );
+	m_document->SetNodePosition( stateGraph, stateGraph.AddNode( cmf::AnimationNodeType::Output ), {} );
+	m_document->SetStatePosition( stateGraph, position );
+	SelectState( state );
+	return state;
+}
+
+void EditorSession::MoveStates( const std::vector<uint32_t>& states, Vec2 offset )
+{
+	const auto stateMachine = GetStateMachine();
+	if( !CanEdit() || !stateMachine.IsSet() )
+	{
+		return;
+	}
+	const ScopedEdit edit( *this );
+	const auto& graph = GetGraph();
+	for( const auto state : states )
+	{
+		if( const auto* stateGraph = graph.GetStateGraph( stateMachine, state ) )
+		{
+			const auto position = m_document->GetStatePosition( *stateGraph ).value_or( Vec2{} );
+			m_document->SetStatePosition( *stateGraph, { position.x + offset.x, position.y + offset.y } );
+		}
+	}
+}
+
+uint32_t EditorSession::AddTransition( uint32_t from, uint32_t to )
+{
+	const auto stateMachine = GetStateMachine();
+	if( !CanEdit() || !stateMachine.IsSet() )
+	{
+		return NO_STATE;
+	}
+	const ScopedEdit edit( *this );
+	cmf::AnimationTransition transition;
+	transition.fromState = from;
+	transition.toState = to;
+	const auto index = GetGraph().AddTransition( stateMachine, transition );
+	if( index == cmf::AnimationGraphBuilder::INVALID_INDEX )
+	{
+		return NO_STATE;
+	}
+	SelectTransition( index );
+	return index;
+}
+
+bool EditorSession::SetStartState( uint32_t state )
+{
+	const auto stateMachine = GetStateMachine();
+	if( !CanEdit() || !stateMachine.IsSet() )
+	{
+		return false;
+	}
+	const ScopedEdit edit( *this );
+	return static_cast<bool>( GetGraph().SetStartState( stateMachine, state ) );
+}
 }

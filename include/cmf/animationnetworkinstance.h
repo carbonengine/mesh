@@ -18,6 +18,8 @@ namespace detail
 struct CompiledNetwork; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
 struct Playhead; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
 struct RandomSwitchState; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
+struct StateMachineState; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
+struct StateMachineLayer; // NOLINT(readability-identifier-naming): forward declaration of a CamelCase struct
 enum class PoseOpType : uint8_t;
 }
 
@@ -25,7 +27,10 @@ enum class PoseOpType : uint8_t;
 *
 * Create one instance per animated object. Each frame, set the control parameters, call Update with the elapsed
 * time and Evaluate to compute the pose. The instance keeps the playback state of the network: the playhead of every
-* AnimationSample node and the selection of every RandomSwitch node.
+* AnimationSample node, the selection of every RandomSwitch node and the states of every StateMachine node.
+*
+* StateMachine nodes take transitions in Evaluate. Update advances the time spent in the current state and the blends
+* of state machines that contributed to the last evaluated pose.
 *
 * All instance data is stored in a single memory allocation made by the constructor; Update and Evaluate don't
 * allocate memory. Instances of the same network can be used on different threads at the same time; a single
@@ -89,6 +94,18 @@ public:
 	/** @brief Copies the pose computed by the last Evaluate call. */
 	CARBON_MESH_EXPORT void GetPose( SkeletonPose& pose ) const;
 
+	/** @brief Returns the current state of a StateMachine node, for example to show it in an editor.
+	* @param graphIndex Index of the graph containing the node in can::NetworkData::graphs (the same as the index in
+	* AnimationNetworkBuilder::GetSaveLayout).
+	* @param nodeIndex Index of the node in the graph.
+	* @return Index of the current state, or INVALID_STATE if the node is not a StateMachine node or hasn't been
+	* evaluated yet.
+	*/
+	[[nodiscard]] CARBON_MESH_EXPORT uint32_t GetCurrentState( uint32_t graphIndex, uint32_t nodeIndex ) const;
+
+	/** Value returned by GetCurrentState when there is no current state. */
+	static constexpr uint32_t INVALID_STATE = can::NO_INDEX;
+
 private:
 	void EvaluateFloats();
 	/** Functions implementing one pose operation type. */
@@ -114,6 +131,7 @@ private:
 	void MarkAdditiveBlendInputs( uint32_t opIndex, bool needed );
 	void MarkSwitchInputs( uint32_t opIndex, bool needed );
 	void MarkRandomSwitchInputs( uint32_t opIndex, bool needed );
+	void MarkStateMachineInputs( uint32_t opIndex, bool needed );
 
 	bool ExecuteSample( uint32_t opIndex );
 	bool ExecuteRestPose( uint32_t opIndex );
@@ -121,6 +139,10 @@ private:
 	bool ExecuteAdditiveBlend( uint32_t opIndex );
 	bool ExecuteSwitch( uint32_t opIndex );
 	bool ExecuteRandomSwitch( uint32_t opIndex );
+	bool ExecuteStateMachine( uint32_t opIndex );
+	void UpdateStateMachines( float deltaTime );
+	[[nodiscard]] bool IsTransitionSatisfied( uint32_t machineIndex, uint32_t transitionIndex );
+	void EnterState( uint32_t machineIndex, uint32_t state, float duration );
 	void SampleAnimation( uint32_t sampleIndex, Transform* output );
 	[[nodiscard]] float GetSampleTime( uint32_t sampleIndex ) const;
 	[[nodiscard]] uint32_t GetSwitchSelection( uint32_t opIndex ) const;
@@ -136,6 +158,8 @@ private:
 	CurveEvaluationCache<Vector3>* m_vectorCaches = nullptr;
 	CurveEvaluationCache<Vector4>* m_quaternionCaches = nullptr;
 	detail::RandomSwitchState* m_randomStates = nullptr;
+	detail::StateMachineState* m_stateMachineStates = nullptr;
+	detail::StateMachineLayer* m_stateMachineLayers = nullptr;
 	const Transform** m_opOutputs = nullptr;
 	uint8_t* m_opFlags = nullptr;
 	Transform* m_poseSlots = nullptr;

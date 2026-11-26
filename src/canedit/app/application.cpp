@@ -175,6 +175,7 @@ bool Application::Initialize()
 	m_context.settings = &m_settings;
 	m_context.preview = m_preview.get();
 	m_canvas = std::make_unique<GraphCanvas>( m_context );
+	m_stateCanvas = std::make_unique<StateMachineCanvas>( m_context );
 
 	m_document->New();
 	UpdateTitle();
@@ -204,6 +205,7 @@ void Application::Shutdown()
 		Log::Warning( "%s", error.c_str() );
 	}
 	m_canvas.reset();
+	m_stateCanvas.reset();
 	m_preview.reset();
 	m_imgui.reset();
 	if( m_shadersInitialized )
@@ -311,7 +313,7 @@ void Application::Run()
 		ImGuiLayer::BeginFrame();
 		DrawUi();
 		// An edit can't stay open once nothing is being edited, for example when the edited item disappeared
-		while( m_session->IsEditing() && !ImGui::IsAnyItemActive() && !m_canvas->IsInteracting() && !ImGui::IsMouseDown( ImGuiMouseButton_Left ) )
+		while( m_session->IsEditing() && !ImGui::IsAnyItemActive() && !m_canvas->IsInteracting() && !m_stateCanvas->IsInteracting() && !ImGui::IsMouseDown( ImGuiMouseButton_Left ) )
 		{
 			m_session->EndEdit();
 		}
@@ -654,7 +656,8 @@ void Application::DrawEditMenu()
 	{
 		m_canvas->PasteFromClipboard();
 	}
-	if( ImGui::MenuItem( "Delete", "Del", false, canEdit && ( hasSelection || m_session->GetSelectedEdge() ) ) )
+	const bool hasStateSelection = !m_session->GetSelectedStates().empty() || m_session->GetSelectedTransition();
+	if( ImGui::MenuItem( "Delete", "Del", false, canEdit && ( hasSelection || m_session->GetSelectedEdge() || hasStateSelection ) ) )
 	{
 		m_session->DeleteSelection();
 	}
@@ -666,7 +669,7 @@ void Application::DrawEditMenu()
 	if( ImGui::MenuItem( "Auto Arrange", nullptr, false, canEdit ) )
 	{
 		m_session->AutoLayout();
-		m_canvas->FrameNodes( false );
+		FrameView( false );
 	}
 	ImGui::EndMenu();
 }
@@ -679,13 +682,23 @@ void Application::DrawViewMenu()
 	}
 	if( ImGui::MenuItem( "Frame All", "Home" ) )
 	{
-		m_canvas->FrameNodes( false );
+		FrameView( false );
 	}
 	if( ImGui::MenuItem( "Frame Selection", "F" ) )
 	{
-		m_canvas->FrameNodes( true );
+		FrameView( true );
 	}
-	if( ImGui::MenuItem( "Leave Subgraph", "Backspace", false, !m_session->GetGraphPath().empty() ) )
+	const auto& path = m_session->GetGraphPath();
+	const char* leaveLabel = "Leave Subgraph";
+	if( m_session->GetStateMachine().IsSet() )
+	{
+		leaveLabel = "Leave State Machine";
+	}
+	else if( !path.empty() && path.back().state != NO_STATE )
+	{
+		leaveLabel = "Leave State";
+	}
+	if( ImGui::MenuItem( leaveLabel, "Backspace", false, !path.empty() ) )
 	{
 		m_session->LeaveSubgraph();
 	}
@@ -733,6 +746,18 @@ void Application::Splitter( const char* id, bool vertical, float length, float& 
 	}
 }
 
+void Application::FrameView( bool selectionOnly )
+{
+	if( m_session->GetStateMachine().IsSet() )
+	{
+		m_stateCanvas->FrameStates( selectionOnly );
+	}
+	else
+	{
+		m_canvas->FrameNodes( selectionOnly );
+	}
+}
+
 void Application::DrawBreadcrumb()
 {
 	auto& session = *m_session;
@@ -742,18 +767,31 @@ void Application::DrawBreadcrumb()
 	}
 	const auto path = session.GetGraphPath();
 	GraphPath partial;
-	for( size_t i = 0; i < path.size(); ++i )
-	{
-		const auto* parent = m_document->FindGraph( partial );
-		partial.push_back( path[i] );
+	const auto crumb = [&session]( const std::string& name, const GraphPath& target ) {
 		ImGui::SameLine();
 		ImGui::TextDisabled( ">" );
 		ImGui::SameLine();
-		ImGui::PushID( static_cast<int>( i ) );
-		const auto name = parent != nullptr ? GetNodeTitle( *parent, path[i] ) : std::string( "?" );
 		if( ImGui::SmallButton( name.c_str() ) )
 		{
-			session.OpenGraph( partial );
+			session.OpenGraph( target );
+		}
+	};
+	for( size_t i = 0; i < path.size(); ++i )
+	{
+		const auto* parent = m_document->FindGraph( partial );
+		const auto& step = path[i];
+		ImGui::PushID( static_cast<int>( i ) );
+		const auto name = parent != nullptr ? GetNodeTitle( *parent, step.node ) : std::string( "?" );
+		// A state is shown after its state machine, which opens the state machine view
+		partial.push_back( { step.node, NO_STATE } );
+		crumb( name, partial );
+		if( step.state != NO_STATE )
+		{
+			partial.back().state = step.state;
+			const auto* settings = parent != nullptr ? parent->GetSettings<cmf::AnimationStateMachineSettings>( step.node ) : nullptr;
+			ImGui::PushID( "state" );
+			crumb( settings != nullptr ? GetStateTitle( *settings, step.state ) : std::string( "?" ), partial );
+			ImGui::PopID();
 		}
 		ImGui::PopID();
 	}
@@ -813,7 +851,9 @@ void Application::DrawLayout()
 		settings.paletteHeight = std::clamp( settings.paletteHeight, MIN_PANEL_SIZE, std::max( MIN_PANEL_SIZE, ( height - splitter ) / scale - MIN_PANEL_SIZE ) );
 		ImGui::BeginChild( "Palette", { 0.f, settings.paletteHeight * scale }, panelFlags );
 		ImGui::SeparatorText( "Nodes" );
+		ImGui::BeginDisabled( m_session->GetStateMachine().IsSet() );
 		m_palette.Draw( m_context, *m_canvas );
+		ImGui::EndDisabled();
 		ImGui::EndChild();
 		Splitter( "##paletteSplitter", false, leftWidth, settings.paletteHeight, MIN_PANEL_SIZE, ( height - splitter ) / scale - MIN_PANEL_SIZE );
 		ImGui::BeginChild( "Properties", { 0.f, 0.f }, panelFlags );
@@ -830,7 +870,14 @@ void Application::DrawLayout()
 	ImGui::BeginChild( "##center", { centerWidth, mainHeight }, panelFlags, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse );
 	DrawBreadcrumb();
 	ImGui::Spacing();
-	m_canvas->Draw();
+	if( m_session->GetStateMachine().IsSet() )
+	{
+		m_stateCanvas->Draw();
+	}
+	else
+	{
+		m_canvas->Draw();
+	}
 	ImGui::EndChild();
 	ImGui::SameLine();
 	{

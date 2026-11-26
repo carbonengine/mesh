@@ -71,6 +71,7 @@ enum class PoseOpType : uint8_t
 	AdditiveBlend,
 	Switch,
 	RandomSwitch,
+	StateMachine,
 	/** Number of operation types; not a valid operation type. */
 	Count,
 };
@@ -96,6 +97,7 @@ inline PoseOpTraits GetPoseOpTraits( PoseOpType type )
 		return { false, false };
 	case PoseOpType::Blend:
 	case PoseOpType::AdditiveBlend:
+	case PoseOpType::StateMachine:
 		return { true, true };
 	case PoseOpType::Switch:
 	case PoseOpType::RandomSwitch:
@@ -118,11 +120,12 @@ struct PoseOp
 	uint32_t floatSlot = can::NO_INDEX;
 	/** Blend, AdditiveBlend: index of the bone weight array, or NO_INDEX. */
 	uint32_t boneWeights = can::NO_INDEX;
-	/** Sample: sample index; RandomSwitch: random switch index; Switch: first entry in CompiledNetwork::switchInputs. */
+	/** Sample: sample index; RandomSwitch: random switch index; StateMachine: state machine index. */
 	uint32_t data = can::NO_INDEX;
-	/** Switch, RandomSwitch: number of pose inputs; their operation indices are in CompiledNetwork::switchInputs. */
+	/** Switch, RandomSwitch, StateMachine: number of pose inputs (one per state for StateMachine); their operation
+	* indices are in CompiledNetwork::switchInputs. */
 	uint32_t inputCount = 0;
-	/** RandomSwitch: first entry in CompiledNetwork::switchInputs. */
+	/** Switch, RandomSwitch, StateMachine: first entry in CompiledNetwork::switchInputs. */
 	uint32_t firstInput = 0;
 };
 
@@ -195,6 +198,74 @@ struct RandomSwitchState
 	uint32_t lastCycleUpdate = 0;
 };
 
+/** Maximum number of states a state machine blends at the same time; when a transition with a duration is taken while
+* the stack is full, the oldest fading state is dropped. */
+constexpr uint32_t MAX_STATE_MACHINE_LAYERS = 8;
+
+struct StateMachineInfo
+{
+	/** Graph and node index of the StateMachine node in the CAN file. */
+	uint32_t graph = can::NO_INDEX;
+	uint32_t node = can::NO_INDEX;
+	/** First entry in CompiledNetwork::states. */
+	uint32_t firstState = 0;
+	uint32_t stateCount = 0;
+	uint32_t startState = 0;
+	/** Float slot holding the time spent in the current state, read by transition expressions. */
+	uint32_t stateTimeSlot = 0;
+	bool resumeOnActivate = false;
+};
+
+struct StateInfo
+{
+	/** Pose operation producing the pose of the state. */
+	uint32_t poseOp = can::NO_INDEX;
+	/** Range in CompiledNetwork::samples of the samples inside the state; their playheads restart when the state is
+	* entered. */
+	uint32_t firstSample = 0;
+	uint32_t sampleCount = 0;
+	/** Sample whose end finishes the state, or NO_INDEX if the state never finishes. */
+	uint32_t finishSample = can::NO_INDEX;
+	/** Range in CompiledNetwork::transitions of the transitions leaving the state. */
+	uint32_t firstTransition = 0;
+	uint32_t transitionCount = 0;
+};
+
+struct TransitionInfo
+{
+	/** Index of the destination state within the state machine. */
+	uint32_t target = 0;
+	can::TransitionCondition condition = can::TransitionCondition::Expression;
+	float duration = 0.f;
+	float timeout = 0.f;
+	/** Expression condition: index in CompiledNetwork::programs. */
+	uint32_t program = can::NO_INDEX;
+};
+
+/** A state of a state machine being blended. */
+struct StateMachineLayer
+{
+	/** Index of the state within the state machine. */
+	uint32_t state = 0;
+	/** Fade-in progress in [0, 1]; the layer fully covers the layers below it at 1. */
+	float progress = 1.f;
+	/** Fade-in duration in seconds. */
+	float duration = 0.f;
+};
+
+/** State of a StateMachine operation. Its layers are in a separate array, MAX_STATE_MACHINE_LAYERS per machine. */
+struct StateMachineState
+{
+	/** Time spent in the current state. */
+	float stateTime = 0.f;
+	/** Number of layers; the last one is the current state. */
+	uint32_t layerCount = 0;
+	/** The operation was used in the last evaluation. */
+	bool active = false;
+	/** The machine has entered its start state at least once. */
+	bool started = false;
+};
+
 /** Byte offsets of the arrays in the memory block of an instance. */
 struct InstanceLayout
 {
@@ -204,6 +275,8 @@ struct InstanceLayout
 	size_t vectorCaches = 0;
 	size_t quaternionCaches = 0;
 	size_t randomStates = 0;
+	size_t stateMachineStates = 0;
+	size_t stateMachineLayers = 0;
 	size_t opOutputs = 0;
 	size_t opFlags = 0;
 	size_t poseSlots = 0;
@@ -219,7 +292,7 @@ struct CompiledNetwork // NOLINT(clang-analyzer-optin.performance.Padding): one 
 	uint32_t boneCount = 0;
 	const can::Parameter* parameters = nullptr;
 
-	/** Float slots: parameters, then constants, then expression results. */
+	/** Float slots: parameters, then constants, then expression results, then the state time of each state machine. */
 	uint32_t parameterCount = 0;
 	uint32_t constantCount = 0;
 	uint32_t floatSlotCount = 0;
@@ -227,7 +300,8 @@ struct CompiledNetwork // NOLINT(clang-analyzer-optin.performance.Padding): one 
 
 	const FloatOp* floatOps = nullptr;
 	uint32_t floatOpCount = 0;
-	/** Expressions; the bytecode of each program is a separate allocation of the parser. */
+	/** Expressions of Expression nodes (evaluated by floatOps) followed by transition conditions; the bytecode of each
+	* program is a separate allocation of the parser. */
 	std::vector<CcpParser::Program> programs;
 	size_t arenaSize = 0;
 
@@ -247,6 +321,11 @@ struct CompiledNetwork // NOLINT(clang-analyzer-optin.performance.Padding): one 
 	const RandomSwitchInfo* randomSwitches = nullptr;
 	uint32_t randomSwitchCount = 0;
 	const float* randomThresholds = nullptr;
+
+	const StateMachineInfo* stateMachines = nullptr;
+	uint32_t stateMachineCount = 0;
+	const StateInfo* states = nullptr;
+	const TransitionInfo* transitions = nullptr;
 
 	/** Bone weight arrays, boneCount values each. */
 	const float* boneWeights = nullptr;

@@ -3,6 +3,8 @@
 #include "nodeInfo.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
 
 namespace canedit
 {
@@ -10,6 +12,8 @@ namespace
 {
 
 using Type = cmf::AnimationNodeType;
+
+constexpr size_t SUMMARY_BUFFER_SIZE = 32;
 
 const cmf::Animation* FindAnimation( const cmf::Data& data, const std::string& name )
 {
@@ -58,7 +62,7 @@ const std::vector<NodeCategory>& GetNodeCategories()
 		{ "Blending", IM_COL32( 160, 70, 60, 255 ), { Type::Blend, Type::AdditiveBlend, Type::Switch, Type::RandomSwitch } },
 		{ "Values", IM_COL32( 60, 120, 70, 255 ), { Type::Parameter, Type::Expression } },
 		{ "Bone Weights", IM_COL32( 60, 90, 150, 255 ), { Type::NamedBoneWeights, Type::BoneWeights } },
-		{ "Structure", IM_COL32( 110, 70, 140, 255 ), { Type::Subgraph } },
+		{ "Structure", IM_COL32( 110, 70, 140, 255 ), { Type::Subgraph, Type::StateMachine } },
 	};
 	return categories;
 }
@@ -133,6 +137,8 @@ const char* GetNodeDescription( cmf::AnimationNodeType type )
 		return "A nested graph. Double-click to open it.";
 	case Type::Expression:
 		return "Computes a value from its inputs, for example 'min( speed / 4, 1 )'.";
+	case Type::StateMachine:
+		return "Plays one of its states, each a nested graph, and switches between them along transitions. Double-click to open it.";
 	case Type::Count:
 		break;
 	}
@@ -187,7 +193,87 @@ std::string GetNodeSummary( const cmf::AnimationGraphBuilder& graph, cmf::Animat
 	{
 		return interfaceSettings->name;
 	}
+	if( const auto* stateMachine = std::get_if<cmf::AnimationStateMachineSettings>( &data->settings ) )
+	{
+		const auto count = stateMachine->stateNames.size();
+		if( count == 0 )
+		{
+			return "<no states>";
+		}
+		return std::to_string( count ) + ( count == 1 ? " state, start: " : " states, start: " ) + GetStateTitle( *stateMachine, stateMachine->startState );
+	}
 	return {};
+}
+
+std::string GetStateTitle( const cmf::AnimationStateMachineSettings& settings, uint32_t state )
+{
+	if( state >= settings.stateNames.size() )
+	{
+		return {};
+	}
+	const auto& name = settings.stateNames[state];
+	return name.empty() ? "State #" + std::to_string( state ) : name;
+}
+
+std::string GetTransitionSummary( const cmf::AnimationTransition& transition )
+{
+	std::string summary;
+	switch( transition.condition )
+	{
+	case cmf::AnimationTransitionCondition::Expression:
+		summary = transition.expression.empty() ? "<no expression>" : transition.expression;
+		break;
+	case cmf::AnimationTransitionCondition::AnimationFinished:
+		summary = "animation finished";
+		break;
+	case cmf::AnimationTransitionCondition::Timeout: {
+		std::array<char, SUMMARY_BUFFER_SIZE> buffer{};
+		std::snprintf( buffer.data(), buffer.size(), "after %gs", static_cast<double>( transition.timeout ) ); // NOLINT(cppcoreguidelines-pro-type-vararg): formatting a number
+		summary = buffer.data();
+		break;
+	}
+	}
+	if( transition.duration > 0.f )
+	{
+		std::array<char, SUMMARY_BUFFER_SIZE> buffer{};
+		std::snprintf( buffer.data(), buffer.size(), " (blend %gs)", static_cast<double>( transition.duration ) ); // NOLINT(cppcoreguidelines-pro-type-vararg): formatting a number
+		summary += buffer.data();
+	}
+	return summary;
+}
+
+std::vector<std::string> DiagnoseState( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t state )
+{
+	std::vector<std::string> errors;
+	const auto* stateGraph = graph.GetStateGraph( node, state );
+	if( stateGraph == nullptr )
+	{
+		return errors;
+	}
+	const auto output = stateGraph->GetOutputNode();
+	if( !output.IsSet() )
+	{
+		errors.emplace_back( "The state has no Output node" );
+	}
+	else if( !stateGraph->GetConnection( { output, 0 } ) )
+	{
+		errors.emplace_back( "The Output node of the state is not connected" );
+	}
+	return errors;
+}
+
+std::optional<std::string> DiagnoseTransition( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationTransition& transition )
+{
+	if( transition.condition == cmf::AnimationTransitionCondition::Expression && transition.expression.empty() )
+	{
+		return std::string( "No expression is set" );
+	}
+	const auto result = graph.ValidateTransition( node, transition );
+	if( !result )
+	{
+		return result.error;
+	}
+	return std::nullopt;
 }
 
 NodeIssues DiagnoseNode( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
@@ -242,12 +328,33 @@ NodeIssues DiagnoseNode( const cmf::AnimationGraphBuilder& graph, cmf::Animation
 			issues.errors.emplace_back( "No parameter is selected" );
 		}
 	}
+	else if( const auto* stateMachine = std::get_if<cmf::AnimationStateMachineSettings>( &data->settings ) )
+	{
+		if( stateMachine->stateNames.empty() )
+		{
+			issues.errors.emplace_back( "The state machine has no states" );
+		}
+		for( uint32_t state = 0; state < stateMachine->stateNames.size(); ++state )
+		{
+			for( const auto& error : DiagnoseState( graph, node, state ) )
+			{
+				issues.errors.push_back( GetStateTitle( *stateMachine, state ) + ": " + error );
+			}
+		}
+		for( const auto& transition : stateMachine->transitions )
+		{
+			if( const auto error = DiagnoseTransition( graph, node, transition ) )
+			{
+				issues.errors.push_back( "Transition " + GetStateTitle( *stateMachine, transition.fromState ) + " to " + GetStateTitle( *stateMachine, transition.toState ) + ": " + *error );
+			}
+		}
+	}
 	return issues;
 }
 
 bool CanAddNode( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeType type )
 {
-	if( graph.GetParent() != nullptr )
+	if( graph.HasInterface() )
 	{
 		return true;
 	}

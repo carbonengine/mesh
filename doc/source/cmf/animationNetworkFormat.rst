@@ -57,8 +57,8 @@ Network Data
   skeleton, ``skeletonName`` keeps the name it was referenced by.
 * ``animations``: the embedded animations, ``cmf::Animation`` structures referenced by AnimationSample nodes.
 * ``parameters``: the control parameters, with name, default value and range.
-* ``graphs``: the graphs of the network. ``graphs[0]`` is the root graph; the others are subgraphs, each referenced
-  by exactly one Subgraph node.
+* ``graphs``: the graphs of the network. ``graphs[0]`` is the root graph; the others are subgraphs and state graphs,
+  each referenced by exactly one Subgraph node or one state of a StateMachine node.
 
 Embedded Skeletons and Animations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -88,7 +88,8 @@ A ``Graph`` contains:
 * ``edges``: connections from an output socket to an input socket. Sockets are referenced by node index and socket
   index; the sockets of each node type are listed in the node reference of :doc:`animationNetwork`.
 * ``interfaceInputs`` and ``interfaceOutputs``: the indices of the SubgraphInput and Output nodes, in the order of the
-  sockets they define on the Subgraph node. The root graph has no SubgraphInput nodes and at most one Output node.
+  sockets they define on the Subgraph node. The root graph and state graphs have no SubgraphInput nodes and at most
+  one Output node, of type Pose.
 * One table per node type with type specific data. ``Node::dataIndex`` is the index of the node data in the table
   of its type. RestPose, Blend and AdditiveBlend nodes have no data and use ``NO_INDEX``.
 
@@ -126,9 +127,23 @@ A ``Graph`` contains:
     * - Expression
       - ``expressionNodes``
       - Expression text, input names
+    * - StateMachine
+      - ``stateMachineNodes``
+      - Start state, flags, states and transitions
 
-Expressions are stored as text and compiled when the network is loaded, so files don't depend on the bytecode of
-the expression parser.
+A ``StateMachineNode`` stores:
+
+* ``startState``: the index of the start state.
+* ``flags``: ``STATE_MACHINE_RESUME_ON_ACTIVATE`` to continue in the previous state, instead of the start state, when
+  the node becomes active again.
+* ``states``: one ``StateMachineState`` per state, with the index of its graph in ``NetworkData::graphs`` and its
+  name.
+* ``transitions``: one ``StateMachineTransition`` per transition, with the indices of its source and destination
+  states, its condition (``Expression``, ``AnimationFinished`` or ``Timeout``), the blend duration and the timeout in
+  seconds, and the expression text.
+
+Expressions, including the ones of transitions, are stored as text and compiled when the network is loaded, so files
+don't depend on the bytecode of the expression parser.
 
 Identical arrays are stored once: when the file is written, spans with identical contents share their data.
 Programs that modify a CAN file in place must take into account that a change can affect several spans.
@@ -146,7 +161,9 @@ Validation
   belongs to one node. The skeleton and each AnimationSample node are either external or embedded, not both.
 * That node and socket types are valid, that every node has one constant per input socket and that Switch nodes
   have pose inputs.
-* That subgraphs form a tree below the root graph.
+* That the start state and the transitions of StateMachine nodes reference existing states, that transition
+  conditions are valid and that blend durations are not negative.
+* That subgraphs and state graphs form a tree below the root graph.
 * That edges connect existing sockets of the same type, that every input has at most one incoming edge and that
   the edges of each graph form no cycle.
 

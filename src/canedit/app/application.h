@@ -6,6 +6,7 @@
 #include "graphCanvas.h"
 #include "panels.h"
 #include "preview.h"
+#include "stateMachineCanvas.h"
 
 #include "rendering/imguiLayer.h"
 #include "rendering/renderer.h"
@@ -65,6 +66,8 @@ private:
 	void DrawViewMenu();
 	void DrawLayout();
 	void DrawBreadcrumb();
+	/** Fits the open graph or state machine into the view. */
+	void FrameView( bool selectionOnly );
 	void DrawStatusBar();
 	void DrawSettingsWindow();
 	/** Draws the table row of an edited prefix, recording a removal request and the first validation error. */
@@ -87,6 +90,7 @@ private:
 	std::unique_ptr<PreviewController> m_preview;
 	AppContext m_context;
 	std::unique_ptr<GraphCanvas> m_canvas;
+	std::unique_ptr<StateMachineCanvas> m_stateCanvas;
 	PalettePanel m_palette;
 	PropertiesPanel m_properties;
 	ParametersPanel m_parameters;

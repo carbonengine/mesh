@@ -3,8 +3,10 @@
 #include "networkJson.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
+#include <set>
 
 namespace canedit
 {
@@ -51,6 +53,60 @@ std::optional<cmf::AnimationNodeType> NodeTypeFromName( const std::string& name 
 		}
 	}
 	return std::nullopt;
+}
+
+const char* ConditionName( cmf::AnimationTransitionCondition condition )
+{
+	switch( condition )
+	{
+	case cmf::AnimationTransitionCondition::Expression:
+		return "Expression";
+	case cmf::AnimationTransitionCondition::AnimationFinished:
+		return "AnimationFinished";
+	case cmf::AnimationTransitionCondition::Timeout:
+		return "Timeout";
+	}
+	return "Expression";
+}
+
+std::optional<cmf::AnimationTransitionCondition> ConditionFromName( const std::string& name )
+{
+	for( const auto condition : { cmf::AnimationTransitionCondition::Expression, cmf::AnimationTransitionCondition::AnimationFinished, cmf::AnimationTransitionCondition::Timeout } )
+	{
+		if( name == ConditionName( condition ) )
+		{
+			return condition;
+		}
+	}
+	return std::nullopt;
+}
+
+// Returns the identifiers in an expression, for example the parameter names it may use
+std::set<std::string> GetIdentifiers( const std::string& expression )
+{
+	std::set<std::string> identifiers;
+	size_t i = 0;
+	while( i < expression.size() )
+	{
+		const auto c = static_cast<unsigned char>( expression[i] );
+		if( std::isalpha( c ) == 0 && c != '_' )
+		{
+			++i;
+			// Skip numbers as a whole, so that exponents such as 1e5 are not taken for identifiers
+			while( std::isdigit( c ) != 0 && i < expression.size() && ( std::isalnum( static_cast<unsigned char>( expression[i] ) ) != 0 || expression[i] == '.' ) )
+			{
+				++i;
+			}
+			continue;
+		}
+		const auto start = i;
+		while( i < expression.size() && ( std::isalnum( static_cast<unsigned char>( expression[i] ) ) != 0 || expression[i] == '_' ) )
+		{
+			++i;
+		}
+		identifiers.insert( expression.substr( start, i - start ) );
+	}
+	return identifiers;
 }
 
 // JSON has no infinity: non-finite values are stored as null
@@ -115,7 +171,72 @@ Json WriteSettings( const cmf::AnimationNetworkBuilder& network, const cmf::Anim
 		json["expression"] = expression->expression;
 		json["inputs"] = expression->inputNames;
 	}
+	else if( const auto* stateMachine = std::get_if<cmf::AnimationStateMachineSettings>( &settings ) )
+	{
+		json["startState"] = stateMachine->startState;
+		json["resume"] = stateMachine->resumeOnActivate;
+	}
 	return json;
+}
+
+Json WriteTransition( const cmf::AnimationTransition& transition )
+{
+	Json json;
+	json["from"] = transition.fromState;
+	json["to"] = transition.toState;
+	json["condition"] = ConditionName( transition.condition );
+	json["expression"] = transition.expression;
+	json["timeout"] = transition.timeout;
+	json["duration"] = transition.duration;
+	return json;
+}
+
+// Writes the states (with their graphs) and transitions of a StateMachine node
+void WriteStateMachine( const Document& document, const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, const cmf::AnimationStateMachineSettings& settings, GraphJsonMode mode, Json& json ) // NOLINT(misc-no-recursion): see WriteNode
+{
+	auto& states = json["states"];
+	states = Json::array();
+	for( uint32_t state = 0; state < settings.stateNames.size(); ++state )
+	{
+		const auto& stateGraph = *graph.GetStateGraph( id, state );
+		const auto position = document.GetStatePosition( stateGraph ).value_or( Vec2{} );
+		Json stateJson;
+		stateJson["name"] = settings.stateNames[state];
+		stateJson["position"] = { position.x, position.y };
+		stateJson["graph"] = WriteGraphJson( document, stateGraph, stateGraph.GetNodes(), mode );
+		states.push_back( std::move( stateJson ) );
+	}
+	auto& transitions = json["transitions"];
+	transitions = Json::array();
+	for( const auto& transition : settings.transitions )
+	{
+		transitions.push_back( WriteTransition( transition ) );
+	}
+	if( mode == GraphJsonMode::Document )
+	{
+		const auto view = document.GetStateMachineView( graph, id );
+		json["stateView"] = { view.pan.x, view.pan.y, view.zoom };
+		return;
+	}
+	// Copied state machines take the parameters their transitions use along, like Parameter nodes
+	std::set<std::string> identifiers;
+	for( const auto& transition : settings.transitions )
+	{
+		if( transition.condition == cmf::AnimationTransitionCondition::Expression )
+		{
+			const auto used = GetIdentifiers( transition.expression );
+			identifiers.insert( used.begin(), used.end() );
+		}
+	}
+	auto& parameters = json["parameters"];
+	parameters = Json::array();
+	for( const auto& parameter : graph.GetNetwork().GetParameters() )
+	{
+		if( identifiers.count( parameter.name ) != 0 )
+		{
+			parameters.push_back( WriteParameterJson( parameter ) );
+		}
+	}
 }
 
 // Subgraphs are written recursively; the depth is the nesting depth of subgraphs in the network
@@ -138,6 +259,10 @@ Json WriteNode( const Document& document, const cmf::AnimationGraphBuilder& grap
 	if( const auto* subgraph = graph.GetSubgraph( id ) )
 	{
 		json["graph"] = WriteGraphJson( document, *subgraph, subgraph->GetNodes(), mode );
+	}
+	if( const auto* stateMachine = std::get_if<cmf::AnimationStateMachineSettings>( &node.settings ) )
+	{
+		WriteStateMachine( document, graph, id, *stateMachine, mode, json );
 	}
 	return json;
 }
@@ -259,6 +384,10 @@ cmf::AnimationNodeId GraphJsonReader::ReadNode( cmf::AnimationGraphBuilder& grap
 			ReadGraph( *subgraph, *subgraphContents, {} );
 		}
 	}
+	if( *type == cmf::AnimationNodeType::StateMachine )
+	{
+		ReadStateMachine( graph, id, json );
+	}
 	const auto inputs = json.value( "inputs", Json::array() );
 	for( uint32_t socket = 0; socket < inputs.size() && socket < graph.GetInputCount( id ); ++socket )
 	{
@@ -272,6 +401,72 @@ cmf::AnimationNodeId GraphJsonReader::ReadNode( cmf::AnimationGraphBuilder& grap
 		}
 	}
 	return id;
+}
+
+// State graphs are read recursively, see ReadGraph
+void GraphJsonReader::ReadStateMachine( cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, const Json& json ) // NOLINT(misc-no-recursion): see above
+{
+	if( m_mode == GraphJsonMode::Clipboard )
+	{
+		for( const auto& parameter : json.value( "parameters", Json::array() ) )
+		{
+			FindOrAddParameter( parameter );
+		}
+	}
+	for( const auto& state : json.value( "states", Json::array() ) )
+	{
+		const auto index = graph.AddState( id, state.value( "name", "" ) );
+		auto& stateGraph = *graph.GetStateGraph( id, index );
+		const auto position = state.find( "position" );
+		if( position != state.end() )
+		{
+			m_document->SetStatePosition( stateGraph, { position->at( 0 ).get<float>(), position->at( 1 ).get<float>() } );
+		}
+		const auto contents = state.find( "graph" );
+		if( contents != state.end() )
+		{
+			ReadGraph( stateGraph, *contents, {} );
+		}
+	}
+	for( const auto& transitionJson : json.value( "transitions", Json::array() ) )
+	{
+		cmf::AnimationTransition transition;
+		transition.fromState = transitionJson.at( "from" ).get<uint32_t>();
+		transition.toState = transitionJson.at( "to" ).get<uint32_t>();
+		const auto conditionName = transitionJson.value( "condition", "Expression" );
+		const auto condition = ConditionFromName( conditionName );
+		if( !condition )
+		{
+			m_warnings->push_back( "Transition skipped: unknown condition '" + conditionName + "'" );
+			continue;
+		}
+		transition.condition = *condition;
+		transition.expression = transitionJson.value( "expression", "" );
+		transition.timeout = ReadFloat( transitionJson.value( "timeout", Json() ), 0.f );
+		transition.duration = ReadFloat( transitionJson.value( "duration", Json() ), 0.f );
+		// AddTransition only reports failure; ValidateTransition tells why
+		const auto result = graph.ValidateTransition( id, transition );
+		if( graph.AddTransition( id, transition ) == cmf::AnimationGraphBuilder::INVALID_INDEX )
+		{
+			m_warnings->push_back( "Transition skipped: " + result.error );
+		}
+	}
+	const auto settings = json.value( "settings", Json::object() );
+	const auto startState = settings.value( "startState", 0u );
+	if( startState != 0 )
+	{
+		Check( graph.SetStartState( id, startState ) );
+	}
+	Check( graph.SetResumeOnActivate( id, settings.value( "resume", false ) ) );
+	if( m_mode == GraphJsonMode::Document )
+	{
+		const auto view = json.find( "stateView" );
+		if( view != json.end() )
+		{
+			m_document->SetStateMachineView( graph, id, { { view->at( 0 ).get<float>(), view->at( 1 ).get<float>() }, view->at( 2 ).get<float>() } );
+		}
+	}
+	m_document->PlaceUnpositionedStates( graph, id );
 }
 
 void GraphJsonReader::Check( const cmf::ValidationResult& result )
@@ -366,6 +561,9 @@ void GraphJsonReader::ApplySettings( cmf::AnimationGraphBuilder& graph, cmf::Ani
 	case cmf::AnimationNodeType::AdditiveBlend:
 	case cmf::AnimationNodeType::Subgraph:
 	case cmf::AnimationNodeType::Count:
+		break;
+	case cmf::AnimationNodeType::StateMachine:
+		// The settings refer to the states, which are created by ReadStateMachine
 		break;
 	}
 }

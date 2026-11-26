@@ -76,6 +76,39 @@ Subgraph node, and Output nodes define its output sockets. Each of them declares
 Subgraphs group parts of a network; they use the skeleton and control parameters of the network and have no
 runtime cost, because they are inlined when the network is prepared for evaluation.
 
+State Machines
+^^^^^^^^^^^^^^
+
+A StateMachine node plays one of its states at a time. Each state is a graph of its own, like the root graph: it has
+one Pose Output node and no SubgraphInput nodes, and it reads values through Parameter nodes. Directed transitions
+connect the states, and the output of the node is the pose of the current state.
+
+One state is the start state. The machine enters it the first time the node contributes to the pose. When the node
+contributes to the pose again after it didn't (for example after the alpha of a Blend above it was 0), it restarts
+from the start state, or, with **resume on activate**, continues in the state it was in.
+
+Each transition has a condition. Every time the network is evaluated, the conditions of the transitions leaving the
+current state are checked, and the first one that holds is taken; at most one transition is taken per evaluation.
+The conditions are:
+
+* **Expression**: an expression like the ones of Expression nodes, true when it is not 0. It uses the control
+  parameters by name and ``stateTime``, the time in seconds spent in the current state, for example
+  ``speed > 2 || stateTime > 5``. A parameter named ``stateTime`` hides the built-in variable.
+* **Animation finished**: true when the animation of the current state reaches its end. Only states whose Output node
+  is connected directly to an AnimationSample node (possibly through subgraphs) with an unconnected ``loop`` input of
+  0 and an unconnected ``time`` input finish; other nodes may drive its ``speed``. All other states, for example
+  looping or blended animations, never finish.
+* **Timeout**: true when the machine has spent the timeout in the current state.
+
+Entering a state restarts the playheads of all AnimationSample nodes in its graph, including nested subgraphs and
+state machines, so that the state plays its animations from the start.
+
+A transition with a duration blends from the previous pose to the new state over that time: the new state fades in
+on top of the pose so far. If another transition is taken while a state is still fading in, the new state fades in
+on top of that blend, so several states can fade out at the same time. A state that is fully faded in hides the ones
+below it, which then stop being evaluated. At most eight states are blended; the oldest one is dropped if a ninth
+transition starts.
+
 Assets
 ^^^^^^
 
@@ -149,6 +182,10 @@ Node Reference
       - One Float per input name
       - Float
       - Expression text, input names
+    * - StateMachine
+      - \-
+      - Pose
+      - States (each a graph), transitions, start state, resume on activate
 
 The nodes behave as follows:
 
@@ -166,6 +203,7 @@ The nodes behave as follows:
   weights (uniform if no weights are set). It picks a new input when the selected input finishes an animation cycle
   (loops or reaches its end) and, if enabled, when the node becomes active again after not contributing to the pose.
 * **NamedBoneWeights** and **BoneWeights** provide bone weights for blends.
+* **StateMachine** outputs the pose of its current state, blended with fading states, see `State Machines`_.
 
 Building Networks
 -----------------
@@ -236,6 +274,51 @@ referenced from an embedded file is missing (see `Embedding Assets`_).
 
 The type specific settings of a node are returned by ``GetSettings``, for example
 ``graph.GetSettings<cmf::AnimationSampleSettings>( idle )``.
+
+Building State Machines
+^^^^^^^^^^^^^^^^^^^^^^^
+
+States are added to a StateMachine node with ``AddState``, which returns the index of the state. ``GetStateGraph``
+returns the graph of a state; it is edited like any other graph. Transitions are added with ``AddTransition``:
+
+.. code-block:: cpp
+
+    const auto machine = graph.AddNode( cmf::AnimationNodeType::StateMachine );
+    graph.Connect( { machine, 0 }, { output, 0 } );
+
+    // Adds a state that plays an animation
+    auto addState = [&]( const char* name, const char* animation, bool loop ) {
+        const uint32_t state = graph.AddState( machine, name );
+        auto& stateGraph = *graph.GetStateGraph( machine, state );
+        const auto stateOutput = stateGraph.AddNode( cmf::AnimationNodeType::Output );
+        const auto sample = stateGraph.AddNode( cmf::AnimationNodeType::AnimationSample );
+        stateGraph.SetAnimation( sample, "characters/soldier_anims.cmf", animation );
+        stateGraph.SetInputConstant( { sample, 1 }, loop ? 1.f : 0.f ); // the loop input
+        stateGraph.Connect( { sample, 0 }, { stateOutput, 0 } );
+        return state;
+    };
+    const uint32_t idle = addState( "Idle", "idle", true );
+    // The jump doesn't loop, so that it finishes
+    const uint32_t jump = addState( "Jump", "jump", false );
+
+    cmf::AnimationTransition start;
+    start.fromState = idle;
+    start.toState = jump;
+    start.expression = "jumping"; // a control parameter of the network
+    start.duration = 0.2f;
+    graph.AddTransition( machine, start );
+
+    cmf::AnimationTransition land;
+    land.fromState = jump;
+    land.toState = idle;
+    land.condition = cmf::AnimationTransitionCondition::AnimationFinished;
+    land.duration = 0.3f;
+    graph.AddTransition( machine, land );
+
+The first state is the start state until ``SetStartState`` changes it. ``RemoveState`` removes a state together with
+its graph and its transitions; later states shift down. ``SetTransition`` and ``AddTransition`` accept expressions
+that don't parse, because renaming a parameter can also break an expression; ``GetErrors`` reports them, and
+``ValidateTransition`` checks a transition beforehand, for example while the user types.
 
 CAN files are meant for playback and can't be loaded back into a builder: they only contain the parts of embedded
 files that the network uses. Tools keep the editable network in their own files and export CAN files from it; CanEdit,
@@ -377,6 +460,11 @@ selected input.
 Each instance has its own random number generator for RandomSwitch nodes; pass a seed to the constructor to get
 reproducible results.
 
+State machines take transitions in ``Evaluate``. ``Update`` advances the state time and the blends of the state
+machines that contributed to the last evaluated pose. ``GetCurrentState`` returns the current state of a StateMachine
+node, identified by its graph and node index in the file (the indices of ``GetSaveLayout``), for example to show it in
+an editor.
+
 The Asset Loader
 ----------------
 
@@ -458,4 +546,6 @@ the places that need a new case. A new node type needs:
 #. A compiler handler (``Compiler::GetHandler`` in ``src/cmf/animationnetworkcompiler.cpp``). Nodes that produce
    poses add a pose operation; a new operation type needs an entry in ``GetPoseOpTraits`` and handlers in
    ``AnimationNetworkInstance::GetOperationHandlers`` that mark the inputs the operation needs and execute it.
+#. CanEdit support (``src/canedit``): reading and writing the settings in ``networkJson.cpp``, and the palette entry,
+   description, summary and diagnostics in ``app/nodeInfo.cpp``.
 #. Tests and an entry in the `Node Reference`_.

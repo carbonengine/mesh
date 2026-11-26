@@ -78,7 +78,13 @@ public:
 		VisitDependencies( output.node );
 		const auto firstExpressionSlot = static_cast<uint32_t>( m_data->parameters.size() + m_constants.size() );
 		ResolveExpressionSlots( firstExpressionSlot );
+		const auto firstStateTimeSlot = firstExpressionSlot + static_cast<uint32_t>( m_floatOps.size() );
+		for( uint32_t i = 0; i < m_stateMachines.size(); ++i )
+		{
+			m_stateMachines[i].stateTimeSlot = firstStateTimeSlot + i;
+		}
 		ParseExpressions();
+		ParseTransitionExpressions();
 		if( !m_errors->empty() )
 		{
 			return nullptr;
@@ -112,6 +118,12 @@ private:
 	std::vector<float> m_boneWeights;
 	std::vector<CcpParser::Program> m_programs;
 	std::vector<FloatOp> m_floatOps;
+	std::vector<StateMachineInfo> m_stateMachines;
+	std::vector<StateInfo> m_states;
+	std::vector<TransitionInfo> m_transitions;
+	/** Expression text of each Expression transition in m_transitions, with the index of its state machine. */
+	std::vector<std::pair<uint32_t, std::string>> m_transitionExpressions;
+	std::vector<uint32_t> m_transitionExpressionTargets;
 	uint32_t m_poseSlotCount = 0;
 
 	[[nodiscard]] const can::Graph& GetGraph( const NodeRef& ref ) const
@@ -253,6 +265,8 @@ private:
 			return &Compiler::AddSwitchOp;
 		case can::NodeType::RandomSwitch:
 			return &Compiler::AddRandomSwitchOp;
+		case can::NodeType::StateMachine:
+			return &Compiler::AddStateMachineOp;
 		case can::NodeType::Output:
 		case can::NodeType::SubgraphInput:
 		case can::NodeType::Subgraph:
@@ -460,6 +474,131 @@ private:
 		return static_cast<uint32_t>( m_randomSwitches.size() - 1 );
 	}
 
+	// Compiles the graphs of all states before the state machine operation, so that they are evaluated first
+	uint32_t AddStateMachineOp( const NodeRef& ref )
+	{
+		const auto& graph = GetGraph( ref );
+		const auto& data = GetNodeData<can::StateMachineNode>( graph, GetNode( ref ) );
+		// State graphs may contain state machines, which add their own states, so the states of this machine are
+		// added once all state graphs are compiled
+		std::vector<StateInfo> states;
+		std::vector<uint32_t> statePoseOps;
+		for( const auto& state : data.states )
+		{
+			states.push_back( CompileState( state.graphIndex ) );
+			statePoseOps.push_back( states.back().poseOp );
+		}
+
+		const auto machineIndex = static_cast<uint32_t>( m_stateMachines.size() );
+		StateMachineInfo machine;
+		machine.graph = ref.graph;
+		machine.node = ref.node;
+		machine.firstState = static_cast<uint32_t>( m_states.size() );
+		machine.stateCount = static_cast<uint32_t>( data.states.size() );
+		machine.startState = data.startState;
+		machine.resumeOnActivate = ( data.flags & can::STATE_MACHINE_RESUME_ON_ACTIVATE ) != 0;
+		m_stateMachines.push_back( machine );
+		m_states.insert( m_states.end(), states.begin(), states.end() );
+		// Transitions are grouped by their source state
+		for( uint32_t s = 0; s < data.states.size(); ++s )
+		{
+			auto& state = m_states[machine.firstState + s];
+			state.firstTransition = static_cast<uint32_t>( m_transitions.size() );
+			for( const auto& transition : data.transitions )
+			{
+				if( transition.fromState != s )
+				{
+					continue;
+				}
+				TransitionInfo info;
+				info.target = transition.toState;
+				info.condition = transition.condition;
+				info.duration = transition.duration;
+				info.timeout = transition.timeout;
+				if( transition.condition == can::TransitionCondition::Expression )
+				{
+					m_transitionExpressions.emplace_back( machineIndex, ToStdString( transition.expression ) );
+					m_transitionExpressionTargets.push_back( static_cast<uint32_t>( m_transitions.size() ) );
+				}
+				m_transitions.push_back( info );
+			}
+			state.transitionCount = static_cast<uint32_t>( m_transitions.size() ) - state.firstTransition;
+		}
+
+		PoseOp op;
+		op.type = PoseOpType::StateMachine;
+		op.data = machineIndex;
+		op.firstInput = static_cast<uint32_t>( m_switchInputs.size() );
+		op.inputCount = static_cast<uint32_t>( statePoseOps.size() );
+		m_switchInputs.insert( m_switchInputs.end(), statePoseOps.begin(), statePoseOps.end() );
+		return PushPoseOp( op );
+	}
+
+	StateInfo CompileState( uint32_t graphIndex )
+	{
+		const auto& stateGraph = m_data->graphs[graphIndex];
+		StateInfo state;
+		state.firstSample = static_cast<uint32_t>( m_samples.size() );
+		const auto output = ResolveInput( { graphIndex, stateGraph.interfaceOutputs[0] }, 0 );
+		if( m_results[output.node.graph][output.node.node] == can::NO_INDEX )
+		{
+			VisitDependencies( output.node );
+		}
+		state.poseOp = m_results[output.node.graph][output.node.node];
+		state.sampleCount = static_cast<uint32_t>( m_samples.size() ) - state.firstSample;
+
+		// The state finishes with its animation if its output comes directly from a non-looping sample that uses its
+		// playhead
+		const auto& op = m_poseOps[state.poseOp];
+		if( GetNode( output.node ).type == can::NodeType::AnimationSample && op.type == PoseOpType::Sample )
+		{
+			const auto loop = ResolveInput( output.node, SAMPLE_LOOP_INPUT );
+			if( loop.kind == Source::Kind::Constant && loop.constant == 0.f && !m_samples[op.data].timeConnected )
+			{
+				state.finishSample = op.data;
+			}
+		}
+		return state;
+	}
+
+	// Parses the transition conditions with variables bound to the parameter slots and the state time slot
+	void ParseTransitionExpressions()
+	{
+		for( size_t e = 0; e < m_transitionExpressions.size(); ++e )
+		{
+			const auto& [machineIndex, text] = m_transitionExpressions[e];
+			// The parser needs null terminated names; names is reserved so that the pointers stay valid
+			std::vector<std::string> names;
+			std::vector<CcpParser::Variable> variables;
+			names.reserve( m_data->parameters.size() );
+			variables.reserve( m_data->parameters.size() + 1 );
+			bool stateTimeHidden = false;
+			for( uint32_t i = 0; i < m_data->parameters.size(); ++i )
+			{
+				names.push_back( ToStdString( m_data->parameters[i].name ) );
+				stateTimeHidden = stateTimeHidden || names.back() == STATE_TIME_VARIABLE;
+				variables.push_back( { names.back().c_str(), 0, static_cast<CcpParser::OffsetType>( i * sizeof( float ) ) } );
+			}
+			if( !stateTimeHidden )
+			{
+				variables.push_back( { STATE_TIME_VARIABLE, 0, static_cast<CcpParser::OffsetType>( m_stateMachines[machineIndex].stateTimeSlot * sizeof( float ) ) } );
+			}
+			std::array<CcpParser::VariableView, 1> variableViews;
+			variableViews[0] = variables;
+			CcpParser::Externals externals;
+			externals.variables.data = variableViews.data();
+			externals.variables.count = variableViews.size();
+
+			m_transitions[m_transitionExpressionTargets[e]].program = static_cast<uint32_t>( m_programs.size() );
+			m_programs.emplace_back();
+			const auto result = CcpParser::Parse( text.c_str(), externals, m_programs.back() );
+			if( !result )
+			{
+				m_errors->push_back( "Invalid transition expression '" + text + "': " + CcpParser::ToString( result, text.c_str() ) );
+			}
+		}
+	}
+
 	uint32_t AddSample( const NodeRef& ref )
 	{
 		const auto& data = GetNodeData<can::AnimationSampleNode>( GetGraph( ref ), GetNode( ref ) );
@@ -575,7 +714,7 @@ private:
 		compiled.parameters = m_data->parameters.data();
 		compiled.parameterCount = static_cast<uint32_t>( m_data->parameters.size() );
 		compiled.constantCount = static_cast<uint32_t>( m_constants.size() );
-		compiled.floatSlotCount = compiled.parameterCount + compiled.constantCount + static_cast<uint32_t>( m_floatOps.size() );
+		compiled.floatSlotCount = compiled.parameterCount + compiled.constantCount + static_cast<uint32_t>( m_floatOps.size() + m_stateMachines.size() );
 		for( const auto& program : m_programs )
 		{
 			compiled.arenaSize = std::max( compiled.arenaSize, program.GetTempArenaSize() );
@@ -593,6 +732,9 @@ private:
 		const auto randomSwitches = layout.Add<RandomSwitchInfo>( m_randomSwitches.size() );
 		const auto randomThresholds = layout.Add<float>( m_randomThresholds.size() );
 		const auto boneWeights = layout.Add<float>( m_boneWeights.size() );
+		const auto stateMachines = layout.Add<StateMachineInfo>( m_stateMachines.size() );
+		const auto states = layout.Add<StateInfo>( m_states.size() );
+		const auto transitions = layout.Add<TransitionInfo>( m_transitions.size() );
 		compiled.block.reset( new std::byte[layout.GetSize()] ); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays): raw memory block owned by the unique_ptr
 
 		compiled.constants = Copy( compiled, constants, m_constants );
@@ -612,6 +754,10 @@ private:
 		compiled.randomSwitchCount = static_cast<uint32_t>( m_randomSwitches.size() );
 		compiled.randomThresholds = Copy( compiled, randomThresholds, m_randomThresholds );
 		compiled.boneWeights = Copy( compiled, boneWeights, m_boneWeights );
+		compiled.stateMachines = Copy( compiled, stateMachines, m_stateMachines );
+		compiled.stateMachineCount = static_cast<uint32_t>( m_stateMachines.size() );
+		compiled.states = Copy( compiled, states, m_states );
+		compiled.transitions = Copy( compiled, transitions, m_transitions );
 		compiled.instanceLayout = ComputeInstanceLayout( compiled );
 		return result;
 	}
@@ -671,6 +817,8 @@ InstanceLayout ComputeInstanceLayout( const CompiledNetwork& compiled )
 	result.vectorCaches = layout.Add<CurveEvaluationCache<Vector3>>( compiled.vectorCurveCount );
 	result.quaternionCaches = layout.Add<CurveEvaluationCache<Vector4>>( compiled.quaternionCurveCount );
 	result.randomStates = layout.Add<RandomSwitchState>( compiled.randomSwitchCount );
+	result.stateMachineStates = layout.Add<StateMachineState>( compiled.stateMachineCount );
+	result.stateMachineLayers = layout.Add<StateMachineLayer>( static_cast<size_t>( compiled.stateMachineCount ) * MAX_STATE_MACHINE_LAYERS );
 	result.opOutputs = layout.Add<const Transform*>( compiled.poseOpCount );
 	result.opFlags = layout.Add<uint8_t>( compiled.poseOpCount );
 	result.poseSlots = layout.Add<Transform>( static_cast<size_t>( compiled.poseSlotCount ) * compiled.boneCount );

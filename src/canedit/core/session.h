@@ -33,13 +33,20 @@ public:
 	// Navigation
 
 	[[nodiscard]] const GraphPath& GetGraphPath() const;
-	/** Returns the open graph (the root graph if the path became invalid). */
+	/** Returns the open graph (the root graph if the path became invalid). In a state machine view, the graph
+	* containing the StateMachine node. */
 	[[nodiscard]] cmf::AnimationGraphBuilder& GetGraph();
 	[[nodiscard]] const cmf::AnimationGraphBuilder& GetGraph() const;
+	/** Returns the StateMachine node whose states are shown, or an unset handle if a graph is shown. */
+	[[nodiscard]] cmf::AnimationNodeId GetStateMachine() const;
 	void OpenGraph( GraphPath path );
-	/** Opens the graph of a Subgraph node of the open graph. */
+	/** Returns true if a node of the open graph can be entered: a Subgraph or StateMachine node. */
+	[[nodiscard]] bool CanEnter( cmf::AnimationNodeId node ) const;
+	/** Opens the graph of a Subgraph node or the state machine view of a StateMachine node of the open graph. */
 	bool EnterSubgraph( cmf::AnimationNodeId node );
-	/** Opens the parent of the open graph. */
+	/** Opens the graph of a state of the open state machine. */
+	bool EnterState( uint32_t state );
+	/** Opens the parent of the open graph or state machine, and selects what was open. */
 	bool LeaveSubgraph();
 
 	// Selection (nodes of the open graph, or one edge)
@@ -49,11 +56,23 @@ public:
 	void Select( cmf::AnimationNodeId node, bool add = false );
 	void Deselect( cmf::AnimationNodeId node );
 	void SetSelection( std::vector<cmf::AnimationNodeId> nodes );
+	/** Selects all nodes of the open graph, or all states of the open state machine. */
 	void SelectAll();
 	void ClearSelection();
 	/** The selected edge, identified by its input socket. Selecting an edge clears the node selection. */
 	[[nodiscard]] const std::optional<cmf::AnimationSocketRef>& GetSelectedEdge() const;
 	void SelectEdge( cmf::AnimationSocketRef input );
+
+	// Selection in a state machine view (states, or one transition)
+
+	[[nodiscard]] const std::vector<uint32_t>& GetSelectedStates() const;
+	[[nodiscard]] bool IsStateSelected( uint32_t state ) const;
+	void SelectState( uint32_t state, bool add = false );
+	void DeselectState( uint32_t state );
+	void SetSelectedStates( std::vector<uint32_t> states );
+	/** The selected transition. Selecting a transition clears the state selection. */
+	[[nodiscard]] const std::optional<uint32_t>& GetSelectedTransition() const;
+	void SelectTransition( uint32_t transition );
 
 	// Edits and history
 
@@ -92,18 +111,34 @@ public:
 	/** Pastes clipboard text into the open graph at a position and selects the pasted nodes. */
 	PasteResult Paste( std::string_view text, Vec2 origin );
 
-	/** Arranges the nodes of the open graph automatically. */
+	/** Arranges the nodes of the open graph automatically, or the states of the open state machine. */
 	void AutoLayout();
+
+	// State machine operations on the open state machine; each is a single undo step
+
+	/** Adds a state with an Output node at a position and selects it. Returns the new state index or NO_STATE. */
+	uint32_t AddState( Vec2 position );
+	/** Moves states by an offset. Call within an edit to combine a drag into one undo step. */
+	void MoveStates( const std::vector<uint32_t>& states, Vec2 offset );
+	/** Adds a transition with an empty expression and selects it. Returns the new transition index or NO_STATE. */
+	uint32_t AddTransition( uint32_t from, uint32_t to );
+	bool SetStartState( uint32_t state );
 
 private:
 	[[nodiscard]] Snapshot Capture();
 	void Restore( const Snapshot& snapshot );
+	void ClearAllSelections();
+	/** Deletes the selected states or transition of the open state machine. */
+	void DeleteStateSelection();
+	[[nodiscard]] uint32_t GetStateCount() const;
 
 	Document* m_document;
 	History m_history;
 	GraphPath m_graphPath;
 	std::vector<cmf::AnimationNodeId> m_selection;
 	std::optional<cmf::AnimationSocketRef> m_selectedEdge;
+	std::vector<uint32_t> m_selectedStates;
+	std::optional<uint32_t> m_selectedTransition;
 	int m_editDepth = 0;
 	Snapshot m_editStart;
 	uint64_t m_editStartRevision = 0;

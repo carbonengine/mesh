@@ -23,7 +23,7 @@ private:
 	std::string m_filter;
 };
 
-/** Settings of the selected node, or of the network when no node is selected. */
+/** Settings of the selected node, state or transition, or of the network when nothing is selected. */
 class PropertiesPanel
 {
 public:
@@ -43,6 +43,11 @@ private:
 	static void DrawBoneWeights( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationBoneWeightsSettings& settings );
 	static void DrawRandomSwitch( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationRandomSwitchSettings& settings );
 	static void DrawInputConstants( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
+	static void DrawStateMachine( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationStateMachineSettings& settings );
+	/** Draws the properties in a state machine view: of the selected state or transition, or of the node. */
+	void DrawStateMachineView( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
+	void DrawState( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t state );
+	void DrawTransition( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t index );
 
 	/** Text being edited, so that it is applied when editing ends. Keyed by field. */
 	std::map<std::string, std::string> m_text;

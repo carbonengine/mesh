@@ -17,10 +17,13 @@ struct Snapshot
 {
 	/** The document, as written by Document::Serialize. */
 	std::string document;
-	/** The graph that is open in the editor. */
-	std::vector<NodeLocation> graphPath;
+	/** The graph or state machine that is open in the editor. */
+	std::vector<PathLocation> graphPath;
 	/** The selected nodes of the open graph. */
 	std::vector<NodeLocation> selection;
+	/** The selected states and transition of the open state machine. */
+	std::vector<uint32_t> selectedStates;
+	std::optional<uint32_t> selectedTransition;
 };
 
 /** Undo and redo stacks of snapshots. */

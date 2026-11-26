@@ -165,9 +165,46 @@ struct AnimationExpressionSettings
 	std::vector<std::string> inputNames;
 };
 
+/** @brief Kind of condition that activates a state machine transition. */
+using AnimationTransitionCondition = can::TransitionCondition;
+
+/** @brief A transition between two states of a StateMachine node. */
+struct AnimationTransition
+{
+	/** Index of the source state. */
+	uint32_t fromState = 0;
+	/** Index of the destination state. */
+	uint32_t toState = 0;
+	/** Kind of condition that activates the transition. */
+	AnimationTransitionCondition condition = AnimationTransitionCondition::Expression;
+	/** Expression condition: expression over the network parameters and the built-in stateTime variable (seconds
+	* spent in the source state). The transition is taken when it is not zero. A parameter named stateTime hides the
+	* built-in variable. */
+	std::string expression;
+	/** Timeout condition: time in seconds the machine stays in the source state before taking the transition. */
+	float timeout = 0.f;
+	/** Time in seconds over which the source state fades out; 0 switches immediately. */
+	float duration = 0.f;
+};
+
+/** @brief Settings of StateMachine nodes. The graph of each state is accessed with AnimationGraphBuilder::GetStateGraph. */
+struct AnimationStateMachineSettings
+{
+	/** Names of the states, in state index order. */
+	std::vector<std::string> stateNames;
+	/** Transitions between the states. */
+	std::vector<AnimationTransition> transitions;
+	/** Index of the state the machine starts in. */
+	uint32_t startState = 0;
+	/** When the node becomes active after being inactive, continue in the previous state instead of restarting from
+	* the start state. */
+	bool resumeOnActivate = false;
+};
+
 /** @brief Type specific node settings. Node types without settings (RestPose, Blend, AdditiveBlend, Subgraph) hold
-* std::monostate; the graph of a Subgraph node is accessed with AnimationGraphBuilder::GetSubgraph. */
-using AnimationNodeSettings = std::variant<std::monostate, AnimationInterfaceSettings, AnimationParameterSettings, AnimationSampleSettings, AnimationSwitchSettings, AnimationRandomSwitchSettings, AnimationNamedBoneWeightsSettings, AnimationBoneWeightsSettings, AnimationExpressionSettings>;
+* std::monostate; the graph of a Subgraph node is accessed with AnimationGraphBuilder::GetSubgraph and the state graphs
+* of a StateMachine node with AnimationGraphBuilder::GetStateGraph. */
+using AnimationNodeSettings = std::variant<std::monostate, AnimationInterfaceSettings, AnimationParameterSettings, AnimationSampleSettings, AnimationSwitchSettings, AnimationRandomSwitchSettings, AnimationNamedBoneWeightsSettings, AnimationBoneWeightsSettings, AnimationExpressionSettings, AnimationStateMachineSettings>;
 
 /** @brief An animation network node. */
 struct AnimationNode
@@ -182,7 +219,9 @@ struct AnimationNode
 	AnimationNodeSettings settings;
 };
 
-/** @brief A graph of animation nodes: the root graph of an AnimationNetworkBuilder, or the contents of a Subgraph node.
+/** @brief A graph of animation nodes: the root graph of an AnimationNetworkBuilder, the contents of a Subgraph node or
+* a state of a StateMachine node. State graphs are like the root graph: they have one Pose Output node and no
+* SubgraphInput nodes.
 *
 * Graphs are owned by their network builder and can't be created directly. All modifications change the builder's
 * generation (see AnimationNetworkBuilder::GetGeneration).
@@ -190,6 +229,9 @@ struct AnimationNode
 class AnimationGraphBuilder
 {
 public:
+	/** Value returned by AddState and AddTransition on failure. */
+	static constexpr uint32_t INVALID_INDEX = 0xffffffff;
+
 	AnimationGraphBuilder( const AnimationGraphBuilder& ) = delete;
 	AnimationGraphBuilder( AnimationGraphBuilder&& ) = delete;
 	AnimationGraphBuilder& operator=( const AnimationGraphBuilder& ) = delete;
@@ -198,7 +240,7 @@ public:
 
 	/** @brief Adds a node with default settings.
 	* @return Handle of the new node, or an unset handle if the node can't be added (a second Output node or a
-	* SubgraphInput node in the root graph).
+	* SubgraphInput node in the root graph or a state graph).
 	*/
 	CARBON_MESH_EXPORT AnimationNodeId AddNode( AnimationNodeType type );
 
@@ -234,8 +276,12 @@ public:
 	/** @brief Returns the Output nodes in interface order. */
 	[[nodiscard]] CARBON_MESH_EXPORT const std::vector<AnimationNodeId>& GetInterfaceOutputs() const;
 
-	/** @brief Returns the parent graph for a subgraph, nullptr for the root graph. */
+	/** @brief Returns the parent graph for a subgraph or state graph, nullptr for the root graph. */
 	[[nodiscard]] CARBON_MESH_EXPORT const AnimationGraphBuilder* GetParent() const;
+
+	/** @brief Returns true for subgraphs, whose SubgraphInput and Output nodes are the sockets of their Subgraph node.
+	* Returns false for the root graph and state graphs, which have no SubgraphInput nodes and one Pose Output node. */
+	[[nodiscard]] CARBON_MESH_EXPORT bool HasInterface() const;
 
 	/** @brief Returns the network the graph belongs to. */
 	[[nodiscard]] CARBON_MESH_EXPORT const AnimationNetworkBuilder& GetNetwork() const;
@@ -322,6 +368,52 @@ public:
 	/** @brief Returns the graph contained in a Subgraph node, or nullptr. */
 	[[nodiscard]] CARBON_MESH_EXPORT const AnimationGraphBuilder* GetSubgraph( AnimationNodeId node ) const;
 
+	/** @brief Adds a state with an empty graph to a StateMachine node.
+	* @return Index of the new state, or INVALID_INDEX if the node is not a StateMachine node.
+	*/
+	CARBON_MESH_EXPORT uint32_t AddState( AnimationNodeId node, std::string_view name );
+
+	/** @brief Removes a state of a StateMachine node together with its graph and the transitions from and to it.
+	* Later states shift down by one. If the start state is removed, the first state becomes the start state.
+	*/
+	CARBON_MESH_EXPORT ValidationResult RemoveState( AnimationNodeId node, uint32_t state );
+
+	/** @brief Sets the name of a state of a StateMachine node. */
+	CARBON_MESH_EXPORT ValidationResult SetStateName( AnimationNodeId node, uint32_t state, std::string_view name );
+
+	/** @brief Sets the state a StateMachine node starts in. */
+	CARBON_MESH_EXPORT ValidationResult SetStartState( AnimationNodeId node, uint32_t state );
+
+	/** @brief Sets whether a StateMachine node continues in its previous state, instead of restarting from the start
+	* state, when it becomes active after being inactive. */
+	CARBON_MESH_EXPORT ValidationResult SetResumeOnActivate( AnimationNodeId node, bool resume );
+
+	/** @brief Adds a transition to a StateMachine node.
+	* @return Index of the new transition, or INVALID_INDEX if the node is not a StateMachine node or the transition
+	* is invalid (see SetTransition).
+	*/
+	CARBON_MESH_EXPORT uint32_t AddTransition( AnimationNodeId node, const AnimationTransition& transition );
+
+	/** @brief Changes a transition of a StateMachine node.
+	* Fails if a state index or the condition is invalid, or the duration or timeout is negative. The transition is
+	* left unchanged in that case. Expressions that don't parse are accepted, because an expression can also stop
+	* parsing when a parameter is renamed; GetErrors reports them, and ValidateTransition checks them beforehand.
+	*/
+	CARBON_MESH_EXPORT ValidationResult SetTransition( AnimationNodeId node, uint32_t index, const AnimationTransition& transition );
+
+	/** @brief Removes a transition of a StateMachine node. Later transitions shift down by one. */
+	CARBON_MESH_EXPORT ValidationResult RemoveTransition( AnimationNodeId node, uint32_t index );
+
+	/** @brief Returns the graph of a state of a StateMachine node, or nullptr. */
+	[[nodiscard]] CARBON_MESH_EXPORT AnimationGraphBuilder* GetStateGraph( AnimationNodeId node, uint32_t state );
+	/** @brief Returns the graph of a state of a StateMachine node, or nullptr. */
+	[[nodiscard]] CARBON_MESH_EXPORT const AnimationGraphBuilder* GetStateGraph( AnimationNodeId node, uint32_t state ) const;
+
+	/** @brief Checks a transition of a StateMachine node without changing anything: everything SetTransition checks,
+	* and whether the expression of an Expression condition parses. An empty expression passes, but GetErrors reports
+	* it. Editors can use it to report problems while the user types. */
+	[[nodiscard]] CARBON_MESH_EXPORT ValidationResult ValidateTransition( AnimationNodeId node, const AnimationTransition& transition ) const;
+
 private:
 	friend class AnimationNetworkBuilder;
 
@@ -331,9 +423,27 @@ private:
 		bool alive = false;
 		AnimationNode node;
 		std::unique_ptr<AnimationGraphBuilder> subgraph;
+		/** Graphs of the states of a StateMachine node, in state index order. */
+		std::vector<std::unique_ptr<AnimationGraphBuilder>> states;
 	};
 
-	AnimationGraphBuilder( AnimationNetworkBuilder& network, AnimationGraphBuilder* parent, AnimationNodeId ownerNode );
+	AnimationGraphBuilder( AnimationNetworkBuilder& network, AnimationGraphBuilder* parent, AnimationNodeId ownerNode, bool hasInterface );
+
+	/** Calls visitor for each graph contained in a slot: its subgraph and its state graphs. */
+	template <typename Visitor>
+	static void ForEachChildGraph( const Slot& slot, const Visitor& visitor ) // NOLINT(readability-identifier-naming): clang-tidy classifies function templates as Default (camelBack); name follows FunctionCase
+	{
+		if( slot.subgraph )
+		{
+			visitor( *slot.subgraph );
+		}
+		for( const auto& state : slot.states )
+		{
+			visitor( *state );
+		}
+	}
+	/** Checks the parts of a transition that SetTransition requires to be valid: everything except the expression. */
+	[[nodiscard]] ValidationResult CheckTransition( AnimationNodeId node, const AnimationTransition& transition ) const;
 
 	Slot* FindSlot( AnimationNodeId node );
 	[[nodiscard]] const Slot* FindSlot( AnimationNodeId node ) const;
@@ -349,6 +459,9 @@ private:
 	AnimationNetworkBuilder* m_network = nullptr;
 	AnimationGraphBuilder* m_parent = nullptr;
 	AnimationNodeId m_ownerNode;
+	/** True for subgraphs, whose SubgraphInput and Output nodes are the sockets of their Subgraph node. False for the
+	* root graph and state graphs. */
+	bool m_hasInterface = false;
 	std::vector<Slot> m_slots;
 	std::vector<AnimationEdge> m_edges;
 	std::vector<AnimationNodeId> m_interfaceInputs;
@@ -506,6 +619,8 @@ private:
 	void OnAssetLoaded( uint32_t requestId, const cmf::Data* data );
 	void CollectProblems( std::vector<std::string>* errors, std::vector<std::string>* warnings ) const;
 	void ValidateNode( const AnimationGraphBuilder& graph, AnimationNodeId id, const std::string& prefix, std::vector<std::string>& errors, std::vector<std::string>& warnings ) const;
+	void ValidateStateMachine( const AnimationGraphBuilder& graph, AnimationNodeId id, const AnimationStateMachineSettings& settings, const std::string& prefix, std::vector<std::string>& errors ) const;
+	[[nodiscard]] ValidationResult ParseTransitionExpression( const std::string& expression ) const;
 	void ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& warnings ) const;
 	[[nodiscard]] bool IsParameterReferenced( uint32_t index ) const;
 	void ShiftParameterReferences( uint32_t removedIndex );

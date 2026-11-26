@@ -176,10 +176,14 @@ const Span<T>& GetNodeTable( const can::Graph& graph ) // NOLINT(readability-ide
 	{
 		return graph.subgraphNodes;
 	}
+	else if constexpr( std::is_same_v<T, can::ExpressionNode> )
+	{
+		return graph.expressionNodes;
+	}
 	else
 	{
-		static_assert( std::is_same_v<T, can::ExpressionNode>, "Unknown node data type" );
-		return graph.expressionNodes;
+		static_assert( std::is_same_v<T, can::StateMachineNode>, "Unknown node data type" );
+		return graph.stateMachineNodes;
 	}
 }
 
@@ -195,6 +199,12 @@ NodeShape GetShape( const can::Graph& graph, const can::Node& node );
 
 /** Returns the graph contained in a Subgraph node of a validated graph. */
 const can::Graph& GetSubgraph( const can::NetworkData& data, const can::Graph& graph, const can::Node& node );
+
+/** Returns the graph of a state of a StateMachine node of a validated graph. */
+const can::Graph& GetStateGraph( const can::NetworkData& data, const can::Graph& graph, const can::Node& node, uint32_t state );
+
+/** Name of the built-in variable of transition expressions holding the time spent in the current state. */
+constexpr const char* STATE_TIME_VARIABLE = "stateTime";
 
 /** Socket queries on nodes stored in a CAN file, including Subgraph nodes. The data must be valid. */
 uint32_t GetInputCount( const can::NetworkData& data, const can::Graph& graph, const can::Node& node );

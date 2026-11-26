@@ -11,6 +11,7 @@
 #include <imgui_stdlib.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -263,6 +264,12 @@ void PropertiesPanel::Draw( AppContext& context )
 {
 	auto& session = *context.session;
 	auto& graph = session.GetGraph();
+	const auto stateMachine = session.GetStateMachine();
+	if( stateMachine.IsSet() )
+	{
+		DrawStateMachineView( context, graph, stateMachine );
+		return;
+	}
 	const auto& selection = session.GetSelection();
 	if( selection.size() == 1 && graph.IsValid( selection.front() ) )
 	{
@@ -405,12 +412,13 @@ void PropertiesPanel::DrawNode( AppContext& context, cmf::AnimationGraphBuilder&
 		const ScopedEdit edit( session );
 		ReportResult( context, graph.SetNodeName( node, name ) );
 	}
-	if( graph.GetSubgraph( node ) != nullptr && ImGui::Button( "Open Subgraph" ) )
+	ImGui::EndDisabled();
+	if( session.CanEnter( node ) && ImGui::Button( graph.GetSubgraph( node ) != nullptr ? "Open Subgraph" : "Open State Machine" ) )
 	{
 		session.EnterSubgraph( node );
-		ImGui::EndDisabled();
 		return;
 	}
+	ImGui::BeginDisabled( !session.CanEdit() );
 
 	DrawSettings( context, graph, node );
 	DrawInputConstants( context, graph, node );
@@ -471,6 +479,204 @@ void PropertiesPanel::DrawSettings( AppContext& context, cmf::AnimationGraphBuil
 	{
 		DrawExpression( context, graph, node, *expression );
 	}
+	else if( const auto* stateMachine = std::get_if<cmf::AnimationStateMachineSettings>( &settings ) )
+	{
+		DrawStateMachine( context, graph, node, *stateMachine );
+	}
+}
+
+void PropertiesPanel::DrawStateMachine( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationStateMachineSettings& settings )
+{
+	auto& session = *context.session;
+	ImGui::Text( "%zu states, %zu transitions", settings.stateNames.size(), settings.transitions.size() );
+	const auto start = GetStateTitle( settings, settings.startState );
+	if( ImGui::BeginCombo( "Start state", settings.stateNames.empty() ? "<no states>" : start.c_str() ) )
+	{
+		for( uint32_t state = 0; state < settings.stateNames.size(); ++state )
+		{
+			ImGui::PushID( static_cast<int>( state ) );
+			if( ImGui::Selectable( GetStateTitle( settings, state ).c_str(), state == settings.startState ) && state != settings.startState )
+			{
+				const ScopedEdit edit( session );
+				ReportResult( context, graph.SetStartState( node, state ) );
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+	bool resume = settings.resumeOnActivate;
+	if( ImGui::Checkbox( "Resume on activate", &resume ) )
+	{
+		const ScopedEdit edit( session );
+		ReportResult( context, graph.SetResumeOnActivate( node, resume ) );
+	}
+	if( ImGui::IsItemHovered( ImGuiHoveredFlags_DelayNormal ) )
+	{
+		ImGui::SetTooltip( "When the state machine contributes to the pose again after it didn't, continue in the state it was in instead of restarting from the start state." );
+	}
+}
+
+void PropertiesPanel::DrawStateMachineView( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
+{
+	auto& session = *context.session;
+	const auto& settings = *graph.GetSettings<cmf::AnimationStateMachineSettings>( node );
+	const auto& selectedStates = session.GetSelectedStates();
+	if( const auto& transition = session.GetSelectedTransition(); transition && *transition < settings.transitions.size() )
+	{
+		DrawTransition( context, graph, node, *transition );
+	}
+	else if( selectedStates.size() == 1 )
+	{
+		DrawState( context, graph, node, selectedStates.front() );
+	}
+	else if( selectedStates.size() > 1 )
+	{
+		ImGui::Text( "%zu states selected", selectedStates.size() );
+	}
+	else
+	{
+		DrawNode( context, graph, node );
+		ImGui::TextColored( HINT_TEXT, "Select a state or a transition to edit it. Drag from the edge of a state to another state to add a transition." );
+	}
+}
+
+void PropertiesPanel::DrawState( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t state )
+{
+	auto& session = *context.session;
+	const auto& settings = *graph.GetSettings<cmf::AnimationStateMachineSettings>( node );
+	ImGui::TextColored( ImGui::ColorConvertU32ToFloat4( GetNodeColor( cmf::AnimationNodeType::StateMachine ) ), "State" );
+	ImGui::TextWrapped( "A state of the state machine. Its graph computes the pose while the state is active." );
+
+	ImGui::BeginDisabled( !session.CanEdit() );
+	SectionHeader( "State" );
+	std::string name;
+	ImGui::SetNextItemWidth( -ImGui::CalcTextSize( "Name" ).x - ImGui::GetStyle().ItemInnerSpacing.x );
+	if( CommitText( m_text, "stateName" + std::to_string( state ), "Name", settings.stateNames[state], name ) )
+	{
+		const ScopedEdit edit( session );
+		ReportResult( context, graph.SetStateName( node, state, name ) );
+	}
+	if( state == settings.startState )
+	{
+		ImGui::TextColored( OK_TEXT, "This is the start state." );
+	}
+	else if( ImGui::Button( "Set as Start State" ) )
+	{
+		session.SetStartState( state );
+	}
+	ImGui::EndDisabled();
+	if( ImGui::Button( "Open State" ) )
+	{
+		session.EnterState( state );
+		return;
+	}
+
+	SectionHeader( "Transitions" );
+	bool any = false;
+	for( uint32_t i = 0; i < settings.transitions.size(); ++i )
+	{
+		const auto& transition = settings.transitions[i];
+		if( transition.fromState != state )
+		{
+			continue;
+		}
+		any = true;
+		ImGui::PushID( static_cast<int>( i ) );
+		const auto label = "to " + GetStateTitle( settings, transition.toState ) + ": " + GetTransitionSummary( transition );
+		if( ImGui::Selectable( label.c_str() ) )
+		{
+			session.SelectTransition( i );
+		}
+		ImGui::PopID();
+	}
+	if( !any )
+	{
+		ImGui::TextColored( HINT_TEXT, "None. Drag from the edge of the state to another state to add one." );
+	}
+
+	const auto errors = DiagnoseState( graph, node, state );
+	if( !errors.empty() )
+	{
+		SectionHeader( "Problems" );
+		for( const auto& error : errors )
+		{
+			ImGui::TextColored( ERROR_TEXT, "%s", error.c_str() );
+		}
+	}
+}
+
+void PropertiesPanel::DrawTransition( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t index )
+{
+	auto& session = *context.session;
+	const auto& settings = *graph.GetSettings<cmf::AnimationStateMachineSettings>( node );
+	auto transition = settings.transitions[index];
+	ImGui::TextColored( ImGui::ColorConvertU32ToFloat4( GetNodeColor( cmf::AnimationNodeType::StateMachine ) ), "Transition" );
+	ImGui::TextWrapped( "%s to %s", GetStateTitle( settings, transition.fromState ).c_str(), GetStateTitle( settings, transition.toState ).c_str() );
+
+	ImGui::BeginDisabled( !session.CanEdit() );
+	SectionHeader( "Condition" );
+	const auto apply = [&]( const cmf::AnimationTransition& changed ) { ReportResult( context, graph.SetTransition( node, index, changed ) ); };
+	constexpr std::array<const char*, 3> conditionNames = { "Expression", "Animation finished", "Timeout" };
+	const auto conditionIndex = static_cast<size_t>( transition.condition );
+	if( ImGui::BeginCombo( "Condition", conditionNames.at( conditionIndex ) ) )
+	{
+		for( size_t i = 0; i < conditionNames.size(); ++i )
+		{
+			if( ImGui::Selectable( conditionNames.at( i ), i == conditionIndex ) && i != conditionIndex )
+			{
+				const ScopedEdit edit( session );
+				transition.condition = static_cast<cmf::AnimationTransitionCondition>( i );
+				apply( transition );
+			}
+		}
+		ImGui::EndCombo();
+	}
+	switch( transition.condition )
+	{
+	case cmf::AnimationTransitionCondition::Expression: {
+		ImGui::TextUnformatted( "Expression" );
+		std::string expression;
+		if( CommitText( m_text, "transitionExpression" + std::to_string( index ), "##transitionExpression", transition.expression, expression, true ) )
+		{
+			const ScopedEdit edit( session );
+			transition.expression = expression;
+			apply( transition );
+		}
+		ImGui::TextColored( HINT_TEXT, "Taken when the expression is not 0. Use parameter names and stateTime, the seconds spent in the state." );
+		break;
+	}
+	case cmf::AnimationTransitionCondition::AnimationFinished:
+		ImGui::TextColored( HINT_TEXT, "Taken when the animation of the state ends. Only states whose Output is connected directly to an AnimationSample that doesn't loop finish." );
+		break;
+	case cmf::AnimationTransitionCondition::Timeout:
+		if( ImGui::DragFloat( "Timeout (s)", &transition.timeout, DRAG_SPEED, 0.f, std::numeric_limits<float>::max() ) )
+		{
+			apply( transition );
+		}
+		TrackEdit( session );
+		break;
+	}
+
+	SectionHeader( "Blend" );
+	if( ImGui::DragFloat( "Duration (s)", &transition.duration, DRAG_SPEED, 0.f, std::numeric_limits<float>::max() ) )
+	{
+		apply( transition );
+	}
+	TrackEdit( session );
+	ImGui::TextColored( HINT_TEXT, "Time over which the previous state fades out; 0 switches immediately." );
+
+	ImGui::Spacing();
+	if( ImGui::Button( "Delete Transition" ) )
+	{
+		session.DeleteSelection();
+	}
+	ImGui::EndDisabled();
+
+	if( const auto error = DiagnoseTransition( graph, node, settings.transitions[index] ) )
+	{
+		SectionHeader( "Problems" );
+		ImGui::TextColored( ERROR_TEXT, "%s", error->c_str() );
+	}
 }
 
 void PropertiesPanel::DrawInterface( AppContext& context, cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationInterfaceSettings& settings )
@@ -482,7 +688,7 @@ void PropertiesPanel::DrawInterface( AppContext& context, cmf::AnimationGraphBui
 		const ScopedEdit edit( session );
 		ReportResult( context, graph.SetInterfaceSocket( node, socketName, settings.type ) );
 	}
-	const bool rootOutput = graph.GetParent() == nullptr;
+	const bool rootOutput = !graph.HasInterface();
 	ImGui::BeginDisabled( rootOutput );
 	if( ImGui::BeginCombo( "Socket type", GetSocketTypeName( settings.type ) ) )
 	{

@@ -22,8 +22,8 @@ enum class GraphJsonMode : uint8_t
 	Document,
 };
 
-/** Writes nodes of a graph as JSON: their settings, input constants, positions, the contents of Subgraph nodes and
-* the edges between the given nodes. Nodes are stored in the given order; edges reference them by index. */
+/** Writes nodes of a graph as JSON: their settings, input constants, positions, the contents of Subgraph nodes, the
+* states and transitions of StateMachine nodes and the edges between the given nodes. Nodes are stored in the given order; edges reference them by index. */
 [[nodiscard]] nlohmann::json WriteGraphJson( const Document& document, const cmf::AnimationGraphBuilder& graph, const std::vector<cmf::AnimationNodeId>& nodes, GraphJsonMode mode );
 
 /** Creates the nodes and edges written by WriteGraphJson in a graph.
@@ -42,6 +42,7 @@ public:
 
 private:
 	cmf::AnimationNodeId ReadNode( cmf::AnimationGraphBuilder& graph, const nlohmann::json& json, Vec2 offset );
+	void ReadStateMachine( cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, const nlohmann::json& json );
 	void ApplySettings( cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId id, cmf::AnimationNodeType type, const nlohmann::json& json );
 	uint32_t FindParameter( const nlohmann::json& json );
 	uint32_t FindOrAddParameter( const nlohmann::json& json );

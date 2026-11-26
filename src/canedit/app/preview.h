@@ -57,6 +57,10 @@ public:
 	void Reload();
 
 	[[nodiscard]] bool IsNetworkReady() const;
+	/** Returns the current state of a StateMachine node in the preview, or AnimationNetworkInstance::INVALID_STATE.
+	* The node is identified by its location in the save layout of the builder, so the preview must have been built
+	* from the current state of the builder. */
+	[[nodiscard]] uint32_t GetCurrentState( const cmf::AnimationNetworkBuilder& builder, const NodeLocation& location ) const;
 	/** Problems of the preview itself, such as preview meshes that failed to load. */
 	[[nodiscard]] const std::vector<std::string>& GetModelErrors() const;
 

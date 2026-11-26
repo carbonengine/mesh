@@ -67,6 +67,29 @@ void ValidateBoneWeights( const can::BoneWeightsNode& node, const Skeleton* skel
 	}
 }
 
+void ValidateStateMachine( const can::NetworkData& data, const can::StateMachineNode& node, const std::string& prefix, std::vector<std::string>& errors )
+{
+	if( node.states.empty() )
+	{
+		errors.push_back( prefix + "the state machine has no states" );
+		return;
+	}
+	for( uint32_t state = 0; state < node.states.size(); ++state )
+	{
+		if( data.graphs[node.states[state].graphIndex].interfaceOutputs.empty() )
+		{
+			errors.push_back( prefix + "state #" + std::to_string( state ) + " '" + ToStdString( node.states[state].name ) + "' has no Output node" );
+		}
+	}
+	for( uint32_t i = 0; i < node.transitions.size(); ++i )
+	{
+		const auto& transition = node.transitions[i];
+		if( transition.condition == can::TransitionCondition::Expression && transition.expression.empty() )
+		{
+			errors.push_back( prefix + "transition " + std::to_string( i ) + ": no expression is set" );
+		}
+	}
+}
 }
 
 AnimationNetwork::AnimationNetwork( AnimationAssetLoader& loader ) :
@@ -294,6 +317,9 @@ void AnimationNetwork::ValidateNode( const can::Graph& graph, const can::Node& n
 	case can::NodeType::RandomSwitch:
 		ValidateRandomSwitch( detail::GetNodeData<can::RandomSwitchNode>( graph, node ), prefix, errors );
 		break;
+	case can::NodeType::StateMachine:
+		ValidateStateMachine( *m_data, detail::GetNodeData<can::StateMachineNode>( graph, node ), prefix, errors );
+		break;
 	case can::NodeType::Output:
 	case can::NodeType::SubgraphInput:
 	case can::NodeType::Parameter:
@@ -352,7 +378,7 @@ AnimationNodeTypeInfo GetAnimationNodeTypeInfo( AnimationNodeType type )
 	result.hasOutput = info.hasOutput;
 	result.outputType = info.outputType;
 	result.outputName = info.outputName;
-	// Subgraph nodes reference their graph instead of having settings
+	// Subgraph nodes reference their graph instead of having settings; StateMachine nodes have both
 	result.hasSettings = info.hasData && type != AnimationNodeType::Subgraph;
 	return result;
 }

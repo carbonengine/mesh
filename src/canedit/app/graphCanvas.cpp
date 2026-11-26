@@ -123,13 +123,13 @@ bool HasSummaryRow( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeI
 }
 
 // Returns true if new nodes of the type can connect to a socket of the given type and direction
-bool IsCompatible( cmf::AnimationNodeType type, cmf::AnimationSocketType socketType, bool needInput, bool rootGraph )
+bool IsCompatible( cmf::AnimationNodeType type, cmf::AnimationSocketType socketType, bool needInput, bool hasInterface )
 {
 	const auto info = cmf::GetAnimationNodeTypeInfo( type );
 	if( info.layout == cmf::AnimationSocketLayout::Interface )
 	{
-		// Interface sockets take any type, except the Pose output of the root graph
-		return needInput ? ( type == cmf::AnimationNodeType::Output && ( !rootGraph || socketType == cmf::AnimationSocketType::Pose ) ) : type == cmf::AnimationNodeType::SubgraphInput;
+		// Interface sockets of subgraphs take any type; the root graph and state graphs only have a Pose output
+		return needInput ? ( type == cmf::AnimationNodeType::Output && ( hasInterface || socketType == cmf::AnimationSocketType::Pose ) ) : type == cmf::AnimationNodeType::SubgraphInput;
 	}
 	if( !needInput )
 	{
@@ -499,7 +499,7 @@ bool GraphCanvas::HandleIdleInput( cmf::AnimationGraphBuilder& graph, ImVec2 mou
 	{
 		m_mode = Mode::Panning;
 	}
-	else if( ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) && m_hoveredNode && graph.GetSubgraph( *m_hoveredNode ) != nullptr )
+	else if( ImGui::IsMouseDoubleClicked( ImGuiMouseButton_Left ) && m_hoveredNode && m_context->session->CanEnter( *m_hoveredNode ) )
 	{
 		m_context->session->EnterSubgraph( *m_hoveredNode );
 		return false;
@@ -825,7 +825,7 @@ void GraphCanvas::DrawNode( ImDrawList& drawList, const cmf::AnimationGraphBuild
 		const ImVec4 clip = { node.min.x, node.min.y, node.max.x, node.max.y };
 		const auto textOffsetY = ( ROW_HEIGHT * zoom - fontSize ) * HALF;
 		auto title = GetNodeTitle( graph, node.id );
-		if( graph.GetSubgraph( node.id ) != nullptr )
+		if( m_context->session->CanEnter( node.id ) )
 		{
 			title += "  [+]";
 		}
@@ -974,7 +974,7 @@ std::optional<cmf::AnimationNodeType> GraphCanvas::DrawNodeTypeMenu( const cmf::
 				continue;
 			}
 			// An output socket needs a node with a matching input, and the other way around
-			if( compatibleWith && !IsCompatible( type, *compatibleWith, outputSide, graph.GetParent() == nullptr ) )
+			if( compatibleWith && !IsCompatible( type, *compatibleWith, outputSide, graph.HasInterface() ) )
 			{
 				continue;
 			}
@@ -1083,7 +1083,7 @@ void GraphCanvas::DrawCanvasMenu( cmf::AnimationGraphBuilder& graph )
 	{
 		FrameNodes( false );
 	}
-	if( !session.GetGraphPath().empty() && ImGui::MenuItem( "Leave Subgraph", "Backspace" ) )
+	if( !session.GetGraphPath().empty() && ImGui::MenuItem( session.GetGraphPath().back().state != NO_STATE ? "Leave State" : "Leave Subgraph", "Backspace" ) )
 	{
 		session.LeaveSubgraph();
 	}
@@ -1097,7 +1097,7 @@ void GraphCanvas::DrawNodeMenu( const cmf::AnimationGraphBuilder& graph )
 		return;
 	}
 	auto& session = *m_context->session;
-	if( m_contextNode && graph.GetSubgraph( *m_contextNode ) != nullptr && ImGui::MenuItem( "Open Subgraph", "Enter" ) )
+	if( m_contextNode && session.CanEnter( *m_contextNode ) && ImGui::MenuItem( graph.GetSubgraph( *m_contextNode ) != nullptr ? "Open Subgraph" : "Open State Machine", "Enter" ) )
 	{
 		session.EnterSubgraph( *m_contextNode );
 	}

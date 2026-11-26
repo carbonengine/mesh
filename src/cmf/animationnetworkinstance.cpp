@@ -67,6 +67,8 @@ AnimationNetworkInstance::AnimationNetworkInstance( const AnimationNetwork& netw
 	m_vectorCaches = detail::ConstructArray<CurveEvaluationCache<Vector3>>( block, layout.vectorCaches, compiled.vectorCurveCount );
 	m_quaternionCaches = detail::ConstructArray<CurveEvaluationCache<Vector4>>( block, layout.quaternionCaches, compiled.quaternionCurveCount );
 	m_randomStates = detail::ConstructArray<detail::RandomSwitchState>( block, layout.randomStates, compiled.randomSwitchCount );
+	m_stateMachineStates = detail::ConstructArray<detail::StateMachineState>( block, layout.stateMachineStates, compiled.stateMachineCount );
+	m_stateMachineLayers = detail::ConstructArray<detail::StateMachineLayer>( block, layout.stateMachineLayers, static_cast<size_t>( compiled.stateMachineCount ) * detail::MAX_STATE_MACHINE_LAYERS );
 	m_opOutputs = detail::ConstructArray<const Transform*>( block, layout.opOutputs, compiled.poseOpCount );
 	m_opFlags = detail::ConstructArray<uint8_t>( block, layout.opFlags, compiled.poseOpCount );
 	m_poseSlots = detail::ConstructArray<Transform>( block, layout.poseSlots, static_cast<size_t>( compiled.poseSlotCount ) * compiled.boneCount );
@@ -163,6 +165,50 @@ void AnimationNetworkInstance::Update( float deltaTime )
 			playhead.time = ToLocalTime( time, sample.duration, false );
 		}
 	}
+	UpdateStateMachines( deltaTime );
+}
+
+void AnimationNetworkInstance::UpdateStateMachines( float deltaTime )
+{
+	for( uint32_t m = 0; m < m_compiled->stateMachineCount; ++m )
+	{
+		auto& state = m_stateMachineStates[m];
+		if( !state.active )
+		{
+			continue;
+		}
+		state.stateTime += deltaTime;
+		m_floats[m_compiled->stateMachines[m].stateTimeSlot] = state.stateTime;
+		auto* layers = m_stateMachineLayers + static_cast<size_t>( m ) * detail::MAX_STATE_MACHINE_LAYERS;
+		// The bottom layer is fully visible; the layers above it fade in
+		for( uint32_t i = 1; i < state.layerCount; ++i )
+		{
+			auto& layer = layers[i];
+			layer.progress = layer.duration > 0.f ? std::min( layer.progress + deltaTime / layer.duration, 1.f ) : 1.f;
+		}
+	}
+}
+
+uint32_t AnimationNetworkInstance::GetCurrentState( uint32_t graphIndex, uint32_t nodeIndex ) const
+{
+	if( !IsValid() )
+	{
+		return INVALID_STATE;
+	}
+	for( uint32_t m = 0; m < m_compiled->stateMachineCount; ++m )
+	{
+		const auto& machine = m_compiled->stateMachines[m];
+		if( machine.graph == graphIndex && machine.node == nodeIndex )
+		{
+			const auto& state = m_stateMachineStates[m];
+			if( state.layerCount == 0 )
+			{
+				return INVALID_STATE;
+			}
+			return m_stateMachineLayers[static_cast<size_t>( m ) * detail::MAX_STATE_MACHINE_LAYERS + state.layerCount - 1].state;
+		}
+	}
+	return INVALID_STATE;
 }
 
 bool AnimationNetworkInstance::Evaluate()
@@ -232,6 +278,8 @@ AnimationNetworkInstance::OperationHandlers AnimationNetworkInstance::GetOperati
 		return { &Instance::MarkSwitchInputs, &Instance::ExecuteSwitch };
 	case detail::PoseOpType::RandomSwitch:
 		return { &Instance::MarkRandomSwitchInputs, &Instance::ExecuteRandomSwitch };
+	case detail::PoseOpType::StateMachine:
+		return { &Instance::MarkStateMachineInputs, &Instance::ExecuteStateMachine };
 	case detail::PoseOpType::Count:
 		break;
 	}
@@ -341,6 +389,133 @@ void AnimationNetworkInstance::MarkRandomSwitchInputs( uint32_t opIndex, bool ne
 	{
 		MarkInput( m_compiled->switchInputs[op.firstInput + state.selected] );
 	}
+}
+
+// Takes the state machine transitions and marks the states that contribute to its pose. Operations are marked in
+// reverse order, so a state machine decides before the state machines nested in its states.
+void AnimationNetworkInstance::MarkStateMachineInputs( uint32_t opIndex, bool needed )
+{
+	const auto& compiled = *m_compiled;
+	const auto& op = compiled.poseOps[opIndex];
+	const auto machineIndex = op.data;
+	const auto& machine = compiled.stateMachines[machineIndex];
+	auto& state = m_stateMachineStates[machineIndex];
+	if( !needed )
+	{
+		state.active = false;
+		return;
+	}
+	auto* layers = m_stateMachineLayers + static_cast<size_t>( machineIndex ) * detail::MAX_STATE_MACHINE_LAYERS;
+	if( !state.active && ( !state.started || !machine.resumeOnActivate ) )
+	{
+		state.started = true;
+		state.layerCount = 0;
+		EnterState( machineIndex, machine.startState, 0.f );
+	}
+	state.active = true;
+
+	// Layers below a fully faded in layer are no longer visible
+	for( uint32_t i = state.layerCount; i-- > 1; )
+	{
+		if( layers[i].progress >= 1.f )
+		{
+			std::copy( layers + i, layers + state.layerCount, layers );
+			state.layerCount -= i;
+			break;
+		}
+	}
+
+	const auto& current = compiled.states[machine.firstState + layers[state.layerCount - 1].state];
+	for( uint32_t t = 0; t < current.transitionCount; ++t )
+	{
+		const auto transitionIndex = current.firstTransition + t;
+		if( IsTransitionSatisfied( machineIndex, transitionIndex ) )
+		{
+			const auto& transition = compiled.transitions[transitionIndex];
+			EnterState( machineIndex, transition.target, transition.duration );
+			break;
+		}
+	}
+
+	for( uint32_t i = 0; i < state.layerCount; ++i )
+	{
+		MarkInput( compiled.switchInputs[op.firstInput + layers[i].state] );
+	}
+}
+
+bool AnimationNetworkInstance::IsTransitionSatisfied( uint32_t machineIndex, uint32_t transitionIndex )
+{
+	const auto& compiled = *m_compiled;
+	const auto& transition = compiled.transitions[transitionIndex];
+	const auto& state = m_stateMachineStates[machineIndex];
+	// Every condition type needs a case; there is deliberately no default case
+	switch( transition.condition )
+	{
+	case can::TransitionCondition::Expression: {
+		std::array<void*, 1> externData = { m_floats };
+		return compiled.programs[transition.program].Eval( externData.data(), m_arena ) != 0.f;
+	}
+	case can::TransitionCondition::AnimationFinished: {
+		const auto& machine = compiled.stateMachines[machineIndex];
+		const auto* layers = m_stateMachineLayers + static_cast<size_t>( machineIndex ) * detail::MAX_STATE_MACHINE_LAYERS;
+		const auto& current = compiled.states[machine.firstState + layers[state.layerCount - 1].state];
+		return current.finishSample != can::NO_INDEX && m_playheads[current.finishSample].ended;
+	}
+	case can::TransitionCondition::Timeout:
+		return state.stateTime >= transition.timeout;
+	}
+	return false;
+}
+
+// Makes a state the current state: restarts its animations and adds a layer fading it in over the duration
+void AnimationNetworkInstance::EnterState( uint32_t machineIndex, uint32_t stateIndex, float duration )
+{
+	const auto& compiled = *m_compiled;
+	const auto& machine = compiled.stateMachines[machineIndex];
+	const auto& info = compiled.states[machine.firstState + stateIndex];
+	std::fill( m_playheads + info.firstSample, m_playheads + info.firstSample + info.sampleCount, detail::Playhead{} );
+
+	auto& state = m_stateMachineStates[machineIndex];
+	state.stateTime = 0.f;
+	m_floats[machine.stateTimeSlot] = 0.f;
+	auto* layers = m_stateMachineLayers + static_cast<size_t>( machineIndex ) * detail::MAX_STATE_MACHINE_LAYERS;
+	if( duration <= 0.f || state.layerCount == 0 )
+	{
+		layers[0] = { stateIndex, 1.f, 0.f };
+		state.layerCount = 1;
+		return;
+	}
+	if( state.layerCount == detail::MAX_STATE_MACHINE_LAYERS )
+	{
+		// Drop the oldest fading state
+		std::copy( layers + 1, layers + state.layerCount, layers );
+		--state.layerCount;
+	}
+	layers[state.layerCount++] = { stateIndex, 0.f, duration };
+}
+
+bool AnimationNetworkInstance::ExecuteStateMachine( uint32_t opIndex )
+{
+	const auto& compiled = *m_compiled;
+	const auto& op = compiled.poseOps[opIndex];
+	const auto& state = m_stateMachineStates[op.data];
+	const auto* layers = m_stateMachineLayers + static_cast<size_t>( op.data ) * detail::MAX_STATE_MACHINE_LAYERS;
+	const auto topInput = compiled.switchInputs[op.firstInput + layers[state.layerCount - 1].state];
+	if( state.layerCount == 1 )
+	{
+		return PassThrough( opIndex, topInput );
+	}
+	// Blend the layers bottom to top: each layer covers the result of the layers below it by its fade-in progress
+	auto* output = GetPoseSlot( op.outputSlot );
+	const Transform* blended = m_opOutputs[compiled.switchInputs[op.firstInput + layers[0].state]];
+	for( uint32_t i = 1; i < state.layerCount; ++i )
+	{
+		const auto* pose = m_opOutputs[compiled.switchInputs[op.firstInput + layers[i].state]];
+		detail::BlendTransforms( output, blended, pose, compiled.boneCount, Clamp01( layers[i].progress ) );
+		blended = output;
+	}
+	m_opOutputs[opIndex] = output;
+	return ( m_opFlags[topInput] & OP_CYCLED ) != 0;
 }
 
 bool AnimationNetworkInstance::ExecuteRestPose( uint32_t opIndex )

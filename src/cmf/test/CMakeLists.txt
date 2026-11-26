@@ -5,6 +5,7 @@ set(CMF_TEST_SOURCES
     animationnetwork.cpp
     animationnetworkbuilder.cpp
     animationnetworkinstance.cpp
+    animationstatemachine.cpp
     networktestutils.h
     main.cpp
     transforms.cpp

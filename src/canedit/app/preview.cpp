@@ -431,6 +431,16 @@ bool PreviewController::IsNetworkReady() const
 	return m_network.IsReady();
 }
 
+uint32_t PreviewController::GetCurrentState( const cmf::AnimationNetworkBuilder& builder, const NodeLocation& location ) const
+{
+	// Locations of a network that changed since the preview was built may refer to other nodes
+	if( !m_instance || builder.GetGeneration() != m_builtGeneration )
+	{
+		return cmf::AnimationNetworkInstance::INVALID_STATE;
+	}
+	return m_instance->GetCurrentState( location.graph, location.node );
+}
+
 const std::vector<std::string>& PreviewController::GetModelErrors() const
 {
 	return m_modelErrors;

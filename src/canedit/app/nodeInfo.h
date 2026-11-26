@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,7 +50,20 @@ struct NodeIssues
 
 NodeIssues DiagnoseNode( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
 
-/** Returns true if a node type can be added to a graph (interface nodes are limited in the root graph). */
+/** Returns the state name, or "State #n" if it has none. */
+std::string GetStateTitle( const cmf::AnimationStateMachineSettings& settings, uint32_t state );
+
+/** Returns a one line description of the condition and blend of a transition. */
+std::string GetTransitionSummary( const cmf::AnimationTransition& transition );
+
+/** Returns the problems of a state of a StateMachine node that prevent evaluation. */
+std::vector<std::string> DiagnoseState( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, uint32_t state );
+
+/** Returns the problem of a transition of a StateMachine node that prevents evaluation, if any. */
+std::optional<std::string> DiagnoseTransition( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const cmf::AnimationTransition& transition );
+
+/** Returns true if a node type can be added to a graph (interface nodes are limited in the root graph and state
+* graphs). */
 bool CanAddNode( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeType type );
 
 /** Returns the name of a socket type. */

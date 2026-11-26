@@ -61,6 +61,7 @@ enum class SocketType : uint8_t
 * | BoneWeights      | -                                                                 | weights (BoneWeights)                |
 * | Subgraph         | one per SubgraphInput node of the subgraph                        | one per Output node of the subgraph  |
 * | Expression       | one Float input per expression input name                         | value (Float)                        |
+* | StateMachine     | -                                                                 | pose (Pose)                          |
 *
 * When adding a node type, the compiler reports every switch statement that needs a new case: switch statements
 * over node types have no default case, and the library is built with missing enum cases reported as errors
@@ -85,6 +86,7 @@ enum class NodeType : uint8_t
 	BoneWeights,
 	Subgraph,
 	Expression,
+	StateMachine,
 	/** Number of node types; not a valid node type. */
 	Count,
 };
@@ -330,7 +332,97 @@ struct ExpressionNode
 	}
 };
 
-/** @brief A graph of nodes: the root graph or the contents of a Subgraph node. */
+/** @brief Kind of condition that activates a state machine transition. */
+enum class TransitionCondition : uint8_t
+{
+	/** A numerical expression over the network parameters and stateTime; satisfied when it is not zero. */
+	Expression,
+	/** Satisfied when the animation of the source state finishes. States whose Output is not fed directly by a
+	* non-looping AnimationSample never finish. */
+	AnimationFinished,
+	/** Satisfied when the state machine has been in the source state for at least the timeout. */
+	Timeout,
+};
+
+/** @brief A state of a StateMachine node. */
+struct StateMachineState
+{
+	/** Index in NetworkData::graphs of the state graph. State graphs have one Pose Output and no SubgraphInput nodes. */
+	uint32_t graphIndex = NO_INDEX;
+	/** Reserved, always 0. Keeps the structure free of implicit padding. */
+	uint32_t reserved = 0;
+	/** State name. */
+	String name;
+
+	static constexpr std::string_view TypeName = "StateMachineState";
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, graphIndex, "graphIndex" );
+		visitor( *this, name, "name" );
+	}
+};
+
+/** @brief A transition between two states of a StateMachine node. */
+struct StateMachineTransition
+{
+	/** Index of the source state in StateMachineNode::states. */
+	uint32_t fromState = NO_INDEX;
+	/** Index of the destination state in StateMachineNode::states. */
+	uint32_t toState = NO_INDEX;
+	TransitionCondition condition = TransitionCondition::Expression;
+	/** Reserved, always 0. */
+	uint8_t reserved0 = 0;
+	uint8_t reserved1 = 0;
+	uint8_t reserved2 = 0;
+	/** Time in seconds over which the source state fades out; 0 switches immediately. */
+	float duration = 0.f;
+	/** Timeout condition: time in seconds after which the transition is taken. */
+	float timeout = 0.f;
+	/** Reserved, always 0. */
+	uint32_t reserved3 = 0;
+	/** Expression condition: expression source text. */
+	String expression;
+
+	static constexpr std::string_view TypeName = "StateMachineTransition";
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, fromState, "fromState" );
+		visitor( *this, toState, "toState" );
+		visitor( *this, condition, "condition" );
+		visitor( *this, duration, "duration" );
+		visitor( *this, timeout, "timeout" );
+		visitor( *this, expression, "expression" );
+	}
+};
+
+/** StateMachineNode flag: resume the previous state instead of restarting from the start state when the node becomes
+* active after being inactive. */
+constexpr uint32_t STATE_MACHINE_RESUME_ON_ACTIVATE = 1;
+
+/** @brief Data of StateMachine nodes. */
+struct StateMachineNode
+{
+	/** Index in states of the state the machine starts in. */
+	uint32_t startState = 0;
+	/** Combination of STATE_MACHINE_* flags. */
+	uint32_t flags = 0;
+	Span<StateMachineState> states;
+	Span<StateMachineTransition> transitions;
+
+	static constexpr std::string_view TypeName = "StateMachineNode";
+	template <typename T>
+	constexpr void EnumerateMembers( T&& visitor )
+	{
+		visitor( *this, startState, "startState" );
+		visitor( *this, flags, "flags" );
+		visitor( *this, states, "states" );
+		visitor( *this, transitions, "transitions" );
+	}
+};
+
+/** @brief A graph of nodes: the root graph, the contents of a Subgraph node or a state of a StateMachine node. */
 struct Graph
 {
 	Span<Node> nodes;
@@ -350,6 +442,7 @@ struct Graph
 	Span<BoneWeightsNode> boneWeightsNodes;
 	Span<SubgraphNode> subgraphNodes;
 	Span<ExpressionNode> expressionNodes;
+	Span<StateMachineNode> stateMachineNodes;
 
 	static constexpr std::string_view TypeName = "Graph";
 	template <typename T>
@@ -368,6 +461,7 @@ struct Graph
 		visitor( *this, boneWeightsNodes, "boneWeightsNodes" );
 		visitor( *this, subgraphNodes, "subgraphNodes" );
 		visitor( *this, expressionNodes, "expressionNodes" );
+		visitor( *this, stateMachineNodes, "stateMachineNodes" );
 	}
 };
 
@@ -424,7 +518,8 @@ struct NetworkData
 	/** Embedded animations, referenced by AnimationSampleNode::embeddedAnimation. */
 	Span<cmf::v1::Animation> animations;
 	Span<Parameter> parameters;
-	/** Graphs; graphs[0] is the root graph, the rest are subgraphs referenced by Subgraph nodes. */
+	/** Graphs; graphs[0] is the root graph, the rest are subgraphs referenced by Subgraph nodes and state graphs
+	* referenced by StateMachine nodes. */
 	Span<Graph> graphs;
 
 	static constexpr std::string_view TypeName = "NetworkData";
@@ -443,6 +538,8 @@ struct NetworkData
 
 static_assert( sizeof( Node ) == offsetof( Node, inputConstants ) + sizeof( Span<float> ), "Node must not have implicit padding" );
 static_assert( sizeof( NamedBoneWeight ) == offsetof( NamedBoneWeight, reserved ) + sizeof( uint32_t ), "NamedBoneWeight must not have implicit padding" );
+static_assert( sizeof( StateMachineState ) == offsetof( StateMachineState, name ) + sizeof( String ), "StateMachineState must not have implicit padding" );
+static_assert( sizeof( StateMachineTransition ) == offsetof( StateMachineTransition, expression ) + sizeof( String ), "StateMachineTransition must not have implicit padding" );
 
 enum class SectionType : uint8_t
 {

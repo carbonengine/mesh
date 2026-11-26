@@ -7,6 +7,7 @@ set(CANEDIT_TEST_SOURCES
     main.cpp
     sessiontest.cpp
     settingstest.cpp
+    statemachinetest.cpp
     testutils.h
 )
 

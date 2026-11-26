@@ -57,8 +57,43 @@ struct NodeLocation
 	}
 };
 
-/** Path from the root graph to a subgraph: the Subgraph nodes entered on the way, outermost first. */
-using GraphPath = std::vector<cmf::AnimationNodeId>;
+/** Value of GraphPathStep::state for steps that don't enter a state. */
+constexpr uint32_t NO_STATE = 0xffffffff;
+
+/** A step of a GraphPath: a Subgraph node, a StateMachine node or a state of a StateMachine node. */
+struct GraphPathStep
+{
+	/** Subgraph or StateMachine node in the graph of the previous step. */
+	cmf::AnimationNodeId node;
+	/** For a StateMachine node, the entered state; NO_STATE opens the state machine view of the node. */
+	uint32_t state = NO_STATE;
+
+	bool operator==( const GraphPathStep& other ) const
+	{
+		return node == other.node && state == other.state;
+	}
+	bool operator!=( const GraphPathStep& other ) const
+	{
+		return !( *this == other );
+	}
+};
+
+/** Path from the root graph to what the editor shows, outermost first. Each step enters the graph of a Subgraph node
+* or a state of a StateMachine node. A final step with NO_STATE on a StateMachine node shows its states and
+* transitions instead of a graph. */
+using GraphPath = std::vector<GraphPathStep>;
+
+/** Location of a GraphPathStep that stays valid when the document is read again (see NodeLocation). */
+struct PathLocation
+{
+	NodeLocation node;
+	uint32_t state = NO_STATE;
+
+	bool operator==( const PathLocation& other ) const
+	{
+		return node == other.node && state == other.state;
+	}
+};
 
 
 /** An animation network being edited, with the editor state stored alongside it (node positions, graph views,
@@ -84,9 +119,12 @@ public:
 	[[nodiscard]] cmf::AnimationNetworkBuilder& GetNetwork();
 	[[nodiscard]] const cmf::AnimationNetworkBuilder& GetNetwork() const;
 
-	/** Returns the graph at the end of a path, or nullptr if the path is no longer valid. */
+	/** Returns the graph at the end of a path, or nullptr if the path is no longer valid. For a path that ends in a
+	* state machine view, the graph containing the StateMachine node. */
 	[[nodiscard]] cmf::AnimationGraphBuilder* FindGraph( const GraphPath& path );
 	[[nodiscard]] const cmf::AnimationGraphBuilder* FindGraph( const GraphPath& path ) const;
+	/** Returns the StateMachine node whose view a valid path ends in, or an unset handle. */
+	[[nodiscard]] cmf::AnimationNodeId FindStateMachine( const GraphPath& path ) const;
 
 	/** Returns the position of a node, if it has one. */
 	[[nodiscard]] std::optional<Vec2> GetNodePosition( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
@@ -95,6 +133,17 @@ public:
 	/** View of a graph. View changes are stored in the file but don't count as modifications. */
 	[[nodiscard]] GraphView GetView( const cmf::AnimationGraphBuilder& graph ) const;
 	void SetView( const cmf::AnimationGraphBuilder& graph, const GraphView& view );
+
+	/** Position of a state in the view of its state machine, identified by the graph of the state. */
+	[[nodiscard]] std::optional<Vec2> GetStatePosition( const cmf::AnimationGraphBuilder& stateGraph ) const;
+	void SetStatePosition( const cmf::AnimationGraphBuilder& stateGraph, Vec2 position );
+	/** View of the states of a StateMachine node. Like graph views, changes don't count as modifications. */
+	[[nodiscard]] GraphView GetStateMachineView( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
+	void SetStateMachineView( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node, const GraphView& view );
+	/** Places the states of a StateMachine node that have no position in a grid next to the existing ones. */
+	void PlaceUnpositionedStates( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
+	/** Places all states of a StateMachine node in a grid. */
+	void AutoLayoutStates( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node );
 
 	/** References of the meshes shown together in the preview, for example a body and a head saved in separate files. */
 	[[nodiscard]] const std::vector<std::string>& GetPreviewMeshes() const;
@@ -163,15 +212,17 @@ public:
 	[[nodiscard]] std::optional<NodeLocation> Locate( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
 	/** Returns the graph and node at a location, or {nullptr, unset} if there is none. */
 	[[nodiscard]] std::pair<cmf::AnimationGraphBuilder*, cmf::AnimationNodeId> Find( const NodeLocation& location );
-	/** Converts a graph path to locations of its Subgraph nodes, and back. Invalid parts are dropped. */
-	[[nodiscard]] std::vector<NodeLocation> LocatePath( const GraphPath& path ) const;
-	[[nodiscard]] GraphPath FindPath( const std::vector<NodeLocation>& locations );
+	/** Converts a graph path to locations, and back. Invalid parts are dropped. */
+	[[nodiscard]] std::vector<PathLocation> LocatePath( const GraphPath& path ) const;
+	[[nodiscard]] GraphPath FindPath( const std::vector<PathLocation>& locations );
 
 private:
 	struct GraphState
 	{
 		std::map<uint32_t, Vec2> positions;
 		GraphView view;
+		/** Views of the StateMachine nodes of the graph, by node slot index. */
+		std::map<uint32_t, GraphView> stateMachineViews;
 	};
 
 	/** Clears the network and the editor state, except the file path. */
@@ -186,6 +237,8 @@ private:
 	const PathResolver* m_resolver;
 	cmf::AnimationNetworkBuilder m_network;
 	std::map<const cmf::AnimationGraphBuilder*, GraphState> m_graphs;
+	/** Positions of the states in their state machine view, by state graph. */
+	std::map<const cmf::AnimationGraphBuilder*, Vec2> m_statePositions;
 	std::vector<std::string> m_previewMeshes;
 	std::set<std::string> m_embeddedAssets;
 	std::map<std::string, std::string> m_embeddedErrors;

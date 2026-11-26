@@ -556,7 +556,7 @@ TEST_F( RuntimeFixture, InvalidIndicesAreRejected )
 	auto file = valid;
 	GetNetworkData( file ).graphs[0].subgraphNodes[0].graphIndex = 0;
 	UpdateCrc( file );
-	EXPECT_EQ( network.Load( file ).error, "Subgraph node references an invalid graph" );
+	EXPECT_EQ( network.Load( file ).error, "Subgraph node or state references an invalid graph" );
 
 	file = valid;
 	// Identical arrays are stored once in the file (parameterNodes shares its bytes with interfaceOutputs), so the

@@ -183,7 +183,24 @@ std::string ValidateAssets( const can::NetworkData& data )
 	return {};
 }
 
-// Checks that every subgraph is referenced by exactly one Subgraph node and is reachable from the root graph
+// Calls visitor with the index of every graph contained in a graph: the graphs of its Subgraph nodes and states
+template <typename Visitor>
+void ForEachChildGraph( const can::Graph& graph, const Visitor& visitor ) // NOLINT(readability-identifier-naming): clang-tidy classifies function templates as Default (camelBack); name follows FunctionCase
+{
+	for( const auto& subgraph : graph.subgraphNodes )
+	{
+		visitor( subgraph.graphIndex );
+	}
+	for( const auto& stateMachine : graph.stateMachineNodes )
+	{
+		for( const auto& state : stateMachine.states )
+		{
+			visitor( state.graphIndex );
+		}
+	}
+}
+
+// Checks that every subgraph and state graph is referenced exactly once and is reachable from the root graph
 std::string ValidateGraphTree( const can::NetworkData& data )
 {
 	if( data.graphs.empty() )
@@ -191,20 +208,25 @@ std::string ValidateGraphTree( const can::NetworkData& data )
 		return "The network has no root graph";
 	}
 	std::vector<uint32_t> referenceCounts( data.graphs.size(), 0 );
+	bool invalidIndex = false;
 	for( const auto& graph : data.graphs )
 	{
-		for( const auto& subgraph : graph.subgraphNodes )
-		{
-			if( subgraph.graphIndex == 0 || subgraph.graphIndex >= data.graphs.size() )
+		ForEachChildGraph( graph, [&data, &referenceCounts, &invalidIndex]( uint32_t graphIndex ) {
+			if( graphIndex == 0 || graphIndex >= data.graphs.size() )
 			{
-				return "Subgraph node references an invalid graph";
+				invalidIndex = true;
+				return;
 			}
-			++referenceCounts[subgraph.graphIndex];
-		}
+			++referenceCounts[graphIndex];
+		} );
+	}
+	if( invalidIndex )
+	{
+		return "Subgraph node or state references an invalid graph";
 	}
 	if( std::any_of( referenceCounts.begin() + 1, referenceCounts.end(), []( uint32_t count ) { return count != 1; } ) )
 	{
-		return "Every subgraph must be referenced by exactly one Subgraph node";
+		return "Every subgraph must be referenced by exactly one Subgraph node or state";
 	}
 	std::vector<bool> visited( data.graphs.size(), false );
 	std::vector<uint32_t> stack = { 0 };
@@ -213,13 +235,12 @@ std::string ValidateGraphTree( const can::NetworkData& data )
 		const auto index = stack.back();
 		stack.pop_back();
 		visited[index] = true;
-		for( const auto& subgraph : data.graphs[index].subgraphNodes )
-		{
-			if( !visited[subgraph.graphIndex] )
+		ForEachChildGraph( data.graphs[index], [&visited, &stack]( uint32_t graphIndex ) {
+			if( !visited[graphIndex] )
 			{
-				stack.push_back( subgraph.graphIndex );
+				stack.push_back( graphIndex );
 			}
-		}
+		} );
 	}
 	if( std::find( visited.begin(), visited.end(), false ) != visited.end() )
 	{
@@ -228,11 +249,12 @@ std::string ValidateGraphTree( const can::NetworkData& data )
 	return {};
 }
 
+// Checks the interface nodes of a graph; root is true for the root graph and state graphs, which output one pose
 std::string ValidateInterface( const can::Graph& graph, bool root )
 {
 	if( root && ( !graph.interfaceInputs.empty() || graph.interfaceOutputs.size() > 1 ) )
 	{
-		return "The root graph must have no SubgraphInput nodes and at most one Output node";
+		return "The root graph and state graphs must have no SubgraphInput nodes and at most one Output node";
 	}
 	for( const bool input : { true, false } )
 	{
@@ -254,7 +276,32 @@ std::string ValidateInterface( const can::Graph& graph, bool root )
 	}
 	if( root && !graph.interfaceOutputs.empty() && GetInterfaceNode( graph, graph.interfaceOutputs[0] ).type != can::SocketType::Pose )
 	{
-		return "The Output node of the root graph must be a Pose";
+		return "The Output node of the root graph and state graphs must be a Pose";
+	}
+	return {};
+}
+
+std::string ValidateStateMachine( const can::StateMachineNode& stateMachine )
+{
+	const auto stateCount = stateMachine.states.size();
+	if( stateCount > 0 && stateMachine.startState >= stateCount )
+	{
+		return "invalid start state";
+	}
+	for( const auto& transition : stateMachine.transitions )
+	{
+		if( transition.fromState >= stateCount || transition.toState >= stateCount )
+		{
+			return "transition references an invalid state";
+		}
+		if( static_cast<uint8_t>( transition.condition ) > static_cast<uint8_t>( can::TransitionCondition::Timeout ) )
+		{
+			return "invalid transition condition";
+		}
+		if( !( transition.duration >= 0.f ) )
+		{
+			return "invalid transition duration";
+		}
 	}
 	return {};
 }
@@ -279,6 +326,14 @@ std::string ValidateNode( const can::NetworkData& data, const can::Graph& graph,
 		if( sample.assetIndex != can::NO_INDEX && sample.embeddedAnimation != can::NO_INDEX )
 		{
 			return "the animation is both external and embedded";
+		}
+	}
+	if( node.type == can::NodeType::StateMachine )
+	{
+		auto error = ValidateStateMachine( GetNodeData<can::StateMachineNode>( graph, node ) );
+		if( !error.empty() )
+		{
+			return error;
 		}
 	}
 	if( GetNodeTypeInfo( node.type ).layout == SocketLayout::Switch && GetShape( graph, node ).poseInputCount == 0 )
@@ -375,9 +430,21 @@ std::string ValidateNetworkData( const can::NetworkData& data )
 	{
 		error = ValidateGraphTree( data );
 	}
+	std::vector<bool> stateGraphs( data.graphs.size(), false );
+	stateGraphs[0] = true;
 	for( uint32_t i = 0; i < data.graphs.size() && error.empty(); ++i )
 	{
-		error = ValidateInterface( data.graphs[i], i == 0 );
+		for( const auto& stateMachine : data.graphs[i].stateMachineNodes )
+		{
+			for( const auto& state : stateMachine.states )
+			{
+				stateGraphs[state.graphIndex] = true;
+			}
+		}
+	}
+	for( uint32_t i = 0; i < data.graphs.size() && error.empty(); ++i )
+	{
+		error = ValidateInterface( data.graphs[i], stateGraphs[i] );
 	}
 	for( uint32_t i = 0; i < data.graphs.size() && error.empty(); ++i )
 	{
@@ -434,6 +501,8 @@ NodeTypeInfo GetNodeTypeInfo( can::NodeType type )
 		return MakeInfo( "Subgraph", SocketLayout::Subgraph, can::SocketType::Pose, "", true );
 	case can::NodeType::Expression:
 		return MakeInfo( "Expression", SocketLayout::Expression, can::SocketType::Float, "value", true );
+	case can::NodeType::StateMachine:
+		return MakeInfo( "StateMachine", SocketLayout::Fixed, can::SocketType::Pose, "pose", true );
 	case can::NodeType::Count:
 		break;
 	}
@@ -572,6 +641,8 @@ size_t GetNodeTableSize( const can::Graph& graph, can::NodeType type )
 		return graph.subgraphNodes.size();
 	case can::NodeType::Expression:
 		return graph.expressionNodes.size();
+	case can::NodeType::StateMachine:
+		return graph.stateMachineNodes.size();
 	case can::NodeType::RestPose:
 	case can::NodeType::Blend:
 	case can::NodeType::AdditiveBlend:
@@ -606,6 +677,11 @@ NodeShape GetShape( const can::Graph& graph, const can::Node& node )
 const can::Graph& GetSubgraph( const can::NetworkData& data, const can::Graph& graph, const can::Node& node )
 {
 	return data.graphs[GetNodeData<can::SubgraphNode>( graph, node ).graphIndex];
+}
+
+const can::Graph& GetStateGraph( const can::NetworkData& data, const can::Graph& graph, const can::Node& node, uint32_t state )
+{
+	return data.graphs[GetNodeData<can::StateMachineNode>( graph, node ).states[state].graphIndex];
 }
 
 uint32_t GetInputCount( const can::NetworkData& data, const can::Graph& graph, const can::Node& node )

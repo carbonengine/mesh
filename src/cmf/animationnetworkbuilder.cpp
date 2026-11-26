@@ -90,6 +90,8 @@ AnimationNodeSettings CreateSettings( AnimationNodeType type )
 		return AnimationBoneWeightsSettings{};
 	case AnimationNodeType::Expression:
 		return AnimationExpressionSettings{};
+	case AnimationNodeType::StateMachine:
+		return AnimationStateMachineSettings{};
 	case AnimationNodeType::RestPose:
 	case AnimationNodeType::Blend:
 	case AnimationNodeType::AdditiveBlend:
@@ -122,6 +124,16 @@ std::string GetNodeLabel( const AnimationNode& node, AnimationNodeId id )
 	return label;
 }
 
+std::string GetStateLabel( const AnimationStateMachineSettings& settings, uint32_t state )
+{
+	if( state >= settings.stateNames.size() )
+	{
+		return "state #" + std::to_string( state );
+	}
+	const auto& name = settings.stateNames[state];
+	return "state #" + std::to_string( state ) + ( name.empty() ? std::string() : " '" + name + "'" );
+}
+
 ValidationResult ParseExpression( const std::string& expression, const std::vector<std::string>& inputNames )
 {
 	std::vector<CcpParser::Variable> variables;
@@ -150,7 +162,7 @@ void ResizeInputConstants( AnimationNode& node, uint32_t inputCount )
 	node.inputConstants.resize( inputCount, 0.f );
 }
 
-// Calls visitor for the graph and all its subgraphs, depth first
+// Calls visitor for the graph and all its subgraphs and state graphs, depth first
 template <typename Graph, typename Visitor>
 void ForEachGraph( Graph& root, const Visitor& visitor ) // NOLINT(readability-identifier-naming): clang-tidy classifies function templates as Default (camelBack); name follows FunctionCase
 {
@@ -166,6 +178,13 @@ void ForEachGraph( Graph& root, const Visitor& visitor ) // NOLINT(readability-i
 			{
 				stack.push_back( subgraph );
 			}
+			if( const auto* settings = graph->template GetSettings<AnimationStateMachineSettings>( id ) )
+			{
+				for( uint32_t state = 0; state < settings->stateNames.size(); ++state )
+				{
+					stack.push_back( graph->GetStateGraph( id, state ) );
+				}
+			}
 		}
 	}
 }
@@ -174,10 +193,11 @@ void ForEachGraph( Graph& root, const Visitor& visitor ) // NOLINT(readability-i
 
 // AnimationGraphBuilder
 
-AnimationGraphBuilder::AnimationGraphBuilder( AnimationNetworkBuilder& network, AnimationGraphBuilder* parent, AnimationNodeId ownerNode ) :
+AnimationGraphBuilder::AnimationGraphBuilder( AnimationNetworkBuilder& network, AnimationGraphBuilder* parent, AnimationNodeId ownerNode, bool hasInterface ) :
 	m_network( &network ),
 	m_parent( parent ),
-	m_ownerNode( ownerNode )
+	m_ownerNode( ownerNode ),
+	m_hasInterface( hasInterface )
 {
 }
 
@@ -217,11 +237,11 @@ AnimationGraphBuilder::Slot* AnimationGraphBuilder::FindSlot( AnimationNodeId no
 
 AnimationNodeId AnimationGraphBuilder::AddNode( AnimationNodeType type )
 {
-	if( type == AnimationNodeType::SubgraphInput && !m_parent )
+	if( type == AnimationNodeType::SubgraphInput && !m_hasInterface )
 	{
 		return {};
 	}
-	if( type == AnimationNodeType::Output && !m_parent && GetOutputNode().IsSet() )
+	if( type == AnimationNodeType::Output && !m_hasInterface && GetOutputNode().IsSet() )
 	{
 		return {};
 	}
@@ -234,7 +254,7 @@ AnimationNodeId AnimationGraphBuilder::AddNode( AnimationNodeType type )
 
 	if( type == AnimationNodeType::Subgraph )
 	{
-		slot.subgraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *m_network, this, id ) ); // NOLINT(modernize-make-unique): the constructor is private
+		slot.subgraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *m_network, this, id, true ) ); // NOLINT(modernize-make-unique): the constructor is private
 	}
 	else if( type == AnimationNodeType::SubgraphInput )
 	{
@@ -250,7 +270,7 @@ AnimationNodeId AnimationGraphBuilder::AddNode( AnimationNodeType type )
 		slot.node.inputConstants[socket] = detail::GetDefaultInputConstant( type, socket );
 	}
 
-	if( m_parent && ( type == AnimationNodeType::SubgraphInput || type == AnimationNodeType::Output ) )
+	if( m_hasInterface && ( type == AnimationNodeType::SubgraphInput || type == AnimationNodeType::Output ) )
 	{
 		// The owner Subgraph node got a new socket
 		auto* owner = m_parent->FindSlot( m_ownerNode );
@@ -274,10 +294,7 @@ bool AnimationGraphBuilder::RemoveNode( AnimationNodeId node )
 	{
 		m_network->ReleaseAsset( *assetPath );
 	}
-	if( slot->subgraph )
-	{
-		slot->subgraph->ReleaseAssets();
-	}
+	ForEachChildGraph( *slot, []( AnimationGraphBuilder& graph ) { graph.ReleaseAssets(); } );
 
 	for( const bool input : { true, false } )
 	{
@@ -287,7 +304,7 @@ bool AnimationGraphBuilder::RemoveNode( AnimationNodeId node )
 		{
 			const auto socket = static_cast<uint32_t>( it - interfaceSockets.begin() );
 			interfaceSockets.erase( it );
-			if( m_parent )
+			if( m_hasInterface )
 			{
 				OnInterfaceSocketRemoved( input, socket );
 			}
@@ -298,6 +315,7 @@ bool AnimationGraphBuilder::RemoveNode( AnimationNodeId node )
 	++slot->generation;
 	slot->node = {};
 	slot->subgraph.reset();
+	slot->states.clear();
 	MarkModified();
 	return true;
 }
@@ -344,6 +362,11 @@ const std::vector<AnimationNodeId>& AnimationGraphBuilder::GetInterfaceOutputs()
 const AnimationGraphBuilder* AnimationGraphBuilder::GetParent() const
 {
 	return m_parent;
+}
+
+bool AnimationGraphBuilder::HasInterface() const
+{
+	return m_hasInterface;
 }
 
 const AnimationNetworkBuilder& AnimationGraphBuilder::GetNetwork() const
@@ -423,8 +446,8 @@ std::string AnimationGraphBuilder::GetInputName( AnimationSocketRef input ) cons
 	switch( detail::GetNodeTypeInfo( node.type ).layout )
 	{
 	case detail::SocketLayout::Interface:
-		// Only Output nodes have an input; the one of the root graph keeps its fixed name
-		return m_parent ? GetInterface( node ).name : detail::GetInputName( GetShape( node ), input.socket );
+		// Only Output nodes have an input; the ones of the root graph and state graphs keep their fixed name
+		return m_hasInterface ? GetInterface( node ).name : detail::GetInputName( GetShape( node ), input.socket );
 	case detail::SocketLayout::Subgraph: {
 		const auto& graph = *slot->subgraph;
 		return GetInterface( graph.FindSlot( graph.m_interfaceInputs[input.socket] )->node ).name;
@@ -747,9 +770,9 @@ ValidationResult AnimationGraphBuilder::SetInterfaceSocket( AnimationNodeId node
 		return Error( "Operation requires a SubgraphInput or Output node" );
 	}
 	const bool input = slot->node.type == AnimationNodeType::SubgraphInput;
-	if( !m_parent && type != AnimationSocketType::Pose )
+	if( !m_hasInterface && type != AnimationSocketType::Pose )
 	{
-		return Error( "The Output node of the root graph must be a Pose" );
+		return Error( "The Output node of the root graph and state graphs must be a Pose" );
 	}
 	auto& settings = std::get<AnimationInterfaceSettings>( slot->node.settings );
 	settings.name = name;
@@ -758,7 +781,7 @@ ValidationResult AnimationGraphBuilder::SetInterfaceSocket( AnimationNodeId node
 		settings.type = type;
 		// Edges inside this graph that use the node's socket have the old type
 		RemoveEdgesIf( [node]( const AnimationEdge& edge ) { return edge.from.node == node || edge.to.node == node; } );
-		if( m_parent )
+		if( m_hasInterface )
 		{
 			const auto& sockets = input ? m_interfaceInputs : m_interfaceOutputs;
 			const auto socket = static_cast<uint32_t>( std::find( sockets.begin(), sockets.end(), node ) - sockets.begin() );
@@ -779,6 +802,208 @@ const AnimationGraphBuilder* AnimationGraphBuilder::GetSubgraph( AnimationNodeId
 {
 	const auto* slot = FindSlot( node );
 	return slot ? slot->subgraph.get() : nullptr;
+}
+
+uint32_t AnimationGraphBuilder::AddState( AnimationNodeId node, std::string_view name )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return INVALID_INDEX;
+	}
+	auto& settings = std::get<AnimationStateMachineSettings>( slot->node.settings );
+	settings.stateNames.emplace_back( name );
+	slot->states.push_back( std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *m_network, this, node, false ) ) ); // NOLINT(modernize-make-unique): the constructor is private
+	MarkModified();
+	return static_cast<uint32_t>( settings.stateNames.size() - 1 );
+}
+
+ValidationResult AnimationGraphBuilder::RemoveState( AnimationNodeId node, uint32_t state )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	auto& settings = std::get<AnimationStateMachineSettings>( slot->node.settings );
+	if( state >= settings.stateNames.size() )
+	{
+		return Error( "State index " + std::to_string( state ) + " is out of range" );
+	}
+	slot->states[state]->ReleaseAssets();
+	slot->states.erase( slot->states.begin() + state );
+	settings.stateNames.erase( settings.stateNames.begin() + state );
+	auto& transitions = settings.transitions;
+	transitions.erase( std::remove_if( transitions.begin(), transitions.end(), [state]( const AnimationTransition& transition ) { return transition.fromState == state || transition.toState == state; } ), transitions.end() );
+	for( auto& transition : transitions )
+	{
+		transition.fromState -= transition.fromState > state ? 1 : 0;
+		transition.toState -= transition.toState > state ? 1 : 0;
+	}
+	if( settings.startState == state )
+	{
+		settings.startState = 0;
+	}
+	else if( settings.startState > state )
+	{
+		--settings.startState;
+	}
+	MarkModified();
+	return Ok();
+}
+
+ValidationResult AnimationGraphBuilder::SetStateName( AnimationNodeId node, uint32_t state, std::string_view name )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	auto& settings = std::get<AnimationStateMachineSettings>( slot->node.settings );
+	if( state >= settings.stateNames.size() )
+	{
+		return Error( "State index " + std::to_string( state ) + " is out of range" );
+	}
+	settings.stateNames[state] = name;
+	MarkModified();
+	return Ok();
+}
+
+ValidationResult AnimationGraphBuilder::SetStartState( AnimationNodeId node, uint32_t state )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	auto& settings = std::get<AnimationStateMachineSettings>( slot->node.settings );
+	if( state >= settings.stateNames.size() )
+	{
+		return Error( "State index " + std::to_string( state ) + " is out of range" );
+	}
+	settings.startState = state;
+	MarkModified();
+	return Ok();
+}
+
+ValidationResult AnimationGraphBuilder::SetResumeOnActivate( AnimationNodeId node, bool resume )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	std::get<AnimationStateMachineSettings>( slot->node.settings ).resumeOnActivate = resume;
+	MarkModified();
+	return Ok();
+}
+
+ValidationResult AnimationGraphBuilder::ValidateTransition( AnimationNodeId node, const AnimationTransition& transition ) const
+{
+	auto result = CheckTransition( node, transition );
+	if( result && transition.condition == AnimationTransitionCondition::Expression && !transition.expression.empty() )
+	{
+		result = m_network->ParseTransitionExpression( transition.expression );
+	}
+	return result;
+}
+
+ValidationResult AnimationGraphBuilder::CheckTransition( AnimationNodeId node, const AnimationTransition& transition ) const
+{
+	const auto* settings = GetSettings<AnimationStateMachineSettings>( node );
+	if( !settings )
+	{
+		return Error( "Operation requires a StateMachine node" );
+	}
+	const auto stateCount = settings->stateNames.size();
+	if( transition.fromState >= stateCount || transition.toState >= stateCount )
+	{
+		return Error( "Transition references an invalid state" );
+	}
+	if( static_cast<uint8_t>( transition.condition ) > static_cast<uint8_t>( AnimationTransitionCondition::Timeout ) )
+	{
+		return Error( "Invalid transition condition" );
+	}
+	if( !( transition.duration >= 0.f ) )
+	{
+		return Error( "Transition duration must not be negative" );
+	}
+	if( !( transition.timeout >= 0.f ) )
+	{
+		return Error( "Transition timeout must not be negative" );
+	}
+	return Ok();
+}
+
+uint32_t AnimationGraphBuilder::AddTransition( AnimationNodeId node, const AnimationTransition& transition )
+{
+	auto* slot = FindSlot( node );
+	if( !slot || !CheckTransition( node, transition ) )
+	{
+		return INVALID_INDEX;
+	}
+	auto& transitions = std::get<AnimationStateMachineSettings>( slot->node.settings ).transitions;
+	transitions.push_back( transition );
+	MarkModified();
+	return static_cast<uint32_t>( transitions.size() - 1 );
+}
+
+ValidationResult AnimationGraphBuilder::SetTransition( AnimationNodeId node, uint32_t index, const AnimationTransition& transition )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	auto& transitions = std::get<AnimationStateMachineSettings>( slot->node.settings ).transitions;
+	if( index >= transitions.size() )
+	{
+		return Error( "Transition index " + std::to_string( index ) + " is out of range" );
+	}
+	result = CheckTransition( node, transition );
+	if( !result )
+	{
+		return result;
+	}
+	transitions[index] = transition;
+	MarkModified();
+	return Ok();
+}
+
+ValidationResult AnimationGraphBuilder::RemoveTransition( AnimationNodeId node, uint32_t index )
+{
+	ValidationResult result;
+	auto* slot = FindSlot( node, AnimationNodeType::StateMachine, result );
+	if( !slot )
+	{
+		return result;
+	}
+	auto& transitions = std::get<AnimationStateMachineSettings>( slot->node.settings ).transitions;
+	if( index >= transitions.size() )
+	{
+		return Error( "Transition index " + std::to_string( index ) + " is out of range" );
+	}
+	transitions.erase( transitions.begin() + index );
+	MarkModified();
+	return Ok();
+}
+
+AnimationGraphBuilder* AnimationGraphBuilder::GetStateGraph( AnimationNodeId node, uint32_t state )
+{
+	auto* slot = FindSlot( node );
+	return slot && state < slot->states.size() ? slot->states[state].get() : nullptr;
+}
+
+const AnimationGraphBuilder* AnimationGraphBuilder::GetStateGraph( AnimationNodeId node, uint32_t state ) const
+{
+	const auto* slot = FindSlot( node );
+	return slot && state < slot->states.size() ? slot->states[state].get() : nullptr;
 }
 
 void AnimationGraphBuilder::RemoveEdgesIf( const std::function<bool( const AnimationEdge& )>& predicate )
@@ -842,7 +1067,7 @@ void AnimationGraphBuilder::MarkModified()
 AnimationNetworkBuilder::AnimationNetworkBuilder( AnimationAssetLoader& loader ) :
 	m_loader( &loader ),
 	m_aliveToken( std::make_shared<bool>( true ) ),
-	m_rootGraph( new AnimationGraphBuilder( *this, nullptr, {} ) ) // NOLINT(modernize-make-unique): the constructor is private
+	m_rootGraph( new AnimationGraphBuilder( *this, nullptr, {}, false ) ) // NOLINT(modernize-make-unique): the constructor is private
 {
 }
 
@@ -1105,6 +1330,13 @@ void AnimationNetworkBuilder::CollectProblems( std::vector<std::string>* errorsO
 			{
 				graphs.emplace_back( subgraph, graphName + "/" + GetNodeLabel( *graph->GetNode( id ), id ) );
 			}
+			if( const auto* stateMachine = graph->GetSettings<AnimationStateMachineSettings>( id ) )
+			{
+				for( uint32_t state = 0; state < stateMachine->stateNames.size(); ++state )
+				{
+					graphs.emplace_back( graph->GetStateGraph( id, state ), graphName + "/" + GetNodeLabel( *graph->GetNode( id ), id ) + "/" + GetStateLabel( *stateMachine, state ) );
+				}
+			}
 		}
 	}
 	if( errorsOut != nullptr )
@@ -1258,6 +1490,61 @@ void AnimationNetworkBuilder::ValidateNode( const AnimationGraphBuilder& graph, 
 	{
 		ValidateRandomWeights( *random, prefix, errors );
 	}
+	else if( const auto* stateMachine = std::get_if<AnimationStateMachineSettings>( &node.settings ) )
+	{
+		ValidateStateMachine( graph, id, *stateMachine, prefix, errors );
+	}
+}
+
+void AnimationNetworkBuilder::ValidateStateMachine( const AnimationGraphBuilder& graph, AnimationNodeId id, const AnimationStateMachineSettings& settings, const std::string& prefix, std::vector<std::string>& errors ) const
+{
+	if( settings.stateNames.empty() )
+	{
+		errors.push_back( prefix + "the state machine has no states" );
+		return;
+	}
+	for( uint32_t state = 0; state < settings.stateNames.size(); ++state )
+	{
+		if( !graph.GetStateGraph( id, state )->GetOutputNode().IsSet() )
+		{
+			errors.push_back( prefix + GetStateLabel( settings, state ) + " has no Output node" );
+		}
+	}
+	for( uint32_t i = 0; i < settings.transitions.size(); ++i )
+	{
+		const auto& transition = settings.transitions[i];
+		if( transition.condition != AnimationTransitionCondition::Expression )
+		{
+			continue;
+		}
+		const auto transitionPrefix = prefix + "transition " + std::to_string( i ) + " (" + GetStateLabel( settings, transition.fromState ) + " to " + GetStateLabel( settings, transition.toState ) + "): ";
+		if( transition.expression.empty() )
+		{
+			errors.push_back( transitionPrefix + "no expression is set" );
+			continue;
+		}
+		const auto result = ParseTransitionExpression( transition.expression );
+		if( !result )
+		{
+			errors.push_back( transitionPrefix + result.error );
+		}
+	}
+}
+
+ValidationResult AnimationNetworkBuilder::ParseTransitionExpression( const std::string& expression ) const
+{
+	std::vector<std::string> names;
+	names.reserve( m_parameters.size() + 1 );
+	for( const auto& parameter : m_parameters )
+	{
+		names.push_back( parameter.name );
+	}
+	// A parameter with the same name hides the built-in variable
+	if( FindParameter( detail::STATE_TIME_VARIABLE ) == INVALID_PARAMETER )
+	{
+		names.emplace_back( detail::STATE_TIME_VARIABLE );
+	}
+	return ParseExpression( expression, names );
 }
 
 void AnimationNetworkBuilder::ValidateAnimationSample( const AnimationSampleSettings& settings, const std::string& prefix, std::vector<std::string>& warnings ) const
@@ -1321,16 +1608,19 @@ public:
 		return serializer.Write( file );
 	}
 
-	/** A graph in save order with the indices assigned to its subgraphs. */
+	/** A graph in save order with the indices assigned to its subgraphs and state graphs. */
 	struct OrderedGraph
 	{
 		const AnimationGraphBuilder* graph = nullptr;
 		/** Graph index of the subgraph of each slot, NO_INDEX for slots without a live subgraph. */
 		std::vector<uint32_t> subgraphIndices;
+		/** Graph indices of the state graphs of each slot, empty for slots that are not live StateMachine nodes. */
+		std::vector<std::vector<uint32_t>> stateIndices;
 	};
 
-	// Numbers the graphs in the order they are saved: the root graph is 0, and the subgraphs of a graph get the next
-	// free indices in slot order when the graph is visited. Graphs are visited depth first, last subgraph first.
+	// Numbers the graphs in the order they are saved: the root graph is 0, and the subgraphs and state graphs of a
+	// graph get the next free indices in slot order (states in state order) when the graph is visited. Graphs are
+	// visited depth first, last contained graph first.
 	static std::vector<OrderedGraph> OrderGraphs( const AnimationGraphBuilder& root )
 	{
 		std::vector<OrderedGraph> graphs( 1 );
@@ -1342,16 +1632,28 @@ public:
 			pending.pop_back();
 			const auto& slots = graphs[graphIndex].graph->m_slots;
 			std::vector<uint32_t> subgraphIndices( slots.size(), can::NO_INDEX );
+			std::vector<std::vector<uint32_t>> stateIndices( slots.size() );
 			for( uint32_t i = 0; i < slots.size(); ++i )
 			{
-				if( slots[i].alive && slots[i].subgraph )
+				if( !slots[i].alive )
+				{
+					continue;
+				}
+				if( slots[i].subgraph )
 				{
 					subgraphIndices[i] = static_cast<uint32_t>( graphs.size() );
 					pending.push_back( subgraphIndices[i] );
-					graphs.push_back( { slots[i].subgraph.get(), {} } );
+					graphs.push_back( { slots[i].subgraph.get(), {}, {} } );
+				}
+				for( const auto& state : slots[i].states )
+				{
+					stateIndices[i].push_back( static_cast<uint32_t>( graphs.size() ) );
+					pending.push_back( stateIndices[i].back() );
+					graphs.push_back( { state.get(), {}, {} } );
 				}
 			}
 			graphs[graphIndex].subgraphIndices = std::move( subgraphIndices );
+			graphs[graphIndex].stateIndices = std::move( stateIndices );
 		}
 		return graphs;
 	}
@@ -1477,20 +1779,22 @@ private:
 			const auto graphIndex = pending.back();
 			pending.pop_back();
 			const auto& ordered = graphs[graphIndex];
-			WriteGraph( *ordered.graph, graphIndex, ordered.subgraphIndices );
-			for( const auto subgraphIndex : ordered.subgraphIndices )
+			WriteGraph( *ordered.graph, graphIndex, ordered );
+			for( uint32_t i = 0; i < ordered.subgraphIndices.size(); ++i )
 			{
-				if( subgraphIndex != can::NO_INDEX )
+				if( ordered.subgraphIndices[i] != can::NO_INDEX )
 				{
-					pending.push_back( subgraphIndex );
+					pending.push_back( ordered.subgraphIndices[i] );
 				}
+				pending.insert( pending.end(), ordered.stateIndices[i].begin(), ordered.stateIndices[i].end() );
 			}
 		}
 	}
 
 	// Writes a graph to m_graphs[graphIndex]
-	void WriteGraph( const AnimationGraphBuilder& graph, uint32_t graphIndex, const std::vector<uint32_t>& subgraphIndices )
+	void WriteGraph( const AnimationGraphBuilder& graph, uint32_t graphIndex, const OrderedGraph& ordered )
 	{
+		const auto& subgraphIndices = ordered.subgraphIndices;
 		// Nodes are stored without the slots of removed nodes
 		can::Graph result;
 		std::vector<uint32_t> nodeIndices( graph.m_slots.size(), can::NO_INDEX );
@@ -1507,6 +1811,10 @@ private:
 			if( slot.subgraph )
 			{
 				nodes.back().dataIndex = AddNodeData( result.subgraphNodes, can::SubgraphNode{ subgraphIndices[i] } );
+			}
+			if( const auto* stateMachine = std::get_if<AnimationStateMachineSettings>( &slot.node.settings ) )
+			{
+				nodes.back().dataIndex = AddNodeData( result.stateMachineNodes, WriteStateMachine( *stateMachine, ordered.stateIndices[i] ) );
 			}
 		}
 
@@ -1633,6 +1941,38 @@ private:
 		return AddNodeData( graph.expressionNodes, data );
 	}
 
+	// StateMachine data needs the indices of the state graphs, so WriteGraph adds it (see WriteStateMachine)
+	static uint32_t WriteSettings( const AnimationStateMachineSettings& /*settings*/, can::Graph& /*graph*/ )
+	{
+		return can::NO_INDEX;
+	}
+
+	can::StateMachineNode WriteStateMachine( const AnimationStateMachineSettings& settings, const std::vector<uint32_t>& stateGraphIndices )
+	{
+		can::StateMachineNode data;
+		data.startState = settings.startState;
+		data.flags = settings.resumeOnActivate ? can::STATE_MACHINE_RESUME_ON_ACTIVATE : 0;
+		data.states = m_allocator.AllocateSpan<can::StateMachineState>( settings.stateNames.size() );
+		for( size_t i = 0; i < settings.stateNames.size(); ++i )
+		{
+			data.states[i].graphIndex = stateGraphIndices[i];
+			data.states[i].name = m_allocator.AllocateString( settings.stateNames[i] );
+		}
+		data.transitions = m_allocator.AllocateSpan<can::StateMachineTransition>( settings.transitions.size() );
+		for( size_t i = 0; i < settings.transitions.size(); ++i )
+		{
+			const auto& transition = settings.transitions[i];
+			auto& target = data.transitions[i];
+			target.fromState = transition.fromState;
+			target.toState = transition.toState;
+			target.condition = transition.condition;
+			target.duration = transition.duration;
+			target.timeout = transition.timeout;
+			target.expression = m_allocator.AllocateString( transition.expression );
+		}
+		return data;
+	}
+
 	static uint32_t Align( uint32_t offset )
 	{
 		constexpr uint32_t alignment = 8;
@@ -1687,7 +2027,7 @@ void AnimationNetworkBuilder::Clear()
 	}
 	m_skeletonPath.clear();
 	m_skeletonName.clear();
-	m_rootGraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *this, nullptr, {} ) ); // NOLINT(modernize-make-unique): the constructor is private
+	m_rootGraph = std::unique_ptr<AnimationGraphBuilder>( new AnimationGraphBuilder( *this, nullptr, {}, false ) ); // NOLINT(modernize-make-unique): the constructor is private
 	m_parameters.clear();
 	m_embeddedAssets.clear();
 	MarkModified();
