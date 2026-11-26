@@ -41,7 +41,8 @@ struct GraphView
 	float zoom = 1.f;
 };
 
-/** Location of a node in a network: graph index and node index (see AnimationNetworkBuilder::GetSaveLayout). */
+/** Location of a node in a network: graph index and node index (see AnimationNetworkBuilder::GetLayout, or
+* AnimationNetworkBuilder::GetSaveLayout for locations in the exported network). */
 struct NodeLocation
 {
 	uint32_t graph = 0;
@@ -210,6 +211,12 @@ public:
 
 	/** Returns the location of a node, or nullopt if the node or graph doesn't exist. */
 	[[nodiscard]] std::optional<NodeLocation> Locate( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
+	/** Returns the location of a node in the exported network (see AnimationNetworkBuilder::GetSaveLayout), or
+	* nullopt if the node is not exported. */
+	[[nodiscard]] std::optional<NodeLocation> LocateExported( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
+	/** Returns true if a node contributes to the output of the network. Unused nodes stay in the document, but are
+	* not exported and their problems are not reported. */
+	[[nodiscard]] bool IsNodeUsed( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const;
 	/** Returns the graph and node at a location, or {nullptr, unset} if there is none. */
 	[[nodiscard]] std::pair<cmf::AnimationGraphBuilder*, cmf::AnimationNodeId> Find( const NodeLocation& location );
 	/** Converts a graph path to locations, and back. Invalid parts are dropped. */
@@ -248,6 +255,9 @@ private:
 	std::filesystem::path m_filePath;
 	uint64_t m_editorRevision = 0;
 	uint64_t m_savedRevision = 0;
+	/** Used nodes of each used graph (see IsNodeUsed), for the network generation m_usedGeneration. */
+	mutable std::map<const cmf::AnimationGraphBuilder*, std::vector<cmf::AnimationNodeId>> m_usedNodes;
+	mutable uint64_t m_usedGeneration = 0;
 };
 
 }

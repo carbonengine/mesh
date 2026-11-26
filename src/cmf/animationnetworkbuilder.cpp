@@ -189,6 +189,72 @@ void ForEachGraph( Graph& root, const Visitor& visitor ) // NOLINT(readability-i
 	}
 }
 
+// The nodes that contribute to the output of a network: the Output node of the root graph, the Output nodes of the
+// state graphs of used StateMachine nodes, the interface nodes of the subgraphs of used Subgraph nodes, and the nodes
+// connected to the inputs of used nodes. Graphs of used Subgraph and StateMachine nodes are used, even without used
+// nodes. Unused nodes are not saved or validated.
+class UsedNodes
+{
+public:
+	explicit UsedNodes( const AnimationGraphBuilder& root )
+	{
+		std::vector<std::pair<const AnimationGraphBuilder*, std::vector<AnimationNodeId>>> pending;
+		pending.emplace_back( &root, GetOutputs( root ) );
+		while( !pending.empty() )
+		{
+			auto [graph, stack] = std::move( pending.back() );
+			pending.pop_back();
+			auto& used = m_nodes[graph];
+			while( !stack.empty() )
+			{
+				const auto id = stack.back();
+				stack.pop_back();
+				if( !used.insert( id.index ).second )
+				{
+					continue;
+				}
+				for( const auto& edge : graph->GetEdges() )
+				{
+					if( edge.to.node == id )
+					{
+						stack.push_back( edge.from.node );
+					}
+				}
+				if( const auto* subgraph = graph->GetSubgraph( id ) )
+				{
+					auto interfaceNodes = subgraph->GetInterfaceInputs();
+					const auto& outputs = subgraph->GetInterfaceOutputs();
+					interfaceNodes.insert( interfaceNodes.end(), outputs.begin(), outputs.end() );
+					pending.emplace_back( subgraph, std::move( interfaceNodes ) );
+				}
+				if( const auto* stateMachine = graph->GetSettings<AnimationStateMachineSettings>( id ) )
+				{
+					for( uint32_t state = 0; state < stateMachine->stateNames.size(); ++state )
+					{
+						const auto* stateGraph = graph->GetStateGraph( id, state );
+						pending.emplace_back( stateGraph, GetOutputs( *stateGraph ) );
+					}
+				}
+			}
+		}
+	}
+
+	[[nodiscard]] bool IsUsed( const AnimationGraphBuilder& graph, AnimationNodeId node ) const
+	{
+		const auto it = m_nodes.find( &graph );
+		return it != m_nodes.end() && it->second.count( node.index ) != 0;
+	}
+
+private:
+	/** Slot indices of the used nodes of each used graph. */
+	std::map<const AnimationGraphBuilder*, std::set<uint32_t>> m_nodes;
+
+	static std::vector<AnimationNodeId> GetOutputs( const AnimationGraphBuilder& graph )
+	{
+		const auto output = graph.GetOutputNode();
+		return output.IsSet() ? std::vector<AnimationNodeId>{ output } : std::vector<AnimationNodeId>{};
+	}
+};
 }
 
 // AnimationGraphBuilder
@@ -1317,6 +1383,8 @@ void AnimationNetworkBuilder::CollectProblems( std::vector<std::string>* errorsO
 	{
 		errors.emplace_back( "The root graph has no Output node" );
 	}
+	// Unused nodes are not saved, so their problems don't matter
+	const UsedNodes used( *m_rootGraph );
 	std::vector<std::pair<const AnimationGraphBuilder*, std::string>> graphs = { { m_rootGraph.get(), "root" } };
 	while( !graphs.empty() )
 	{
@@ -1324,6 +1392,10 @@ void AnimationNetworkBuilder::CollectProblems( std::vector<std::string>* errorsO
 		graphs.pop_back();
 		for( const auto id : graph->GetNodes() )
 		{
+			if( !used.IsUsed( *graph, id ) )
+			{
+				continue;
+			}
 			const auto label = graphName + ": " + GetNodeLabel( *graph->GetNode( id ), id );
 			ValidateNode( *graph, id, label + ": ", errors, warnings );
 			if( const auto* subgraph = graph->GetSubgraph( id ) )
@@ -1618,10 +1690,17 @@ public:
 		std::vector<std::vector<uint32_t>> stateIndices;
 	};
 
+	// Returns true if a slot holds a node to include: a live node that is used, or any live node if used is nullptr
+	static bool IsIncluded( const AnimationGraphBuilder& graph, uint32_t slotIndex, const UsedNodes* used )
+	{
+		const auto& slot = graph.m_slots[slotIndex];
+		return slot.alive && ( used == nullptr || used->IsUsed( graph, { slotIndex, slot.generation } ) );
+	}
+
 	// Numbers the graphs in the order they are saved: the root graph is 0, and the subgraphs and state graphs of a
 	// graph get the next free indices in slot order (states in state order) when the graph is visited. Graphs are
-	// visited depth first, last contained graph first.
-	static std::vector<OrderedGraph> OrderGraphs( const AnimationGraphBuilder& root )
+	// visited depth first, last contained graph first. With used set, only the graphs of used nodes are numbered.
+	static std::vector<OrderedGraph> OrderGraphs( const AnimationGraphBuilder& root, const UsedNodes* used )
 	{
 		std::vector<OrderedGraph> graphs( 1 );
 		graphs[0].graph = &root;
@@ -1630,12 +1709,13 @@ public:
 		{
 			const auto graphIndex = pending.back();
 			pending.pop_back();
-			const auto& slots = graphs[graphIndex].graph->m_slots;
+			const auto& graph = *graphs[graphIndex].graph;
+			const auto& slots = graph.m_slots;
 			std::vector<uint32_t> subgraphIndices( slots.size(), can::NO_INDEX );
 			std::vector<std::vector<uint32_t>> stateIndices( slots.size() );
 			for( uint32_t i = 0; i < slots.size(); ++i )
 			{
-				if( !slots[i].alive )
+				if( !IsIncluded( graph, i, used ) )
 				{
 					continue;
 				}
@@ -1658,18 +1738,30 @@ public:
 		return graphs;
 	}
 
-	static std::vector<AnimationGraphLayout> GetLayout( const AnimationGraphBuilder& root )
+	// Returns the graphs and nodes of OrderGraphs with the same used argument
+	static std::vector<AnimationGraphLayout> GetLayout( const AnimationGraphBuilder& root, const UsedNodes* used )
 	{
 		std::vector<AnimationGraphLayout> layout;
-		for( const auto& ordered : OrderGraphs( root ) )
+		for( const auto& ordered : OrderGraphs( root, used ) )
 		{
-			layout.push_back( { ordered.graph, ordered.graph->GetNodes() } );
+			const auto& graph = *ordered.graph;
+			std::vector<AnimationNodeId> nodes;
+			for( uint32_t i = 0; i < graph.m_slots.size(); ++i )
+			{
+				if( IsIncluded( graph, i, used ) )
+				{
+					nodes.push_back( { i, graph.m_slots[i].generation } );
+				}
+			}
+			layout.push_back( { &graph, std::move( nodes ) } );
 		}
 		return layout;
 	}
 
 private:
 	const AnimationNetworkBuilder* m_builder = nullptr;
+	/** Nodes to save. */
+	UsedNodes m_used;
 	MemoryAllocator m_allocator;
 	can::NetworkData m_data;
 	std::map<std::string, uint32_t, std::less<>> m_assetIndices;
@@ -1682,7 +1774,8 @@ private:
 	std::string m_error;
 
 	explicit Serializer( const AnimationNetworkBuilder& builder ) :
-		m_builder( &builder )
+		m_builder( &builder ),
+		m_used( *builder.m_rootGraph )
 	{
 	}
 
@@ -1767,10 +1860,10 @@ private:
 		return index;
 	}
 
-	// Writes the root graph and all subgraphs to m_graphs
+	// Writes the root graph and the subgraphs and state graphs of used nodes to m_graphs
 	void WriteGraphs( const AnimationGraphBuilder& root )
 	{
-		const auto graphs = OrderGraphs( root );
+		const auto graphs = OrderGraphs( root, &m_used );
 		m_graphs.resize( graphs.size() );
 		// Graphs are written in the order they were numbered, which determines the order of the asset table
 		std::vector<uint32_t> pending = { 0 };
@@ -1795,14 +1888,14 @@ private:
 	void WriteGraph( const AnimationGraphBuilder& graph, uint32_t graphIndex, const OrderedGraph& ordered )
 	{
 		const auto& subgraphIndices = ordered.subgraphIndices;
-		// Nodes are stored without the slots of removed nodes
+		// Nodes are stored without the slots of removed and unused nodes
 		can::Graph result;
 		std::vector<uint32_t> nodeIndices( graph.m_slots.size(), can::NO_INDEX );
 		std::vector<can::Node> nodes;
 		for( uint32_t i = 0; i < graph.m_slots.size(); ++i )
 		{
 			const auto& slot = graph.m_slots[i];
-			if( !slot.alive )
+			if( !IsIncluded( graph, i, &m_used ) )
 			{
 				continue;
 			}
@@ -1822,7 +1915,13 @@ private:
 		edges.reserve( graph.m_edges.size() );
 		for( const auto& edge : graph.m_edges )
 		{
-			edges.push_back( { { nodeIndices[edge.from.node.index], edge.from.socket }, { nodeIndices[edge.to.node.index], edge.to.socket } } );
+			// The source of an edge to a used node is used; edges from used nodes to unused nodes are left out
+			const auto from = nodeIndices[edge.from.node.index];
+			const auto to = nodeIndices[edge.to.node.index];
+			if( from != can::NO_INDEX && to != can::NO_INDEX )
+			{
+				edges.push_back( { { from, edge.from.socket }, { to, edge.to.socket } } );
+			}
 		}
 
 		Modify( result.nodes, m_allocator ) = nodes;
@@ -2015,7 +2114,13 @@ ValidationResult AnimationNetworkBuilder::Save( std::vector<uint8_t>& file ) con
 
 std::vector<AnimationGraphLayout> AnimationNetworkBuilder::GetSaveLayout() const
 {
-	return Serializer::GetLayout( *m_rootGraph );
+	const UsedNodes used( *m_rootGraph );
+	return Serializer::GetLayout( *m_rootGraph, &used );
+}
+
+std::vector<AnimationGraphLayout> AnimationNetworkBuilder::GetLayout() const
+{
+	return Serializer::GetLayout( *m_rootGraph, nullptr );
 }
 
 void AnimationNetworkBuilder::Clear()

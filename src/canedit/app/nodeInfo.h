@@ -13,6 +13,9 @@
 namespace canedit
 {
 
+/** Shown for nodes that are not used (see Document::IsNodeUsed) instead of their problems, which are not reported. */
+constexpr const char* UNUSED_NODE_HINT = "Not connected to the output: the node is not exported and its problems are ignored.";
+
 /** A group of node types in the palette. */
 struct NodeCategory
 {

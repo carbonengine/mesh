@@ -468,12 +468,13 @@ private:
 	std::vector<AnimationNodeId> m_interfaceOutputs;
 };
 
-/** @brief A graph of a network and its nodes in the order AnimationNetworkBuilder::Save stores them. */
+/** @brief A graph of a network and its nodes in a fixed order (see AnimationNetworkBuilder::GetSaveLayout and
+* AnimationNetworkBuilder::GetLayout). */
 struct AnimationGraphLayout
 {
 	/** The graph. */
 	const AnimationGraphBuilder* graph = nullptr;
-	/** Live nodes of the graph; the position of a node is its index in the saved graph. */
+	/** Nodes of the graph; the position of a node is its index in the layout's numbering of the graph. */
 	std::vector<AnimationNodeId> nodes;
 };
 
@@ -552,11 +553,11 @@ public:
 	/** @brief Returns true if some referenced assets are still loading. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool HasPendingAssets() const;
 	/** @brief Returns descriptions of all problems that prevent the network from being evaluated. Assets that are
-	* still loading are not reported as errors. */
+	* still loading are not reported as errors, and neither are problems of nodes that are not used (see Save). */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetErrors() const;
 	/** @brief Returns descriptions of problems the network works around when it is evaluated: animations that are
 	* not set, failed to load or are missing play the rest pose, missing bone masks weight all bones fully and weights
-	* of unknown bones are ignored. */
+	* of unknown bones are ignored. Problems of nodes that are not used (see Save) are not reported. */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<std::string> GetWarnings() const;
 	/** @brief Returns true if all assets are loaded and the network has no errors. It may have warnings. */
 	[[nodiscard]] CARBON_MESH_EXPORT bool IsReady() const;
@@ -564,18 +565,30 @@ public:
 	/** @brief Returns the loaded data of a referenced asset, or nullptr if it isn't referenced, loaded or failed. */
 	[[nodiscard]] CARBON_MESH_EXPORT const cmf::Data* GetAssetData( std::string_view assetPath ) const;
 
-	/** @brief Saves the network in the CAN format. Node handles are not stored: nodes are numbered in slot order
-	* without removed nodes (see GetSaveLayout).
+	/** @brief Saves the network in the CAN format.
 	*
-	* References to embedded assets are resolved when saving, and the referenced skeleton and animations are stored
-	* in the file. Saving fails if one of them is not found in its embedded asset.
+	* Only used nodes are stored: nodes connected, directly or through other nodes, to the Output node of the root
+	* graph, the Output nodes of the state graphs of used StateMachine nodes or the interface nodes of the subgraphs
+	* of used Subgraph nodes. Other nodes, together with their subgraphs, state graphs and assets, are left out. They
+	* are not validated either, so GetErrors and GetWarnings don't report their problems.
+	*
+	* Node handles are not stored: nodes are numbered in slot order without removed and unused nodes (see
+	* GetSaveLayout). References to embedded assets are resolved when saving, and the referenced skeleton and
+	* animations are stored in the file. Saving fails if one of them is not found in its embedded asset.
 	* @param file Receives the contents of the CAN file. It is left unchanged if saving fails.
 	*/
 	[[nodiscard]] CARBON_MESH_EXPORT ValidationResult Save( std::vector<uint8_t>& file ) const;
 
-	/** @brief Returns all graphs in the order Save stores them, starting with the root graph, with their live nodes
-	* in stored order. Use it to associate data with nodes of a saved file. */
+	/** @brief Returns the graphs Save stores, in stored order starting with the root graph, with the nodes it stores
+	* in stored order. Use it to associate data with nodes of a saved file. Nodes that are not listed are not used
+	* (see Save). */
 	[[nodiscard]] CARBON_MESH_EXPORT std::vector<AnimationGraphLayout> GetSaveLayout() const;
+
+	/** @brief Returns all graphs, starting with the root graph, with all their nodes in slot order, including the
+	* nodes and graphs Save leaves out. Graphs are numbered like in GetSaveLayout, but the graphs of unused nodes get
+	* numbers too. Use it to refer to nodes by position, for example to find them again after the network is built
+	* again from the same description. */
+	[[nodiscard]] CARBON_MESH_EXPORT std::vector<AnimationGraphLayout> GetLayout() const;
 
 	/** @brief Removes all nodes, parameters, embedded assets and the skeleton reference. */
 	CARBON_MESH_EXPORT void Clear();

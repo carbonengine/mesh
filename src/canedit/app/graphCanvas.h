@@ -90,7 +90,7 @@ private:
 	void DrawEdges( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph ) const;
 	void DrawNodes( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph ) const;
 	void DrawNode( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node ) const;
-	void DrawNodeSockets( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node, bool drawText ) const;
+	void DrawNodeSockets( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node, bool drawText, bool used ) const;
 	static void DrawNodeIssues( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node, float zoom, bool drawText );
 	void DrawInteraction( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph ) const;
 	void DrawContextMenus( cmf::AnimationGraphBuilder& graph );

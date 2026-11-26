@@ -58,6 +58,8 @@ constexpr float FILTER_WIDTH = 12.f;
 constexpr float MESSAGE_LINE_OFFSET = 1.5f;
 constexpr float HALF = 0.5f;
 constexpr size_t LABEL_BUFFER_SIZE = 32;
+/** How far the colors of unused nodes, which are not exported, are faded into the background. */
+constexpr float UNUSED_FADE = 0.6f;
 
 constexpr ImU32 BACKGROUND_COLOR = IM_COL32( 30, 30, 34, 255 );
 constexpr ImU32 GRID_COLOR = IM_COL32( 50, 50, 56, 255 );
@@ -70,6 +72,19 @@ constexpr ImU32 ERROR_COLOR = IM_COL32( 230, 70, 60, 255 );
 constexpr ImU32 WARNING_COLOR = IM_COL32( 240, 170, 40, 255 );
 constexpr ImU32 BOX_FILL_COLOR = IM_COL32( 90, 140, 255, 40 );
 constexpr ImU32 BOX_BORDER_COLOR = IM_COL32( 90, 140, 255, 200 );
+
+// Fades a color of an unused node or edge into the background; keeps it opaque so that edges don't show through
+ImU32 FadeIfUnused( ImU32 color, bool used )
+{
+	if( used )
+	{
+		return color;
+	}
+	const auto from = ImGui::ColorConvertU32ToFloat4( color );
+	const auto to = ImGui::ColorConvertU32ToFloat4( BACKGROUND_COLOR );
+	const auto mix = []( float a, float b ) { return a + ( b - a ) * UNUSED_FADE; };
+	return ImGui::ColorConvertFloat4ToU32( { mix( from.x, to.x ), mix( from.y, to.y ), mix( from.z, to.z ), from.w } );
+}
 
 ImVec2 Add( ImVec2 a, ImVec2 b )
 {
@@ -778,6 +793,7 @@ void GraphCanvas::DrawGrid( ImDrawList& drawList ) const
 void GraphCanvas::DrawEdges( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph ) const
 {
 	const auto& selectedEdge = m_context->session->GetSelectedEdge();
+	const auto& document = *m_context->document;
 	for( const auto& edge : graph.GetEdges() )
 	{
 		const auto from = GetSocketPosition( { edge.from, true } );
@@ -785,7 +801,8 @@ void GraphCanvas::DrawEdges( ImDrawList& drawList, const cmf::AnimationGraphBuil
 		const auto [c1, c2] = GetEdgeControls( from, to, m_view.zoom );
 		const bool selected = selectedEdge && *selectedEdge == edge.to;
 		const bool hovered = m_hoveredEdge && *m_hoveredEdge == edge.to;
-		const auto color = selected ? SELECTION_COLOR : GetSocketColor( graph.GetOutputType( edge.from ) );
+		// Edges to used nodes come from used nodes, so the target tells whether the edge is used
+		const auto color = selected ? SELECTION_COLOR : FadeIfUnused( GetSocketColor( graph.GetOutputType( edge.from ) ), document.IsNodeUsed( graph, edge.to.node ) );
 		const auto thickness = ( selected || hovered ? SELECTED_EDGE_THICKNESS : EDGE_THICKNESS ) * std::max( m_view.zoom, 0.5f );
 		drawList.AddBezierCubic( from, c1, c2, to, color, thickness );
 	}
@@ -807,14 +824,15 @@ void GraphCanvas::DrawNode( ImDrawList& drawList, const cmf::AnimationGraphBuild
 	const bool hovered = m_hoveredNode && *m_hoveredNode == node.id;
 	const auto rounding = NODE_ROUNDING * zoom;
 	const ImVec2 headerMax = { node.max.x, node.min.y + HEADER_HEIGHT * zoom };
+	const bool used = m_context->document->IsNodeUsed( graph, node.id );
 
 	auto borderColor = hovered ? DIM_TEXT_COLOR : NODE_BORDER_COLOR;
 	if( selected )
 	{
 		borderColor = SELECTION_COLOR;
 	}
-	drawList.AddRectFilled( node.min, node.max, NODE_BODY_COLOR, rounding );
-	drawList.AddRectFilled( node.min, headerMax, GetNodeColor( data->type ), rounding, ImDrawFlags_RoundCornersTop );
+	drawList.AddRectFilled( node.min, node.max, FadeIfUnused( NODE_BODY_COLOR, used ), rounding );
+	drawList.AddRectFilled( node.min, headerMax, FadeIfUnused( GetNodeColor( data->type ), used ), rounding, ImDrawFlags_RoundCornersTop );
 	drawList.AddRect( node.min, node.max, borderColor, rounding, 0, selected ? SELECTED_NODE_BORDER_THICKNESS : NODE_BORDER_THICKNESS );
 
 	const bool drawText = zoom >= MIN_TEXT_ZOOM;
@@ -829,19 +847,23 @@ void GraphCanvas::DrawNode( ImDrawList& drawList, const cmf::AnimationGraphBuild
 		{
 			title += "  [+]";
 		}
-		drawList.AddText( font, fontSize, { node.min.x + NODE_PADDING * zoom, node.min.y + ( HEADER_HEIGHT * zoom - fontSize ) * HALF }, TEXT_COLOR, title.c_str(), nullptr, 0.f, &clip );
+		drawList.AddText( font, fontSize, { node.min.x + NODE_PADDING * zoom, node.min.y + ( HEADER_HEIGHT * zoom - fontSize ) * HALF }, FadeIfUnused( TEXT_COLOR, used ), title.c_str(), nullptr, 0.f, &clip );
 		const auto summary = GetNodeSummary( graph, node.id );
 		if( !summary.empty() )
 		{
-			drawList.AddText( font, fontSize, { node.min.x + NODE_PADDING * zoom, headerMax.y + textOffsetY }, DIM_TEXT_COLOR, summary.c_str(), nullptr, 0.f, &clip );
+			drawList.AddText( font, fontSize, { node.min.x + NODE_PADDING * zoom, headerMax.y + textOffsetY }, FadeIfUnused( DIM_TEXT_COLOR, used ), summary.c_str(), nullptr, 0.f, &clip );
 		}
 	}
 
-	DrawNodeSockets( drawList, graph, node, drawText );
-	DrawNodeIssues( drawList, graph, node, zoom, drawText );
+	DrawNodeSockets( drawList, graph, node, drawText, used );
+	// Problems of unused nodes don't matter, because they are not exported
+	if( used )
+	{
+		DrawNodeIssues( drawList, graph, node, zoom, drawText );
+	}
 }
 
-void GraphCanvas::DrawNodeSockets( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node, bool drawText ) const
+void GraphCanvas::DrawNodeSockets( ImDrawList& drawList, const cmf::AnimationGraphBuilder& graph, const NodeGeometry& node, bool drawText, bool used ) const
 {
 	const auto zoom = m_view.zoom;
 	auto* font = ImGui::GetFont();
@@ -851,32 +873,32 @@ void GraphCanvas::DrawNodeSockets( ImDrawList& drawList, const cmf::AnimationGra
 	for( uint32_t i = 0; i < node.inputs.size(); ++i )
 	{
 		const cmf::AnimationSocketRef ref = { node.id, i };
-		const auto type = graph.GetInputType( ref );
+		const auto color = FadeIfUnused( GetSocketColor( graph.GetInputType( ref ) ), used );
 		const bool connected = graph.GetConnection( ref ).has_value();
 		const bool socketHovered = m_hoveredSocket && !m_hoveredSocket->output && m_hoveredSocket->ref == ref;
 		if( connected || socketHovered )
 		{
-			drawList.AddCircleFilled( node.inputs[i], radius, GetSocketColor( type ) );
+			drawList.AddCircleFilled( node.inputs[i], radius, color );
 		}
 		else
 		{
-			drawList.AddCircle( node.inputs[i], radius, GetSocketColor( type ), 0, SOCKET_OUTLINE_THICKNESS );
+			drawList.AddCircle( node.inputs[i], radius, color, 0, SOCKET_OUTLINE_THICKNESS );
 		}
 		if( drawText )
 		{
 			const auto label = FormatInputLabel( graph, ref );
-			drawList.AddText( font, fontSize, { node.inputs[i].x + TEXT_INDENT * zoom, node.inputs[i].y - fontSize * HALF }, TEXT_COLOR, label.c_str(), nullptr, 0.f, &clip );
+			drawList.AddText( font, fontSize, { node.inputs[i].x + TEXT_INDENT * zoom, node.inputs[i].y - fontSize * HALF }, FadeIfUnused( TEXT_COLOR, used ), label.c_str(), nullptr, 0.f, &clip );
 		}
 	}
 	for( uint32_t i = 0; i < node.outputs.size(); ++i )
 	{
 		const cmf::AnimationSocketRef ref = { node.id, i };
-		drawList.AddCircleFilled( node.outputs[i], radius, GetSocketColor( graph.GetOutputType( ref ) ) );
+		drawList.AddCircleFilled( node.outputs[i], radius, FadeIfUnused( GetSocketColor( graph.GetOutputType( ref ) ), used ) );
 		if( drawText )
 		{
 			const auto label = graph.GetOutputName( ref );
 			const auto width = font->CalcTextSizeA( fontSize, FLT_MAX, 0.f, label.c_str() ).x;
-			drawList.AddText( font, fontSize, { node.outputs[i].x - TEXT_INDENT * zoom - width, node.outputs[i].y - fontSize * HALF }, TEXT_COLOR, label.c_str(), nullptr, 0.f, &clip );
+			drawList.AddText( font, fontSize, { node.outputs[i].x - TEXT_INDENT * zoom - width, node.outputs[i].y - fontSize * HALF }, FadeIfUnused( TEXT_COLOR, used ), label.c_str(), nullptr, 0.f, &clip );
 		}
 	}
 }
@@ -930,6 +952,11 @@ void GraphCanvas::DrawNodeTooltip( const cmf::AnimationGraphBuilder& graph ) con
 	}
 	if( !m_hoveredNode )
 	{
+		return;
+	}
+	if( !m_context->document->IsNodeUsed( graph, *m_hoveredNode ) )
+	{
+		ImGui::SetTooltip( "%s", UNUSED_NODE_HINT );
 		return;
 	}
 	const auto issues = DiagnoseNode( graph, *m_hoveredNode );

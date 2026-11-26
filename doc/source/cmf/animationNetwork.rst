@@ -52,6 +52,12 @@ Inputs that are not connected behave as follows:
   `Value Kinds`_).
 * BoneWeights inputs are optional; without them, a blend applies to all bones in the same way.
 
+Only nodes connected to the result count. A node is **used** if it is the Output node of the root graph, the Output
+node of a state of a used StateMachine node, a SubgraphInput or Output node in the graph of a used Subgraph node, or
+if one of its outputs is connected to a used node. ``AnimationNetworkBuilder`` saves only used nodes and doesn't
+report problems of the others. Nodes that are still being wired up don't stop the rest of the network from being
+saved and evaluated.
+
 Control Parameters
 ^^^^^^^^^^^^^^^^^^
 
@@ -268,9 +274,10 @@ The following network blends between an idle and a walk animation based on a ``s
 Editing operations return a ``cmf::ValidationResult`` describing why an operation failed, for example a connection
 between sockets of different types or a connection that would create a cycle. ``GetErrors`` lists problems that
 prevent the network from being evaluated, such as unconnected pose inputs. ``GetWarnings`` lists problems that the
-network works around, such as animations missing from their files. Networks with errors can still be saved;
-``cmf::AnimationNetwork`` reports the errors when it loads them. Saving only fails if a skeleton or animation
-referenced from an embedded file is missing (see `Embedding Assets`_).
+network works around, such as animations missing from their files. Both only check used nodes (see
+`Graphs, Nodes and Sockets`_): a Blend node that isn't connected to anything yet is not an error. Networks with
+errors can still be saved; ``cmf::AnimationNetwork`` reports the errors when it loads them. Saving only fails if a
+skeleton or animation referenced from an embedded file is missing (see `Embedding Assets`_).
 
 The type specific settings of a node are returned by ``GetSettings``, for example
 ``graph.GetSettings<cmf::AnimationSampleSettings>( idle )``.
@@ -324,14 +331,20 @@ CAN files are meant for playback and can't be loaded back into a builder: they o
 files that the network uses. Tools keep the editable network in their own files and export CAN files from it; CanEdit,
 for example, saves ``.cane`` documents (see :doc:`../canedit/canedit`).
 
-Node handles are not stored in the file: nodes are renumbered without removed nodes when saved. ``GetSaveLayout``
-returns the graphs and nodes in the order they are saved, which lets tools associate their own data with nodes. CAN
-files don't store such data; tools keep it in their own files (see :doc:`animationNetworkFormat`):
+Only used nodes are saved, together with the graphs, assets and embedded animations they need. Unused nodes, the
+graphs of unused Subgraph and StateMachine nodes, and edges to unused nodes are left out.
+
+Node handles are not stored in the file: nodes are renumbered without removed and unused nodes when saved.
+``GetSaveLayout`` returns the graphs and nodes in the order they are saved, which lets tools find nodes of the saved
+file, for example to show runtime state in an editor. ``GetLayout`` numbers the graphs and nodes the same way, but
+includes the unused ones; tools use it to refer to every node of the network by position, for example to keep their
+own data, such as node positions, in their own files. CAN files don't store such data (see
+:doc:`animationNetworkFormat`):
 
 .. code-block:: cpp
 
-    // Store a position per node, keyed by its location in the saved file
-    const auto layout = builder.GetSaveLayout();
+    // Store a position per node, keyed by its location in the network
+    const auto layout = builder.GetLayout();
     for( size_t graphIndex = 0; graphIndex < layout.size(); ++graphIndex )
     {
         for( size_t nodeIndex = 0; nodeIndex < layout[graphIndex].nodes.size(); ++nodeIndex )

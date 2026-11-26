@@ -357,7 +357,7 @@ void Document::AutoLayoutStates( const cmf::AnimationGraphBuilder& graph, cmf::A
 
 void Document::PlaceAllUnpositionedNodes()
 {
-	for( const auto& layout : m_network.GetSaveLayout() )
+	for( const auto& layout : m_network.GetLayout() )
 	{
 		PlaceUnpositionedNodes( *layout.graph );
 		for( const auto id : layout.nodes )
@@ -686,9 +686,11 @@ bool Document::IsLocked() const
 	return m_network.GetSkeleton() == nullptr && !m_network.HasPendingAssets();
 }
 
-std::optional<NodeLocation> Document::Locate( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
+namespace
 {
-	const auto layout = m_network.GetSaveLayout();
+
+std::optional<NodeLocation> LocateInLayout( const std::vector<cmf::AnimationGraphLayout>& layout, const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node )
+{
 	for( size_t g = 0; g < layout.size(); ++g )
 	{
 		if( layout[g].graph != &graph )
@@ -706,9 +708,37 @@ std::optional<NodeLocation> Document::Locate( const cmf::AnimationGraphBuilder& 
 	return std::nullopt;
 }
 
+}
+
+std::optional<NodeLocation> Document::Locate( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
+{
+	return LocateInLayout( m_network.GetLayout(), graph, node );
+}
+
+std::optional<NodeLocation> Document::LocateExported( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
+{
+	return LocateInLayout( m_network.GetSaveLayout(), graph, node );
+}
+
+bool Document::IsNodeUsed( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
+{
+	// The canvas asks for every node in every frame, so the used nodes are only collected when the network changes
+	if( m_usedGeneration != m_network.GetGeneration() )
+	{
+		m_usedNodes.clear();
+		for( auto& layout : m_network.GetSaveLayout() )
+		{
+			m_usedNodes[layout.graph] = std::move( layout.nodes );
+		}
+		m_usedGeneration = m_network.GetGeneration();
+	}
+	const auto it = m_usedNodes.find( &graph );
+	return it != m_usedNodes.end() && std::find( it->second.begin(), it->second.end(), node ) != it->second.end();
+}
+
 std::pair<cmf::AnimationGraphBuilder*, cmf::AnimationNodeId> Document::Find( const NodeLocation& location )
 {
-	const auto layout = m_network.GetSaveLayout();
+	const auto layout = m_network.GetLayout();
 	if( location.graph >= layout.size() || location.node >= layout[location.graph].nodes.size() )
 	{
 		return { nullptr, {} };

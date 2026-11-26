@@ -296,7 +296,7 @@ void EditorSession::Restore( const Snapshot& snapshot )
 	std::vector<GraphView> views;
 	std::vector<std::tuple<size_t, size_t, GraphView>> stateMachineViews;
 	const auto& network = m_document->GetNetwork();
-	const auto previousLayout = network.GetSaveLayout();
+	const auto previousLayout = network.GetLayout();
 	for( size_t g = 0; g < previousLayout.size(); ++g )
 	{
 		const auto& graph = *previousLayout[g].graph;
@@ -315,7 +315,7 @@ void EditorSession::Restore( const Snapshot& snapshot )
 		return;
 	}
 	m_document->SetExportPath( exportPath );
-	const auto layout = network.GetSaveLayout();
+	const auto layout = network.GetLayout();
 	for( size_t i = 0; i < layout.size() && i < views.size(); ++i )
 	{
 		m_document->SetView( *layout[i].graph, views[i] );

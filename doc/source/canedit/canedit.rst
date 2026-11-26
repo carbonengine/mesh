@@ -50,6 +50,12 @@ Connecting sockets
    an edge replaces it. Dragging a connected input picks up its edge so that it can be moved or dropped. Dropping an
    edge on empty space opens the list of node types that fit the socket; the chosen node is added and connected.
 
+Unconnected nodes
+   Nodes that don't contribute to the Output node are drawn faded, together with their edges. They stay in the
+   document, but are not exported, and their problems are not reported, so adding a node doesn't make a working
+   network invalid. A node counts as soon as it is connected, directly or through other nodes, to the Output node
+   of the graph, or of a subgraph or state of a node that counts.
+
 Selecting and moving
    Click a node to select it, Ctrl+click or Shift+click to add or remove it from the selection, and drag on empty space
    to select the nodes in a rectangle. Drag selected nodes to move them. Click an edge to select it.

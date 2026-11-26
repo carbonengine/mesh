@@ -406,12 +406,23 @@ TEST_F( NetworkFixture, ErrorsDescribeProblems )
 	EXPECT_TRUE( HasWarningContaining( network, "animation 'Missing' not found" ) );
 	ASSERT_TRUE( graph.SetAnimation( sample, ASSET_PATH, MOVE_ANIMATION ) );
 
+	// Only problems of nodes connected to the output are reported, so the checked nodes go through a Blend node
+	const auto blend = graph.AddNode( cmf::AnimationNodeType::Blend );
+	ASSERT_TRUE( graph.Disconnect( { output, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { blend, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { blend, 1 } ) );
+	ASSERT_TRUE( graph.Connect( { blend, 0 }, { output, 0 } ) );
+	const cmf::AnimationSocketRef blendWeights = { blend, 3 };
+
 	const auto mask = graph.AddNode( cmf::AnimationNodeType::NamedBoneWeights );
+	ASSERT_TRUE( graph.Connect( { mask, 0 }, blendWeights ) );
 	ASSERT_TRUE( graph.SetBoneMask( mask, "Lower" ) );
 	EXPECT_TRUE( HasWarningContaining( network, "bone mask 'Lower' not found" ) );
 	ASSERT_TRUE( graph.SetBoneMask( mask, MASK_NAME ) );
 
 	const auto weights = graph.AddNode( cmf::AnimationNodeType::BoneWeights );
+	ASSERT_TRUE( graph.Disconnect( blendWeights ) );
+	ASSERT_TRUE( graph.Connect( { weights, 0 }, blendWeights ) );
 	ASSERT_TRUE( graph.SetBoneWeights( weights, { { "Tail", 1.f } }, 0.f ) );
 	EXPECT_TRUE( HasWarningContaining( network, "bone 'Tail' not found" ) );
 	ASSERT_TRUE( graph.SetBoneWeights( weights, { { "Leaf", 1.f } }, 0.f ) );
@@ -419,10 +430,15 @@ TEST_F( NetworkFixture, ErrorsDescribeProblems )
 	EXPECT_FALSE( HasErrorContaining( network, "not found" ) );
 
 	const auto random = graph.AddNode( cmf::AnimationNodeType::RandomSwitch );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { random, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { random, 1 } ) );
+	ASSERT_TRUE( graph.Disconnect( { blend, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { random, 0 }, { blend, 0 } ) );
 	ASSERT_TRUE( graph.SetRandomWeights( random, { 1.f } ) );
 	EXPECT_TRUE( HasErrorContaining( network, "number of random weights" ) );
 	EXPECT_FALSE( graph.SetRandomWeights( random, { 1.f, -1.f } ) );
 	ASSERT_TRUE( graph.RemoveNode( random ) );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { blend, 0 } ) );
 
 	EXPECT_TRUE( network.GetErrors().empty() );
 	EXPECT_TRUE( network.GetWarnings().empty() );
@@ -432,12 +448,55 @@ TEST_F( NetworkFixture, ErrorsDescribeProblems )
 TEST_F( NetworkFixture, SubgraphErrorsIncludeTheirPath )
 {
 	cmf::AnimationNetworkBuilder network( loader );
-	SetUpNetwork( network );
+	const auto output = SetUpNetwork( network );
 	auto& graph = network.GetRootGraph();
 	const auto subgraphNode = graph.AddNode( cmf::AnimationNodeType::Subgraph );
 	graph.SetNodeName( subgraphNode, "Locomotion" );
-	graph.GetSubgraph( subgraphNode )->AddNode( cmf::AnimationNodeType::Blend );
+	auto& subgraph = *graph.GetSubgraph( subgraphNode );
+	const auto blend = subgraph.AddNode( cmf::AnimationNodeType::Blend );
+	const auto subgraphOutput = subgraph.AddNode( cmf::AnimationNodeType::Output );
+	ASSERT_TRUE( subgraph.SetInterfaceSocket( subgraphOutput, "pose", cmf::AnimationSocketType::Pose ) );
+	ASSERT_TRUE( subgraph.Connect( { blend, 0 }, { subgraphOutput, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { subgraphNode, 0 }, { output, 0 } ) );
 	EXPECT_TRUE( HasErrorContaining( network, "root/Subgraph #1 'Locomotion': Blend #0: input 'poseA' is not connected" ) );
+}
+
+TEST_F( NetworkFixture, UnusedNodesAreNotValidated )
+{
+	cmf::AnimationNetworkBuilder network( loader );
+	const auto output = SetUpNetwork( network );
+	auto& graph = network.GetRootGraph();
+	ASSERT_TRUE( graph.Connect( { graph.AddNode( cmf::AnimationNodeType::RestPose ), 0 }, { output, 0 } ) );
+	ASSERT_TRUE( network.IsReady() );
+
+	// Nodes that are not connected to the output, with problems that would be errors and warnings otherwise
+	const auto blend = graph.AddNode( cmf::AnimationNodeType::Blend );
+	graph.AddNode( cmf::AnimationNodeType::Expression );
+	graph.AddNode( cmf::AnimationNodeType::StateMachine );
+	const auto sample = graph.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ASSERT_TRUE( graph.SetAnimation( sample, ASSET_PATH, "Missing" ) );
+	ASSERT_TRUE( graph.Connect( { sample, 0 }, { blend, 0 } ) );
+	const auto mask = graph.AddNode( cmf::AnimationNodeType::NamedBoneWeights );
+	ASSERT_TRUE( graph.Connect( { mask, 0 }, { blend, 3 } ) );
+	const auto subgraphNode = graph.AddNode( cmf::AnimationNodeType::Subgraph );
+	graph.GetSubgraph( subgraphNode )->AddNode( cmf::AnimationNodeType::Blend );
+	const auto random = graph.AddNode( cmf::AnimationNodeType::RandomSwitch );
+	ASSERT_TRUE( graph.SetRandomWeights( random, { 1.f } ) );
+
+	EXPECT_TRUE( network.GetErrors().empty() );
+	EXPECT_TRUE( network.GetWarnings().empty() );
+	EXPECT_TRUE( network.IsReady() );
+
+	// Connecting a node to the output makes its problems and those of the nodes connected to it count
+	ASSERT_TRUE( graph.Disconnect( { output, 0 } ) );
+	ASSERT_TRUE( graph.Connect( { blend, 0 }, { output, 0 } ) );
+	EXPECT_TRUE( HasErrorContaining( network, "Blend #2: input 'poseB' is not connected" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "animation 'Missing' not found" ) );
+	EXPECT_TRUE( HasWarningContaining( network, "no bone mask is set" ) );
+	EXPECT_FALSE( HasErrorContaining( network, "Expression" ) );
+	EXPECT_FALSE( HasErrorContaining( network, "StateMachine" ) );
+	EXPECT_FALSE( HasErrorContaining( network, "Subgraph" ) );
+	EXPECT_FALSE( HasErrorContaining( network, "random weights" ) );
 }
 
 // Asset loading

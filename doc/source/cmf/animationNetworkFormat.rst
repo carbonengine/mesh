@@ -76,7 +76,8 @@ CAN files only hold what the runtime needs. Editing tools keep their own data, s
 files and export CAN files from them; CanEdit, for example, saves ``.cane`` documents (see :doc:`../canedit/canedit`).
 Tools that associate data with nodes of a saved file refer to nodes by their position in the file: graph index and
 node index. The order in which ``AnimationNetworkBuilder::Save`` stores graphs and nodes is returned by
-``GetSaveLayout``.
+``GetSaveLayout``. The builder only stores nodes that contribute to the result of the network, so every node in a
+file is used.
 
 Graphs
 ^^^^^^

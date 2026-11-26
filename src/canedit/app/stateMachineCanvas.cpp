@@ -738,12 +738,14 @@ void StateMachineCanvas::DrawTransitions( ImDrawList& drawList, const cmf::Anima
 	const bool drawText = zoom >= MIN_TEXT_ZOOM;
 	auto* font = ImGui::GetFont();
 	const auto fontSize = ImGui::GetFontSize() * zoom * LABEL_SCALE;
+	// Problems of unused StateMachine nodes are not reported
+	const bool used = m_context->document->IsNodeUsed( graph, node );
 	for( const auto& geometry : m_transitions )
 	{
 		const auto& transition = settings.transitions[geometry.index];
 		const bool isSelected = selected && *selected == geometry.index;
 		const bool isHovered = m_hoveredTransition && *m_hoveredTransition == geometry.index;
-		const bool hasError = DiagnoseTransition( graph, node, transition ).has_value();
+		const bool hasError = used && DiagnoseTransition( graph, node, transition ).has_value();
 		auto color = hasError ? ERROR_COLOR : TRANSITION_COLOR;
 		color = isHovered ? HOVER_COLOR : color;
 		color = isSelected ? SELECTION_COLOR : color;
@@ -786,8 +788,10 @@ void StateMachineCanvas::DrawStates( ImDrawList& drawList, const cmf::AnimationG
 	const bool drawText = zoom >= MIN_TEXT_ZOOM;
 	const auto rounding = STATE_ROUNDING * zoom;
 
+	// Problems of unused StateMachine nodes are not reported
+	const bool used = document.IsNodeUsed( graph, node );
 	auto currentState = cmf::AnimationNetworkInstance::INVALID_STATE;
-	if( const auto location = document.Locate( graph, node ) )
+	if( const auto location = document.LocateExported( graph, node ) )
 	{
 		currentState = m_context->preview->GetCurrentState( document.GetNetwork(), *location );
 	}
@@ -828,7 +832,7 @@ void StateMachineCanvas::DrawStates( ImDrawList& drawList, const cmf::AnimationG
 			}
 			DrawStateText( drawList, geometry.min, geometry.max, zoom, GetStateTitle( settings, state ), note );
 		}
-		if( !DiagnoseState( graph, node, state ).empty() )
+		if( used && !DiagnoseState( graph, node, state ).empty() )
 		{
 			DrawIssueMarker( drawList, geometry.min, geometry.max, zoom, drawText );
 		}
@@ -856,9 +860,11 @@ void StateMachineCanvas::DrawInteraction( ImDrawList& drawList ) const
 void StateMachineCanvas::DrawTooltip( const cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId node ) const
 {
 	const auto errorColor = ImGui::ColorConvertU32ToFloat4( ERROR_COLOR );
+	// Problems of unused StateMachine nodes are not reported
+	const bool used = m_context->document->IsNodeUsed( graph, node );
 	if( m_hoveredState )
 	{
-		const auto errors = DiagnoseState( graph, node, *m_hoveredState );
+		const auto errors = used ? DiagnoseState( graph, node, *m_hoveredState ) : std::vector<std::string>{};
 		const bool border = m_context->session->CanEdit() && IsOnBorder( *m_hoveredState, ImGui::GetMousePos() );
 		if( errors.empty() && !border )
 		{
@@ -883,7 +889,7 @@ void StateMachineCanvas::DrawTooltip( const cmf::AnimationGraphBuilder& graph, c
 		ImGui::BeginTooltip();
 		ImGui::Text( "%s to %s", GetStateTitle( settings, transition.fromState ).c_str(), GetStateTitle( settings, transition.toState ).c_str() );
 		ImGui::TextDisabled( "%s", GetTransitionSummary( transition ).c_str() );
-		if( const auto error = DiagnoseTransition( graph, node, transition ) )
+		if( const auto error = used ? DiagnoseTransition( graph, node, transition ) : std::nullopt )
 		{
 			ImGui::TextColored( errorColor, "%s", error->c_str() );
 		}

@@ -423,6 +423,13 @@ void PropertiesPanel::DrawNode( AppContext& context, cmf::AnimationGraphBuilder&
 	DrawSettings( context, graph, node );
 	DrawInputConstants( context, graph, node );
 
+	if( !context.document->IsNodeUsed( graph, node ) )
+	{
+		ImGui::Spacing();
+		ImGui::TextColored( HINT_TEXT, "%s", UNUSED_NODE_HINT );
+		ImGui::EndDisabled();
+		return;
+	}
 	const auto issues = DiagnoseNode( graph, node );
 	if( !issues.errors.empty() || !issues.warnings.empty() )
 	{
@@ -594,7 +601,8 @@ void PropertiesPanel::DrawState( AppContext& context, cmf::AnimationGraphBuilder
 		ImGui::TextColored( HINT_TEXT, "None. Drag from the edge of the state to another state to add one." );
 	}
 
-	const auto errors = DiagnoseState( graph, node, state );
+	// Problems of the states of an unused StateMachine node are not reported; the node panel explains why
+	const auto errors = context.document->IsNodeUsed( graph, node ) ? DiagnoseState( graph, node, state ) : std::vector<std::string>{};
 	if( !errors.empty() )
 	{
 		SectionHeader( "Problems" );
@@ -672,6 +680,10 @@ void PropertiesPanel::DrawTransition( AppContext& context, cmf::AnimationGraphBu
 	}
 	ImGui::EndDisabled();
 
+	if( !context.document->IsNodeUsed( graph, node ) )
+	{
+		return;
+	}
 	if( const auto error = DiagnoseTransition( graph, node, settings.transitions[index] ) )
 	{
 		SectionHeader( "Problems" );

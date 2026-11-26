@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <set>
 
 namespace networktest
 {
@@ -159,6 +160,65 @@ bool HasErrorContaining( const std::vector<std::string>& errors, const std::stri
 	return std::any_of( errors.begin(), errors.end(), [&text]( const std::string& error ) { return error.find( text ) != std::string::npos; } );
 }
 
+/** Connects pose nodes to an Output node through a RandomSwitch node, so that they are used and saved. */
+void ConnectToOutput( cmf::AnimationGraphBuilder& graph, cmf::AnimationNodeId output, const std::vector<cmf::AnimationNodeId>& nodes )
+{
+	const auto random = graph.AddNode( cmf::AnimationNodeType::RandomSwitch );
+	ExpectOk( graph.SetPoseInputCount( random, static_cast<uint32_t>( nodes.size() ) ) );
+	for( uint32_t i = 0; i < nodes.size(); ++i )
+	{
+		ExpectOk( graph.Connect( { nodes[i], 0 }, { random, i } ) );
+	}
+	ExpectOk( graph.Connect( { random, 0 }, { output, 0 } ) );
+}
+
+/** A network with a subgraph connected to the output, a removed node, and nodes and subgraphs that are not connected
+* to the output. */
+struct LayoutNetwork
+{
+	cmf::AnimationNetworkBuilder builder;
+	cmf::AnimationNodeId output;
+	/** The Subgraph node connected to the output, and the used nodes of its subgraph. */
+	cmf::AnimationNodeId used;
+	cmf::AnimationNodeId usedRest;
+	cmf::AnimationNodeId usedOutput;
+	/** All graphs of the network. */
+	std::set<const cmf::AnimationGraphBuilder*> graphs;
+
+	explicit LayoutNetwork( cmf::AnimationAssetLoader& loader ) :
+		builder( loader ),
+		output( SetUpNetwork( builder ) )
+	{
+		auto& root = builder.GetRootGraph();
+		graphs.insert( &root );
+		const auto removed = root.AddNode( cmf::AnimationNodeType::RestPose );
+		const auto unconnected = root.AddNode( cmf::AnimationNodeType::Blend );
+		root.SetNodeName( unconnected, "unconnected" );
+		const auto outer = root.AddNode( cmf::AnimationNodeType::Subgraph );
+		root.SetNodeName( outer, "outer" );
+		auto& outerGraph = *root.GetSubgraph( outer );
+		outerGraph.SetNodeName( outerGraph.AddNode( cmf::AnimationNodeType::RestPose ), "outer rest" );
+		const auto inner = outerGraph.AddNode( cmf::AnimationNodeType::Subgraph );
+		outerGraph.GetSubgraph( inner )->AddNode( cmf::AnimationNodeType::Blend );
+		const auto second = root.AddNode( cmf::AnimationNodeType::Subgraph );
+		root.SetNodeName( second, "second" );
+		ExpectOk( root.RemoveNode( removed ) );
+		graphs.insert( { &outerGraph, outerGraph.GetSubgraph( inner ), root.GetSubgraph( second ) } );
+
+		// The used subgraph also holds a disconnected node and feeds a disconnected node
+		used = root.AddNode( cmf::AnimationNodeType::Subgraph );
+		root.SetNodeName( used, "used" );
+		auto& usedGraph = *root.GetSubgraph( used );
+		graphs.insert( &usedGraph );
+		usedRest = usedGraph.AddNode( cmf::AnimationNodeType::RestPose );
+		usedGraph.SetNodeName( usedGraph.AddNode( cmf::AnimationNodeType::RestPose ), "used unconnected" );
+		usedOutput = usedGraph.AddNode( cmf::AnimationNodeType::Output );
+		ExpectOk( usedGraph.SetInterfaceSocket( usedOutput, "pose", cmf::AnimationSocketType::Pose ) );
+		ExpectOk( usedGraph.Connect( { usedRest, 0 }, { usedOutput, 0 } ) );
+		ExpectOk( root.Connect( { used, 0 }, { output, 0 } ) );
+		ExpectOk( root.Connect( { used, 0 }, { unconnected, 0 } ) );
+	}
+};
 }
 
 // Builder serialization
@@ -222,14 +282,17 @@ TEST_F( RuntimeFixture, EmbeddedAssetsStoreOnlyTheReferencedSkeletonAndAnimation
 TEST_F( RuntimeFixture, EmbeddedAnimationsAreStoredOnce )
 {
 	cmf::AnimationNetworkBuilder builder( loader );
-	SetUpNetwork( builder );
+	const auto output = SetUpNetwork( builder );
 	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
 	auto& root = builder.GetRootGraph();
 	const std::vector<std::string> names = { MOVE_ANIMATION, LIFT_ANIMATION, "", MOVE_ANIMATION };
+	std::vector<cmf::AnimationNodeId> samples;
 	for( const auto& name : names )
 	{
-		ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, name ) );
+		samples.push_back( root.AddNode( cmf::AnimationNodeType::AnimationSample ) );
+		ExpectOk( root.SetAnimation( samples.back(), EMBEDDED_PATH, name ) );
 	}
+	ConnectToOutput( root, output, samples );
 	auto file = SaveNetwork( builder );
 	const auto& data = GetNetworkData( file );
 	std::vector<std::string> animationNames;
@@ -276,13 +339,18 @@ TEST_F( RuntimeFixture, SavingFailsForMissingEmbeddedData )
 
 	builder.SetSkeleton( EMBEDDED_PATH, SKELETON_NAME );
 	auto& root = builder.GetRootGraph();
-	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, "Walk" ) );
+	const auto sample = root.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ExpectOk( root.SetAnimation( sample, EMBEDDED_PATH, "Walk" ) );
+	// Unused nodes are not saved, so their missing data doesn't matter
+	ExpectOk( builder.Save( file ) );
+
+	ExpectOk( root.Connect( { sample, 0 }, { root.AddNode( cmf::AnimationNodeType::Output ), 0 } ) );
 	result = builder.Save( file );
 	EXPECT_FALSE( result );
 	EXPECT_EQ( result.error, "The embedded asset 'embedded/character.cmf' has no animation named 'Walk'" );
 
 	// Missing data in external assets is only reported when the network is loaded
-	ExpectOk( root.SetAnimation( root.GetNodes()[0], ASSET_PATH, "Walk" ) );
+	ExpectOk( root.SetAnimation( sample, ASSET_PATH, "Walk" ) );
 	ExpectOk( builder.Save( file ) );
 }
 
@@ -339,8 +407,11 @@ TEST_F( RuntimeFixture, ReferencesMustBeEitherExternalOrEmbedded )
 	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
 	builder.SetSkeleton( EMBEDDED_PATH, SKELETON_NAME );
 	auto& root = builder.GetRootGraph();
-	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, MOVE_ANIMATION ) );
-	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), ASSET_PATH, LIFT_ANIMATION ) );
+	const auto embeddedSample = root.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ExpectOk( root.SetAnimation( embeddedSample, EMBEDDED_PATH, MOVE_ANIMATION ) );
+	const auto externalSample = root.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ExpectOk( root.SetAnimation( externalSample, ASSET_PATH, LIFT_ANIMATION ) );
+	ConnectToOutput( root, root.AddNode( cmf::AnimationNodeType::Output ), { embeddedSample, externalSample } );
 	const auto valid = SaveNetwork( builder );
 	cmf::AnimationNetwork network( loader );
 	ASSERT_TRUE( network.Load( valid ) );
@@ -360,29 +431,71 @@ TEST_F( RuntimeFixture, ReferencesMustBeEitherExternalOrEmbedded )
 
 TEST_F( RuntimeFixture, SaveLayoutMatchesTheSavedFile )
 {
-	cmf::AnimationNetworkBuilder builder( loader );
-	SetUpNetwork( builder );
-	auto& root = builder.GetRootGraph();
-	// Disconnected nodes, a removed node and subgraphs that are not connected to the output are all saved
-	const auto removed = root.AddNode( cmf::AnimationNodeType::RestPose );
-	root.SetNodeName( root.AddNode( cmf::AnimationNodeType::Blend ), "unconnected" );
-	const auto outer = root.AddNode( cmf::AnimationNodeType::Subgraph );
-	root.SetNodeName( outer, "outer" );
-	auto& outerGraph = *root.GetSubgraph( outer );
-	outerGraph.SetNodeName( outerGraph.AddNode( cmf::AnimationNodeType::RestPose ), "outer rest" );
-	const auto inner = outerGraph.AddNode( cmf::AnimationNodeType::Subgraph );
-	root.GetSubgraph( outer )->GetSubgraph( inner )->AddNode( cmf::AnimationNodeType::Blend );
-	const auto second = root.AddNode( cmf::AnimationNodeType::Subgraph );
-	root.SetNodeName( second, "second" );
-	ExpectOk( root.RemoveNode( removed ) );
-
-	const auto layout = builder.GetSaveLayout();
-	ASSERT_EQ( layout.size(), 4u );
+	const LayoutNetwork network( loader );
+	const auto& root = network.builder.GetRootGraph();
+	const auto layout = network.builder.GetSaveLayout();
+	ASSERT_EQ( layout.size(), 2u );
 	EXPECT_EQ( layout[0].graph, &root );
-	EXPECT_EQ( layout[0].nodes, root.GetNodes() );
+	EXPECT_EQ( layout[0].nodes, ( std::vector<cmf::AnimationNodeId>{ network.output, network.used } ) );
+	EXPECT_EQ( layout[1].graph, root.GetSubgraph( network.used ) );
+	EXPECT_EQ( layout[1].nodes, ( std::vector<cmf::AnimationNodeId>{ network.usedRest, network.usedOutput } ) );
+
+	auto file = SaveNetwork( network.builder );
+	ExpectLayoutMatchesFile( layout, GetNetworkData( file ) );
+	const auto& savedRoot = GetNetworkData( file ).graphs[0];
+	ASSERT_EQ( savedRoot.edges.size(), 1u ) << "the edge to the disconnected node is left out";
+	EXPECT_EQ( savedRoot.edges[0].to.node, 0u );
+	EXPECT_EQ( savedRoot.edges[0].from.node, 1u );
+	EXPECT_EQ( GetNetworkData( file ).graphs[1].interfaceOutputs[0], 1u );
+}
+
+TEST_F( RuntimeFixture, LayoutHasAllGraphsAndNodes )
+{
+	const LayoutNetwork network( loader );
+	const auto& root = network.builder.GetRootGraph();
+	const auto layout = network.builder.GetLayout();
+	ASSERT_EQ( layout.size(), network.graphs.size() );
+	EXPECT_EQ( layout[0].graph, &root );
+	std::set<const cmf::AnimationGraphBuilder*> graphs;
+	for( const auto& graphLayout : layout )
+	{
+		graphs.insert( graphLayout.graph );
+		EXPECT_EQ( graphLayout.nodes, graphLayout.graph->GetNodes() );
+	}
+	EXPECT_EQ( graphs, network.graphs );
+}
+
+TEST_F( RuntimeFixture, UnusedNodesAreNotSaved )
+{
+	cmf::AnimationNetworkBuilder builder( loader );
+	const auto output = SetUpNetwork( builder );
+	ASSERT_TRUE( builder.EmbedAsset( EMBEDDED_PATH, asset.BuildCmfFile() ) );
+	auto& root = builder.GetRootGraph();
+	const auto used = root.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ExpectOk( root.SetAnimation( used, EMBEDDED_PATH, MOVE_ANIMATION ) );
+	ExpectOk( root.Connect( { used, 0 }, { output, 0 } ) );
+	// Unused nodes with problems that would prevent evaluation, and animations that would be stored
+	root.AddNode( cmf::AnimationNodeType::Blend );
+	root.AddNode( cmf::AnimationNodeType::StateMachine );
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), EMBEDDED_PATH, LIFT_ANIMATION ) );
+	ExpectOk( root.SetAnimation( root.AddNode( cmf::AnimationNodeType::AnimationSample ), "other/asset.cmf", MOVE_ANIMATION ) );
+	ASSERT_TRUE( builder.IsReady() );
 
 	auto file = SaveNetwork( builder );
-	ExpectLayoutMatchesFile( layout, GetNetworkData( file ) );
+	const auto& data = GetNetworkData( file );
+	ASSERT_EQ( data.graphs.size(), 1u );
+	EXPECT_EQ( data.graphs[0].nodes.size(), 2u );
+	EXPECT_TRUE( data.graphs[0].stateMachineNodes.empty() );
+	ASSERT_EQ( data.animations.size(), 1u );
+	EXPECT_EQ( cmf::ToStdStringView( data.animations[0].name ), MOVE_ANIMATION );
+	ASSERT_EQ( data.assets.size(), 1u ) << "only the skeleton asset";
+	EXPECT_EQ( cmf::ToStdStringView( data.assets[0].path ), ASSET_PATH );
+
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( file ) );
+	EXPECT_TRUE( network.IsReady() );
+	EXPECT_TRUE( network.GetErrors().empty() );
+	EXPECT_TRUE( network.GetWarnings().empty() );
 }
 
 TEST_F( RuntimeFixture, ClearReleasesEverything )
@@ -473,16 +586,21 @@ TEST_F( RuntimeFixture, NetworkWaitsForDeferredAssets )
 TEST_F( RuntimeFixture, IncompleteNetworkLoadsWithErrors )
 {
 	cmf::AnimationNetworkBuilder builder( loader );
-	SetUpNetwork( builder );
-	builder.GetRootGraph().AddNode( cmf::AnimationNodeType::Blend );
-	const auto sample = builder.GetRootGraph().AddNode( cmf::AnimationNodeType::AnimationSample );
-	ASSERT_TRUE( builder.GetRootGraph().SetAnimation( sample, ASSET_PATH, "Missing" ) );
-
+	const auto output = SetUpNetwork( builder );
 	cmf::AnimationNetwork network( loader );
 	ASSERT_TRUE( network.Load( SaveNetwork( builder ) ) );
 	EXPECT_FALSE( network.IsReady() );
+	EXPECT_TRUE( HasErrorContaining( network.GetErrors(), "graph 0: Output #0: input 'pose' is not connected" ) );
+
+	auto& root = builder.GetRootGraph();
+	const auto blend = root.AddNode( cmf::AnimationNodeType::Blend );
+	const auto sample = root.AddNode( cmf::AnimationNodeType::AnimationSample );
+	ASSERT_TRUE( root.SetAnimation( sample, ASSET_PATH, "Missing" ) );
+	ASSERT_TRUE( root.Connect( { sample, 0 }, { blend, 1 } ) );
+	ASSERT_TRUE( root.Connect( { blend, 0 }, { output, 0 } ) );
+	ASSERT_TRUE( network.Load( SaveNetwork( builder ) ) );
+	EXPECT_FALSE( network.IsReady() );
 	const auto errors = network.GetErrors();
-	EXPECT_TRUE( HasErrorContaining( errors, "graph 0: Output #0: input 'pose' is not connected" ) );
 	EXPECT_TRUE( HasErrorContaining( errors, "Blend #1: input 'poseA' is not connected" ) );
 	EXPECT_FALSE( HasErrorContaining( errors, "animation 'Missing' not found" ) );
 	EXPECT_TRUE( HasErrorContaining( network.GetWarnings(), "animation 'Missing' not found" ) );

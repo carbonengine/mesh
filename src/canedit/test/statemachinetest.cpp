@@ -293,7 +293,7 @@ TEST_F( StateMachineFixture, ExportedStateMachinesRun )
 	ASSERT_TRUE( network.IsReady() );
 
 	cmf::AnimationNetworkInstance instance( network );
-	const auto location = document.Locate( Root(), machine ).value_or( canedit::NodeLocation{ cmf::can::NO_INDEX, cmf::can::NO_INDEX } );
+	const auto location = document.LocateExported( Root(), machine ).value_or( canedit::NodeLocation{ cmf::can::NO_INDEX, cmf::can::NO_INDEX } );
 	ASSERT_TRUE( instance.Evaluate() );
 	EXPECT_EQ( instance.GetCurrentState( location.graph, location.node ), 0u );
 	instance.SetParameter( instance.FindParameter( "speed" ), RUN_SPEED );

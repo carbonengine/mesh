@@ -340,6 +340,44 @@ TEST_F( EditorFixture, ExportWritesTheNetwork )
 	EXPECT_TRUE( network.IsReady() );
 }
 
+TEST_F( EditorFixture, UnconnectedNodesAreNotExported )
+{
+	const auto rest = Root().AddNode( cmf::AnimationNodeType::RestPose );
+	ASSERT_TRUE( Root().Connect( { rest, 0 }, { Output(), 0 } ) );
+	ASSERT_TRUE( document.GetNetwork().IsReady() );
+
+	// A new node that would be invalid if it were used doesn't break the network
+	const auto blend = Root().AddNode( cmf::AnimationNodeType::Blend );
+	EXPECT_TRUE( document.GetNetwork().IsReady() );
+	EXPECT_TRUE( document.GetNetwork().GetErrors().empty() );
+	EXPECT_TRUE( document.IsNodeUsed( Root(), rest ) );
+	EXPECT_TRUE( document.IsNodeUsed( Root(), Output() ) );
+	EXPECT_FALSE( document.IsNodeUsed( Root(), blend ) );
+
+	// The document keeps the node and can locate it, but the exported network doesn't have it
+	EXPECT_TRUE( document.Locate( Root(), blend ).has_value() );
+	EXPECT_FALSE( document.LocateExported( Root(), blend ).has_value() );
+	const auto location = document.LocateExported( Root(), rest ).value_or( canedit::NodeLocation{ cmf::can::NO_INDEX, cmf::can::NO_INDEX } );
+	EXPECT_EQ( location.graph, 0u );
+	EXPECT_EQ( location.node, 1u );
+
+	const auto path = directory.GetPath() / "network.can";
+	std::string error;
+	ASSERT_TRUE( document.Export( path, error ) ) << error;
+	cmf::AnimationNetwork network( loader );
+	ASSERT_TRUE( network.Load( ReadFile( path ) ) );
+	EXPECT_TRUE( network.IsReady() );
+	EXPECT_EQ( network.GetData()->graphs[0].nodes.size(), 2u );
+
+	// Connecting the node makes it used, and its problems count
+	ASSERT_TRUE( Root().Disconnect( { Output(), 0 } ) );
+	ASSERT_TRUE( Root().Connect( { blend, 0 }, { Output(), 0 } ) );
+	EXPECT_TRUE( document.IsNodeUsed( Root(), blend ) );
+	EXPECT_FALSE( document.IsNodeUsed( Root(), rest ) );
+	EXPECT_FALSE( document.GetNetwork().IsReady() );
+	EXPECT_FALSE( document.Export( path, error ) );
+}
+
 TEST_F( EditorFixture, NetworksWithErrorsAreNotExported )
 {
 	document.GetNetwork().SetSkeleton( "res:/missing.cmf", "" );
