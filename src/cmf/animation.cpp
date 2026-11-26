@@ -4,6 +4,8 @@
 #include "cmf/bufferstreams.h"
 #include "cmf/declutils.h"
 #include "cmf/transforms.h"
+#include "posekernels.h"
+#include "animationinternal.h"
 
 #include <mutex>
 #include <array>
@@ -13,216 +15,7 @@
 namespace
 {
 
-bool IsBoneTarget( cmf::AnimationChannelTargetType targetType )
-{
-	return targetType == cmf::AnimationChannelTargetType::BonePosition || targetType == cmf::AnimationChannelTargetType::BoneRotation || targetType == cmf::AnimationChannelTargetType::BoneScale;
-}
-
-struct Interval
-{
-	uint32_t knotIndex0 = 0;
-	uint32_t knotIndex1 = 0;
-	float time = 0;
-};
-
-using Knots = cmf::ConstBufferElementStream<float>;
-
-Interval FindKnotInterval( const Knots& knots, float time )
-{
-	Interval interval = {};
-	if( knots.size() == 0 || time < knots[0] )
-	{
-		return interval;
-	}
-	auto knot0 = knots[interval.knotIndex0];
-	if( time < knot0 )
-	{
-		return interval;
-	}
-	interval.knotIndex1 = 1;
-	interval.time = 1;
-	while( interval.knotIndex1 < knots.size() )
-	{
-		const auto knot1 = knots[interval.knotIndex1];
-		if( time < knot1 )
-		{
-			interval.time = ( time - knot0 ) / ( knot1 - knot0 );
-			return interval;
-		}
-		++interval.knotIndex0;
-		++interval.knotIndex1;
-		knot0 = knot1;
-	}
-	interval.knotIndex1 = interval.knotIndex0;
-	return interval;
-}
-
-template <typename T>
-Interval FindKnotInterval( const Knots& knots, float time, cmf::CurveEvaluationCache<T>& cache )
-{
-	Interval interval = {};
-	if( knots.size() == 0 )
-	{
-		return interval;
-	}
-	if( cache.knotIndex < knots.size() )
-	{
-		if( time >= cache.knot0 )
-		{
-			interval.knotIndex0 = cache.knotIndex;
-			if( cache.knotIndex + 1 >= knots.size() )
-			{
-				interval.knotIndex1 = cache.knotIndex;
-				interval.time = 1;
-				return interval;
-			}
-			if( time < cache.knot1 )
-			{
-				interval.knotIndex1 = cache.knotIndex + 1;
-				interval.time = ( time - cache.knot0 ) / ( cache.knot1 - cache.knot0 );
-				return interval;
-			}
-		}
-	}
-	auto knot0 = cache.knotIndex == interval.knotIndex0 ? cache.knot0 : knots[interval.knotIndex0];
-	if( time < knot0 )
-	{
-		cache.knotIndex = interval.knotIndex0;
-		cache.knot0 = knot0;
-		cache.knot1 = cache.knot0;
-		return interval;
-	}
-	cache.knotIndex = interval.knotIndex0;
-	cache.knot0 = knot0;
-	interval.knotIndex1 = interval.knotIndex0 + 1;
-	interval.time = 1;
-	while( interval.knotIndex1 < knots.size() )
-	{
-		const auto knot1 = knots[interval.knotIndex1];
-		cache.knot1 = knot1;
-		if( time < knot1 )
-		{
-			interval.time = ( time - knot0 ) / ( knot1 - knot0 );
-			cache.knotIndex = interval.knotIndex0;
-			return interval;
-		}
-		++interval.knotIndex0;
-		++interval.knotIndex1;
-		knot0 = knot1;
-		cache.knot0 = knot0;
-	}
-	interval.knotIndex1 = interval.knotIndex0;
-	cache.knot1 = cache.knot0;
-	cache.knotIndex = interval.knotIndex0;
-	return interval;
-}
-
-Knots GetKnotStream( const cmf::AnimationCurve& curve )
-{
-	cmf::VertexElement element = {};
-	element.type = curve.knotType;
-	element.elementCount = 1;
-	const auto stride = cmf::GetVertexElementSize( element );
-	return { element, curve.knots.data(), uint32_t( curve.knots.size() / stride ), stride };
-}
-
-template <typename T>
-cmf::ConstBufferElementStream<T> GetValueStream( const cmf::AnimationCurve& curve )
-{
-	cmf::VertexElement element = {};
-	element.type = curve.valueType;
-	element.elementCount = curve.valueDimension;
-	const auto stride = cmf::GetVertexElementSize( element );
-	return { element, curve.values.data(), uint32_t( curve.values.size() / stride ), stride };
-}
-
-template <typename T>
-T SampleCurve( const cmf::AnimationCurve& curve, float time )
-{
-	const auto knotStream = GetKnotStream( curve );
-	const auto interval = FindKnotInterval( knotStream, time );
-	const auto valueStream = GetValueStream<T>( curve );
-
-	switch( curve.interpolation )
-	{
-	case cmf::Interpolation::Step:
-		return valueStream[interval.knotIndex0];
-	case cmf::Interpolation::Linear: {
-		const auto v0 = valueStream[interval.knotIndex0];
-		const auto v1 = valueStream[interval.knotIndex1];
-		return v0 + ( v1 - v0 ) * interval.time;
-	}
-	default:
-		return {};
-	}
-}
-
-template <typename T>
-T SampleCurve( const Knots& knots, const cmf::ConstBufferElementStream<T>& values, cmf::Interpolation interpolation, float time )
-{
-	const auto interval = FindKnotInterval( knots, time );
-	switch( interpolation )
-	{
-	case cmf::Interpolation::Step:
-		return values[interval.knotIndex0];
-	case cmf::Interpolation::Linear: {
-		const auto v0 = values[interval.knotIndex0];
-		const auto v1 = values[interval.knotIndex1];
-		return v0 + ( v1 - v0 ) * interval.time;
-	}
-	default:
-		return {};
-	}
-}
-
-template <typename T>
-T SampleCurve( const Knots& knots, const cmf::ConstBufferElementStream<T>& values, cmf::Interpolation interpolation, float time, cmf::CurveEvaluationCache<T>& cache )
-{
-	auto prevKnot = cache.knotIndex;
-	const auto interval = FindKnotInterval( knots, time, cache );
-	switch( interpolation )
-	{
-	case cmf::Interpolation::Step:
-		if( prevKnot != cache.knotIndex )
-		{
-			cache.value0 = values[interval.knotIndex0];
-		}
-		return cache.value0;
-	case cmf::Interpolation::Linear:
-		if( prevKnot != cache.knotIndex )
-		{
-			cache.value0 = values[interval.knotIndex0];
-			cache.value1 = values[interval.knotIndex1];
-		}
-		return cache.value0 + ( cache.value1 - cache.value0 ) * interval.time;
-	default:
-		return {};
-	}
-}
-
-Quaternion SampleQuaternionCurve( const Knots& knots, const cmf::ConstBufferElementStream<Vector4>& values, cmf::Interpolation interpolation, float time, cmf::CurveEvaluationCache<Vector4>& cache )
-{
-	auto prevKnot = cache.knotIndex;
-	const auto interval = FindKnotInterval( knots, time, cache );
-	switch( interpolation )
-	{
-	case cmf::Interpolation::Step:
-		if( prevKnot != cache.knotIndex )
-		{
-			cache.value0 = values[interval.knotIndex0];
-		}
-		return cache.value0;
-	case cmf::Interpolation::Linear:
-		if( prevKnot != cache.knotIndex )
-		{
-			cache.value0 = values[interval.knotIndex0];
-			cache.value1 = values[interval.knotIndex1];
-		}
-		return Slerp( cache.value0, cache.value1, interval.time );
-	default:
-		return {};
-	}
-}
+using namespace cmf::detail;
 
 std::mutex& GetActiveAnimationPlayersMutex()
 {
@@ -457,11 +250,9 @@ void RestPose( SkeletonPose& outPose, const Skeleton& skeleton )
 
 void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, float alpha )
 {
+	outPose.skeleton = poseA.skeleton;
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
-	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
-	{
-		outPose.boneTransforms[i] = Lerp( poseA.boneTransforms[i], poseB.boneTransforms[i], alpha );
-	}
+	detail::BlendTransforms( outPose.boneTransforms.data(), poseA.boneTransforms.data(), poseB.boneTransforms.data(), poseA.boneTransforms.size(), alpha );
 }
 
 BoneWeights ExtractBoneWeights( const Skeleton& skeleton, const std::string_view& boneMask )
@@ -485,43 +276,23 @@ BoneWeights ExtractBoneWeights( const Skeleton& skeleton, const std::string_view
 
 void BlendPoses( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& poseB, const BoneWeights& boneWeights, float alpha )
 {
+	outPose.skeleton = poseA.skeleton;
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
-	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
-	{
-		const float weight = boneWeights.boneWeights[i] * alpha;
-		outPose.boneTransforms[i] = Lerp( poseA.boneTransforms[i], poseB.boneTransforms[i], weight );
-	}
+	detail::BlendTransformsWeighted( outPose.boneTransforms.data(), poseA.boneTransforms.data(), poseB.boneTransforms.data(), boneWeights.boneWeights.data(), poseA.boneTransforms.size(), alpha );
 }
 
 void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, float alpha )
 {
+	outPose.skeleton = poseA.skeleton;
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
-	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
-	{
-		const auto& additive = additivePose.boneTransforms[i];
-		const auto& base = basePose.boneTransforms[i];
-		const auto inverseBase = Inverse( base );
-		const auto multiplied = Multiply( inverseBase, additive );
-
-		const auto blended = Lerp( {}, multiplied, alpha );
-		outPose.boneTransforms[i] = Multiply( poseA.boneTransforms[i], blended );
-	}
+	detail::BlendAdditiveTransforms( outPose.boneTransforms.data(), poseA.boneTransforms.data(), basePose.boneTransforms.data(), additivePose.boneTransforms.data(), poseA.boneTransforms.size(), alpha );
 }
 
 void BlendAdditivePose( SkeletonPose& outPose, const SkeletonPose& poseA, const SkeletonPose& basePose, const SkeletonPose& additivePose, const BoneWeights& boneWeights, float alpha )
 {
+	outPose.skeleton = poseA.skeleton;
 	outPose.boneTransforms.resize( poseA.boneTransforms.size() );
-	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
-	{
-		const auto& additive = additivePose.boneTransforms[i];
-		const auto& base = basePose.boneTransforms[i];
-		const auto inverseBase = Inverse( base );
-		const auto multiplied = Multiply( inverseBase, additive );
-
-		const float weight = boneWeights.boneWeights[i] * alpha;
-		const auto blended = Lerp( {}, multiplied, weight );
-		outPose.boneTransforms[i] = Multiply( poseA.boneTransforms[i], blended );
-	}
+	detail::BlendAdditiveTransformsWeighted( outPose.boneTransforms.data(), poseA.boneTransforms.data(), basePose.boneTransforms.data(), additivePose.boneTransforms.data(), boneWeights.boneWeights.data(), poseA.boneTransforms.size(), alpha );
 }
 
 void ComputeWorldTransforms( std::vector<Matrix>& outWorldTransforms, const SkeletonPose& pose )
@@ -757,7 +528,7 @@ void AnimationPlayer::SampleAtLocalTime( SkeletonPose& outPose, float localTime 
 	for( const auto& rotation : m_rotationCurves )
 	{
 		auto& boneTransform = outPose.boneTransforms[rotation.targetIndex];
-		boneTransform.rotation = ::SampleQuaternionCurve( rotation.knots, rotation.values, rotation.interpolation, localTime, rotation.cache );
+		boneTransform.rotation = detail::SampleQuaternionCurve( rotation.knots, rotation.values, rotation.interpolation, localTime, rotation.cache );
 	}
 	for( const auto& scale : m_scaleCurves )
 	{

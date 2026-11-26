@@ -6,7 +6,7 @@
 #include "uiMenubar.h"
 #include "uiGeneralWindow.h"
 #include "uiAnimationPlayback.h"
-#include "../vulkan/commandbuffer.h"
+#include "rendering/imguiLayer.h"
 
 // Handles rendering the UI
 class UIRenderer
@@ -38,10 +38,8 @@ private:
 
 	void UpdateUiState( AppState& appState );
 
-	VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
-
 	std::shared_ptr<const Renderer> m_renderer;
-	GraphicsCommandBuffer m_graphicsCommandBuffer;
+	ImGuiLayer m_imguiLayer;
 
 	LoadStatus m_loadStatus{ NOTHING_LOADED };
 	UIGeneralWindow m_generalWindow{};

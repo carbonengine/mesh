@@ -10,9 +10,12 @@ carbon-mesh Documentation
     cmf/fileFormat
     cmf/usage
     cmf/animation
+    cmf/animationNetwork
+    cmf/animationNetworkFormat
 
 .. toctree::
     :maxdepth: 1
     :caption: Tools
 
     cmfprocessor/cmfprocessor
+    canedit/canedit

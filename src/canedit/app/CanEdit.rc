@@ -1,0 +1,4 @@
+// Copyright © 2026 CCP ehf.
+
+// GLFW uses the icon named GLFW_ICON for its windows
+GLFW_ICON ICON "../../viewer/assets/icons/carbon_trans-256.ico"

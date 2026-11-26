@@ -20,6 +20,7 @@ endif()
 project(CarbonMesh VERSION 1.0.0)
 
 find_package(carbon-math CONFIG REQUIRED)
+find_package(carbon-parser CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
 find_package(mikktspace CONFIG REQUIRED)
 
@@ -29,9 +30,13 @@ include(GenerateExportHeader)
 
 set(PUBLIC_HEADER_FILES
     include/cmf/animation.h
+    include/cmf/animationnetwork.h
+    include/cmf/animationnetworkbuilder.h
+    include/cmf/animationnetworkinstance.h
     include/cmf/bounds.h
     include/cmf/bufferstreams.h
     include/cmf/bufferutils.h
+    include/cmf/can.h
     include/cmf/cmf.h
     include/cmf/compression.h
     include/cmf/converters.h
@@ -49,6 +54,11 @@ set(PUBLIC_HEADER_FILES
 set(CARBON_MESH_SOURCE_FILES
     ${PUBLIC_HEADER_FILES}
     src/cmf/animation.cpp
+    src/cmf/animationnetwork.cpp
+    src/cmf/animationnetworkbuilder.cpp
+    src/cmf/animationnetworkcompiler.cpp
+    src/cmf/animationnetworkformat.cpp
+    src/cmf/animationnetworkinstance.cpp
     src/cmf/bounds.cpp
     src/cmf/bufferutils.cpp
     src/cmf/compression.cpp
@@ -97,13 +107,21 @@ set_target_properties(CarbonMesh PROPERTIES OUTPUT_NAME "CarbonMesh")
 target_link_libraries(CarbonMesh PUBLIC 
 	CcpMath 
 	$<BUILD_INTERFACE:meshoptimizer::meshoptimizer>
-	$<BUILD_INTERFACE:mikktspace::mikktspace>)
+	$<BUILD_INTERFACE:mikktspace::mikktspace>
+	$<BUILD_INTERFACE:CcpParser>)
 target_include_directories(CarbonMesh PUBLIC         
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 set_property(TARGET CarbonMesh PROPERTY COMPILE_WARNING_AS_ERROR ON)
+# Report switch statements over enums that miss cases, so that new enum values (such as animation network node
+# types) can't be forgotten
+if(MSVC)
+	target_compile_options(CarbonMesh PRIVATE /w34062)
+else()
+	target_compile_options(CarbonMesh PRIVATE -Wswitch)
+endif()
 ccp_enable_vs_analizers(CarbonMesh)
 
 # Provide an install target if this is the top level project only
@@ -192,10 +210,15 @@ if(CMAKE_PROJECT_NAME STREQUAL CarbonMesh)
 endif()
 
 if(BUILD_TOOLS)
+	add_subdirectory( src/render )
 	add_subdirectory( src/viewer )
 	add_subdirectory( src/processor )
+	add_subdirectory( src/canedit )
 endif()
 
 add_subdirectory (src/cmf/test) 
 enable_testing()
 add_test(NAME cmftest COMMAND cmftest)
+if(BUILD_TOOLS)
+	add_test(NAME canedittest COMMAND canedittest)
+endif()

@@ -6,6 +6,8 @@
 #include "cmf/memallocator.h"
 #include "cmf/transforms.h"
 
+#include <array>
+
 
 namespace
 {
@@ -468,4 +470,154 @@ TEST( Animation, BlendAdditivePoseWithHalfAlpha )
 	EXPECT_EQ( outPose.boneTransforms[1].position, expected.position );
 	EXPECT_EQ( outPose.boneTransforms[1].rotation, expected.rotation );
 	EXPECT_EQ( outPose.boneTransforms[1].scale, expected.scale );
+}
+
+namespace
+{
+
+const std::vector<BoneDesc>& BlendTestBones()
+{
+	static const std::vector<BoneDesc> bones = {
+		{ "Root", 0xffffffff, { { 0.f, 2.f, 0.f }, { 0.f, 0.3826834f, 0.f, 0.9238795f }, { 2.f, 2.f, 2.f } } },
+		{ "Child", 0, { { 1.f, 0.5f, 0.f }, { 0.f, 0.f, 0.3826834f, 0.9238795f }, { 1.5f, 1.5f, 1.5f } } },
+		{ "Leaf", 1, { { 0.f, 1.f, 0.f }, { 0.f, 0.f, 0.f, 1.f }, { 1.f, 1.f, 1.f } } },
+	};
+	return bones;
+}
+
+const std::vector<cmf::BoneWeight>& BlendTestMaskWeights()
+{
+	static const std::vector<cmf::BoneWeight> weights = { { 1, 0.5f }, { 2, 1.f } };
+	return weights;
+}
+
+const std::vector<float>& BlendTestExpectedMaskWeights()
+{
+	static const std::vector<float> weights = { 0.f, 0.5f, 1.f };
+	return weights;
+}
+
+constexpr size_t BLEND_TEST_BONE_COUNT = 3;
+constexpr const char* BLEND_TEST_MASK_NAME = "Upper";
+constexpr float BLEND_TEST_ALPHA = 0.5f;
+constexpr std::array<float, 3> BLEND_TEST_ALPHAS = { 0.f, 0.25f, 1.f };
+
+cmf::Skeleton MakeBlendTestSkeleton( cmf::MemoryAllocator& allocator )
+{
+	auto skeleton = MakeInPlaceSkeleton( BlendTestBones(), allocator );
+
+	cmf::BoneMask upperMask;
+	upperMask.name = allocator.AllocateString( BLEND_TEST_MASK_NAME );
+	cmf::Modify( upperMask.weights, allocator ) = BlendTestMaskWeights();
+	cmf::Modify( skeleton.boneMasks, allocator ).push_back( upperMask );
+	return skeleton;
+}
+
+void MakeBlendTestPoses( const cmf::Skeleton& skeleton, cmf::SkeletonPose& poseA, cmf::SkeletonPose& poseB )
+{
+	cmf::RestPose( poseA, skeleton );
+	cmf::RestPose( poseB, skeleton );
+	const Vector3 positionStep( 10.f, 20.f, 30.f );
+	const Quaternion rotation( 0.f, 0.7071068f, 0.f, 0.7071068f );
+	const Vector3 boneScale( 3.f, 3.f, 3.f );
+	float scale = 1.f;
+	for( auto& transform : poseB.boneTransforms )
+	{
+		transform.position = positionStep * scale;
+		transform.rotation = rotation;
+		transform.scale = boneScale;
+		scale += 1.f;
+	}
+}
+
+void ExpectTransformNear( const cmf::Transform& actual, const cmf::Transform& expected )
+{
+	EXPECT_TRUE( NearlyEqual( actual.position, expected.position ) );
+	EXPECT_TRUE( NearlyEqual( actual.rotation, expected.rotation ) );
+	EXPECT_TRUE( NearlyEqual( actual.scale, expected.scale ) );
+}
+
+}
+
+TEST( Animation, BlendPosesLerpsEveryBone )
+{
+	cmf::MemoryAllocator allocator;
+	const auto skeleton = MakeBlendTestSkeleton( allocator );
+	cmf::SkeletonPose poseA;
+	cmf::SkeletonPose poseB;
+	cmf::SkeletonPose outPose;
+	MakeBlendTestPoses( skeleton, poseA, poseB );
+
+	for( const float alpha : BLEND_TEST_ALPHAS )
+	{
+		cmf::BlendPoses( outPose, poseA, poseB, alpha );
+		ASSERT_EQ( outPose.boneTransforms.size(), poseA.boneTransforms.size() );
+		EXPECT_EQ( outPose.skeleton, &skeleton );
+		for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
+		{
+			ExpectTransformNear( outPose.boneTransforms.at( i ), cmf::Lerp( poseA.boneTransforms.at( i ), poseB.boneTransforms.at( i ), alpha ) );
+		}
+	}
+}
+
+TEST( Animation, ExtractBoneWeightsUsesNamedMask )
+{
+	cmf::MemoryAllocator allocator;
+	const auto skeleton = MakeBlendTestSkeleton( allocator );
+
+	const auto weights = cmf::ExtractBoneWeights( skeleton, BLEND_TEST_MASK_NAME );
+	EXPECT_EQ( weights.skeleton, &skeleton );
+	EXPECT_EQ( weights.boneWeights, BlendTestExpectedMaskWeights() );
+}
+
+TEST( Animation, ExtractBoneWeightsWithUnknownMaskIsZero )
+{
+	cmf::MemoryAllocator allocator;
+	const auto skeleton = MakeBlendTestSkeleton( allocator );
+
+	const auto weights = cmf::ExtractBoneWeights( skeleton, "DoesNotExist" );
+	EXPECT_EQ( weights.boneWeights, std::vector<float>( BLEND_TEST_BONE_COUNT, 0.f ) );
+}
+
+TEST( Animation, BlendPosesWithBoneWeightsScalesAlphaPerBone )
+{
+	cmf::MemoryAllocator allocator;
+	const auto skeleton = MakeBlendTestSkeleton( allocator );
+	cmf::SkeletonPose poseA;
+	cmf::SkeletonPose poseB;
+	cmf::SkeletonPose outPose;
+	MakeBlendTestPoses( skeleton, poseA, poseB );
+	const auto weights = cmf::ExtractBoneWeights( skeleton, BLEND_TEST_MASK_NAME );
+
+	cmf::BlendPoses( outPose, poseA, poseB, weights, BLEND_TEST_ALPHA );
+	ASSERT_EQ( outPose.boneTransforms.size(), poseA.boneTransforms.size() );
+	EXPECT_EQ( outPose.skeleton, &skeleton );
+	for( size_t i = 0; i < poseA.boneTransforms.size(); ++i )
+	{
+		const auto expected = cmf::Lerp( poseA.boneTransforms.at( i ), poseB.boneTransforms.at( i ), weights.boneWeights.at( i ) * BLEND_TEST_ALPHA );
+		ExpectTransformNear( outPose.boneTransforms.at( i ), expected );
+	}
+}
+
+TEST( Animation, BlendAdditivePoseWithBoneWeightsScalesAlphaPerBone )
+{
+	cmf::MemoryAllocator allocator;
+	const auto skeleton = MakeBlendTestSkeleton( allocator );
+	cmf::SkeletonPose inputPose;
+	cmf::SkeletonPose additivePose;
+	cmf::SkeletonPose basePose;
+	cmf::SkeletonPose outPose;
+	MakeBlendTestPoses( skeleton, inputPose, additivePose );
+	cmf::RestPose( basePose, skeleton );
+	const auto weights = cmf::ExtractBoneWeights( skeleton, BLEND_TEST_MASK_NAME );
+
+	cmf::BlendAdditivePose( outPose, inputPose, basePose, additivePose, weights, BLEND_TEST_ALPHA );
+	ASSERT_EQ( outPose.boneTransforms.size(), inputPose.boneTransforms.size() );
+	EXPECT_EQ( outPose.skeleton, &skeleton );
+	for( size_t i = 0; i < inputPose.boneTransforms.size(); ++i )
+	{
+		const auto diff = cmf::Multiply( cmf::Inverse( basePose.boneTransforms.at( i ) ), additivePose.boneTransforms.at( i ) );
+		const auto blended = cmf::Lerp( cmf::Transform{}, diff, weights.boneWeights.at( i ) * BLEND_TEST_ALPHA );
+		ExpectTransformNear( outPose.boneTransforms.at( i ), cmf::Multiply( inputPose.boneTransforms.at( i ), blended ) );
+	}
 }

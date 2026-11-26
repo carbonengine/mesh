@@ -4,6 +4,10 @@
 	  "name": "carbon-math",
 	  "version>=": "1.2.1"
 	},
+	{
+	  "name": "carbon-parser",
+	  "version>=": "1.0.2"
+	},
     {
       "name": "meshoptimizer",
       "version>=": "0.25"

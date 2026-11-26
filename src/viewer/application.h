@@ -8,6 +8,7 @@
 #include "rendering/sceneRenderer.h"
 #include "rendering/renderer.h"
 #include "rendering/ui/uiRenderer.h"
+#include "viewerBinding.h"
 
 class Application
 {
@@ -38,6 +39,7 @@ private:
 
 	AppState m_appState{};
 	Camera m_camera{};
+	std::unique_ptr<ViewerBinding> m_binding{ nullptr };
 
 	bool m_valid{ false };
 };

@@ -4,6 +4,7 @@
 #include "cmf/declutils.h"
 #include "cmf/bufferstreams.h"
 #include "cmf/compression.h"
+#include "validationutils.h"
 #include <map>
 #include <numeric>
 #include <vector>
@@ -11,60 +12,6 @@
 
 namespace
 {
-template <typename T>
-std::string AreSpanPointersValid( const T& value, const void* base, size_t totalSize )
-{
-	if constexpr( std::is_base_of_v<cmf::SpanRepr, T> )
-	{
-		// Total size must be multiple of element size
-		if( value.byteSize % sizeof( typename T::value_type ) != 0 )
-		{
-			return "Total size must be multiple of element size";
-		}
-		// Empty spans are valid
-		if( value.size() == 0 )
-		{
-			return "";
-		}
-		// Pointer must be aligned to element size
-		if( reinterpret_cast<uintptr_t>( value.data() ) % alignof( typename T::value_type ) != 0 )
-		{
-			return "Pointer must be aligned to element size";
-		}
-
-		// Pointer must be within the base + totalSize range
-		if( value.data() < base || reinterpret_cast<const uint8_t*>( value.end() ) > reinterpret_cast<const uint8_t*>( base ) + totalSize )
-		{
-			return "Pointer must be within the base + totalSize range";
-		}
-
-		for( size_t i = 0; i < value.size(); i++ )
-		{
-			auto result = AreSpanPointersValid( value[i], base, totalSize );
-			if( !result.empty() )
-			{
-				return "[" + std::to_string( i ) + "] " + result;
-			}
-		}
-		return "";
-	}
-	else
-	{
-		std::string errorMessage;
-		cmf::EnumerateMembers( const_cast<T&>( value ), [&errorMessage, base, totalSize]( auto&&, auto& value, const char* memberName ) {
-			if( errorMessage.empty() )
-			{
-				auto result = AreSpanPointersValid( value, base, totalSize );
-				if( !result.empty() )
-				{
-					errorMessage = std::string( memberName ) + " " + result;
-				}
-			}
-		} );
-		return errorMessage;
-	}
-}
-
 template <typename T>
 std::string AreBufferViewsValid( const T& value, const cmf::Span<cmf::Section>& sections )
 {
@@ -1027,7 +974,7 @@ std::string IsAnimationValid( const cmf::Animation& animation )
 
 std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& header )
 {
-	auto spanPointerErrorMessage = AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize );
+	auto spanPointerErrorMessage = cmf::detail::AreSpanPointersValid( mainData, &mainData, header.sections[0].uncompressedSize );
 	if( !spanPointerErrorMessage.empty() )
 	{
 		return "Main data contains invalid span pointers: " + spanPointerErrorMessage;
@@ -1069,7 +1016,7 @@ std::string IsMainDataValid( const cmf::Data& mainData, const cmf::Header& heade
 
 std::string IsMetadataValid( const cmf::Metadata& metaData, size_t sectionSize )
 {
-	auto spanPointerErrorMessage = AreSpanPointersValid( metaData, &metaData, sectionSize );
+	auto spanPointerErrorMessage = cmf::detail::AreSpanPointersValid( metaData, &metaData, sectionSize );
 	if( !spanPointerErrorMessage.empty() )
 	{
 		return "Meta data contains invalid span pointers: " + spanPointerErrorMessage;
@@ -1176,6 +1123,21 @@ std::string AreBuffersValid( const cmf::Data& mainData, const cmf::Header& heade
 
 }
 
+namespace cmf::detail
+{
+
+std::string ValidateSkeleton( const cmf::Skeleton& skeleton )
+{
+	return IsSkeletonValid( skeleton );
+}
+
+std::string ValidateAnimation( const cmf::Animation& animation )
+{
+	return IsAnimationValid( animation );
+}
+
+}
+
 namespace cmf
 {
 
@@ -1214,7 +1176,7 @@ ValidationResult ValidateFile( const void* data, size_t size, const ValidationOp
 		return { true, {} };
 	}
 
-	auto spanPointerErrorMessage = AreSpanPointersValid( header, &header, header.headerSize );
+	auto spanPointerErrorMessage = cmf::detail::AreSpanPointersValid( header, &header, header.headerSize );
 	if( !spanPointerErrorMessage.empty() )
 	{
 		return { false, "Header contains invalid span pointers: " + spanPointerErrorMessage };

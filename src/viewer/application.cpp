@@ -77,7 +77,7 @@ void Application::Initialize()
 	// if we set value regularly we will trigger a callback, which is not needed
 	m_appState.windowSize.SetValueNoCallback( std::make_pair( width, height ) );
 
-	if( m_renderer->CreateInstance( extensions ) )
+	if( m_renderer->CreateInstance( extensions, "CarbonMeshViewer" ) )
 	{
 		Log::Error( "Failed to create Vulkan instance" );
 		return;
@@ -102,15 +102,16 @@ void Application::Initialize()
 	glfwSetWindowUserPointer( m_window, this );
 
 	m_sceneRenderer = std::make_unique<SceneRenderer>( m_renderer );
-	ON_ERROR_LOG_AND_RETURN( m_sceneRenderer->Initialize( m_appState ), "Faied to initialize scene renderer" );
+	ON_ERROR_LOG_AND_RETURN( m_sceneRenderer->Initialize( width, height ), "Faied to initialize scene renderer" );
 
 	m_orientationGizmoRenderer = std::make_unique<OrientationGizmoRenderer>( m_renderer );
-	m_orientationGizmoRenderer->Initialize( m_appState );
+	m_orientationGizmoRenderer->Initialize( width, height );
+
+	m_binding = std::make_unique<ViewerBinding>( m_appState, *m_sceneRenderer, m_camera, *m_orientationGizmoRenderer );
+	m_binding->Initialize();
 
 	m_uiRenderer = std::make_unique<UIRenderer>( m_renderer );
 	m_uiRenderer->Initialize( m_window, m_appState );
-
-	m_camera.Initialize( m_appState );
 
 	// initialize input handler
 	glfwSetDropCallback( m_window, []( GLFWwindow* window, int count, const char** paths ) {
@@ -191,7 +192,8 @@ void Application::Run()
 		{
 			m_camera.Update( newTime - time );
 
-			m_sceneRenderer->Update( m_appState, m_camera );
+			m_sceneRenderer->Update( m_camera );
+			m_binding->Sync();
 			if( m_renderer->BeginCompute() != VK_SUCCESS )
 			{
 				Log::Error( "Failed to begin compute step" );
@@ -213,8 +215,8 @@ void Application::Run()
 			}
 			m_uiRenderer->BeginFrame();
 
-			m_sceneRenderer->Render( m_appState, m_camera );
-			m_orientationGizmoRenderer->Render( m_appState, m_camera );
+			m_sceneRenderer->Render( m_camera, m_binding->GetDebugDrawSettings() );
+			m_orientationGizmoRenderer->Render( m_camera );
 
 			m_uiRenderer->Update( m_appState );
 
@@ -264,7 +266,7 @@ void Application::LoadCmfFile( const std::string& path )
 		m_appState.cmfPath.SetValue( path );
 		m_appState.modelState.activeAnimationOwner.SetValue( data );
 		m_appState.cmfContent.ForceSetValue( data );
-		m_sceneRenderer->SetData( data, m_appState );
+		m_binding->SetModel( data );
 	}
 }
 
