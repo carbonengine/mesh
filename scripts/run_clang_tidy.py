@@ -98,9 +98,14 @@ def LoadVcvarsEnvironment( vsPath ):
 		key, sep, value = line.partition( "=" )
 		if sep and key:
 			env[key] = value
+	# Windows variable names are case-insensitive, and PATH is usually spelled "Path". Normalise it to a single
+	# "PATH" key: a second, differently-cased key would shadow the real one in child processes.
+	pathKeys = [ k for k in env if k.upper() == "PATH" ]
+	pathValue = ";".join( env.pop( k ) for k in pathKeys )
 	ninjaDir = vsPath / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja"
 	if ninjaDir.exists():
-		env["PATH"] = f"{env.get( 'PATH', '' )};{ninjaDir}"
+		pathValue = f"{pathValue};{ninjaDir}"
+	env["PATH"] = pathValue
 	return env
 
 
@@ -158,6 +163,11 @@ def PresetTriplet( presetName ):
 	return Resolve( presetName )
 
 
+# Packages from the vcpkg "tools" feature (share/ folder names). A reused vcpkg_installed must have them, because the
+# tidy build always configures with BUILD_TOOLS=ON and can't install anything into another build's folder.
+TOOLS_PACKAGES = ( "glfw3", "imgui", "shaderc", "cli11" )
+
+
 def FindReusableVcpkgInstall( triplet, buildDir ):
 	if not triplet:
 		return None
@@ -165,8 +175,13 @@ def FindReusableVcpkgInstall( triplet, buildDir ):
 		if NormPath( candidate ) == NormPath( buildDir ):
 			continue
 		installed = candidate / "vcpkg_installed"
-		if ( installed / triplet ).is_dir() and ( installed / "vcpkg" ).is_dir():
-			return installed
+		if not ( ( installed / triplet ).is_dir() and ( installed / "vcpkg" ).is_dir() ):
+			continue
+		missingTools = [ p for p in TOOLS_PACKAGES if not ( installed / triplet / "share" / p ).is_dir() ]
+		if missingTools:
+			Log( f"Not reusing {installed}: it lacks tools packages ({', '.join( missingTools )}); configure it with BUILD_TOOLS=ON to make it reusable." )
+			continue
+		return installed
 	return None
 
 
@@ -220,11 +235,19 @@ def CleanCommand( command ):
 	return command
 
 
+# Forced includes (MSVC /FI, GCC/Clang -include, optionally wrapped in -Xclang). CMake's target_precompile_headers
+# injects cmake_pch.hxx this way, so headers listed in it have no textual #include in the sources.
+FORCED_INCLUDE_RE = re.compile( r'(?:^|\s)(?:[/-]FI\s*|-include\s+(?:-Xclang\s+)?)("[^"]*"|\S+)' )
+
+
 def WriteCleanCompileDatabase( buildDir, tidyDbDir ):
+	"""Write the cleaned compile database. Returns (set of normalised source paths in it,
+	{ normalised forced-include path: set of normalised source paths that force-include it })."""
 	source = buildDir / "compile_commands.json"
 	if not source.exists():
 		Fail( f"{source} was not generated" )
 	entries = json.loads( source.read_text( encoding="utf-8" ) )
+	inDatabase, forcedIncluders = set(), {}
 	for entry in entries:
 		if "command" in entry:
 			entry["command"] = CleanCommand( entry["command"] )
@@ -232,9 +255,15 @@ def WriteCleanCompileDatabase( buildDir, tidyDbDir ):
 			joined = subprocess.list2cmdline( entry["arguments"] ) if IS_WINDOWS else shlex.join( entry["arguments"] )
 			entry.pop( "arguments" )
 			entry["command"] = CleanCommand( " " + joined ).strip()
+		directory = Path( entry.get( "directory", "" ) )
+		file = NormPath( directory / entry["file"] )
+		inDatabase.add( file )
+		for match in FORCED_INCLUDE_RE.finditer( entry["command"] ):
+			forced = NormPath( directory / match.group( 1 ).strip( '"' ) )
+			forcedIncluders.setdefault( forced, set() ).add( file )
 	tidyDbDir.mkdir( parents=True, exist_ok=True )
 	( tidyDbDir / "compile_commands.json" ).write_text( json.dumps( entries, indent=1 ), encoding="utf-8" )
-	return { NormPath( Path( e.get( "directory", "" ) ) / e["file"] ) for e in entries }
+	return inDatabase, forcedIncluders
 
 
 # --------------------------------------------------------------------------------------------------
@@ -260,7 +289,10 @@ def ResolveBase( base ):
 
 
 def ChangedLines( base ):
-	"""Return { relPath: list of (start, end) } for changed lines, or None for 'whole file'."""
+	"""Return { relPath: list of (start, end) } for changed lines, or None for 'whole file'.
+
+	An empty list means the file changed but has no added lines (deletion-only edits) or was deleted. Such files
+	are still used to select translation units, but have no lines to format or to report warnings on."""
 	changes = {}
 	diff = Git( "diff", "-U0", "--no-color", "--no-ext-diff", "--diff-filter=AMR", base, "--", *SOURCE_DIRS )
 	current = None
@@ -277,32 +309,58 @@ def ChangedLines( base ):
 			start, count = int( match.group( 1 ) ), int( match.group( 2 ) or 1 )
 			if count > 0:
 				changes[current].append( ( start, start + count - 1 ) )
+	# Deleted files: a deleted header can still be included by files that weren't changed.
+	for path in Git( "diff", "--name-only", "--no-renames", "--diff-filter=D", base, "--", *SOURCE_DIRS ).splitlines():
+		if IsProjectSource( path ) and not ( REPO_ROOT / path ).exists():
+			changes.setdefault( path, [] )
 	for path in Git( "ls-files", "--others", "--exclude-standard", "--", *SOURCE_DIRS ).splitlines():
 		if IsProjectSource( path ):
 			changes[path] = None
-	return { path: ranges for path, ranges in changes.items() if ranges is None or ranges }
+	return changes
 
 
-def IncludersOf( headers ):
-	"""Transitively find project .cpp files that include any of the given headers."""
+def SelectChanges( args ):
+	"""Files and line ranges to check, after applying the file arguments and --all-lines."""
+	if args.all_lines and args.files:
+		return { f: None for f in args.files }
+	changes = ChangedLines( ResolveBase( args.base ) )
+	if args.files:
+		wanted = set( args.files )
+		changes = { p: r for p, r in changes.items() if p in wanted }
+	if args.all_lines:
+		changes = { p: None for p in changes }
+	return changes
+
+
+def IncludersOf( headers, forcedIncluders ):
+	"""Transitively find project .cpp files that include any of the given headers, textually or through forced
+	includes (forcedIncluders comes from WriteCleanCompileDatabase)."""
+	# Everything is keyed by normalised absolute path, so generated forced-include files (e.g. cmake_pch.hxx in the
+	# build directory) can take part in the walk alongside project files.
 	tracked = [ p for p in Git( "ls-files", "--cached", "--others", "--exclude-standard", "--", *SOURCE_DIRS ).splitlines() if IsProjectSource( p ) ]
+	relByNorm = { NormPath( REPO_ROOT / p ): p for p in tracked }
 	contents = {}
-	for path in tracked:
+	for path in [ *relByNorm, *forcedIncluders ]:
 		try:
-			contents[path] = ( REPO_ROOT / path ).read_text( encoding="utf-8", errors="replace" )
+			contents[path] = Path( path ).read_text( encoding="utf-8", errors="replace" )
 		except OSError:
 			pass
 
-	pending, seen, sources = list( headers ), set( headers ), set()
+	pending = [ NormPath( REPO_ROOT / h ) for h in headers ]
+	seen, sources = set( pending ), set()
 	while pending:
 		header = pending.pop()
+		for source in forcedIncluders.get( header, () ):
+			if source in relByNorm:
+				sources.add( relByNorm[source] )
 		name = re.escape( Path( header ).name )
-		includeRe = re.compile( r'^\s*#\s*include\s*[<"](?:[^>"]*/)?' + name + r'[>"]', re.MULTILINE )
+		includeRe = re.compile( r'^\s*#\s*include\s*[<"](?:[^>"]*[\\/])?' + name + r'[>"]', re.MULTILINE | re.IGNORECASE )
 		for path, text in contents.items():
 			if path in seen or not includeRe.search( text ):
 				continue
 			if Path( path ).suffix.lower() in SOURCE_EXTS:
-				sources.add( path )
+				if path in relByNorm:
+					sources.add( relByNorm[path] )
 			else:
 				seen.add( path )
 				pending.append( path )
@@ -342,11 +400,12 @@ def CheckFormat( clangFormat, changes, fix ):
 	"""Check (or fix, with fix=True) clang-format on the changed lines of each changed file. Returns the number of
 	files with violations (0 when fixing)."""
 	version = Run( [ str( clangFormat ), "--version" ], check=False ).stdout.strip()
-	Log( f"{'Formatting' if fix else 'Checking formatting of'} {len( changes )} file(s) with {version} ..." )
+	# An empty range list (deletion-only edit or deleted file) has nothing to format. Don't let it reach the
+	# no-"--lines" case, which would format the whole file.
+	toFormat = sorted( ( p, r ) for p, r in changes.items() if r != [] and ( REPO_ROOT / p ).exists() )
+	Log( f"{'Formatting' if fix else 'Checking formatting of'} {len( toFormat )} file(s) with {version} ..." )
 	badFiles = 0
-	for path, ranges in sorted( changes.items() ):
-		if not ( REPO_ROOT / path ).exists():
-			continue
+	for path, ranges in toFormat:
 		cmd = [ str( clangFormat ), "--style=file" ]
 		cmd += [ f"--lines={start}:{end}" for start, end in ranges or [] ]
 		cmd += [ "-i" ] if fix else [ "--dry-run", "--Werror" ]
@@ -392,20 +451,20 @@ def main():
 	args = parser.parse_args()
 	args.preset = args.preset or DefaultPreset()
 
+	# Resolve file arguments against the caller's working directory, before changing to the repo root.
+	files = []
+	for f in args.files:
+		try:
+			files.append( Path( f ).resolve().relative_to( REPO_ROOT ).as_posix() )
+		except ValueError:
+			Fail( f"{f} is not inside the repository ({REPO_ROOT})" )
+	args.files = files
+
 	os.chdir( REPO_ROOT )
 	buildDir = ( REPO_ROOT / args.build_dir ).resolve()
 	tidyDbDir = buildDir / "clang-tidy-db"
 
-	# Files and line ranges to check
-	if args.all_lines and args.files:
-		changes = { Path( f ).resolve().relative_to( REPO_ROOT ).as_posix(): None for f in args.files }
-	else:
-		changes = ChangedLines( ResolveBase( args.base ) )
-		if args.files:
-			wanted = { Path( f ).resolve().relative_to( REPO_ROOT ).as_posix() for f in args.files }
-			changes = { p: r for p, r in changes.items() if p in wanted }
-		if args.all_lines:
-			changes = { p: None for p in changes }
+	changes = SelectChanges( args )
 	if not changes:
 		Log( "No changed C++ files under src/ or include/. Nothing to check." )
 		return 0
@@ -420,6 +479,9 @@ def main():
 		formatCode = 1 if CheckFormat( clangFormat, changes, args.fix_format ) else 0
 		if args.format_only:
 			return formatCode
+		if args.fix_format:
+			# Formatting can split, join or move lines, so the pre-format ranges no longer match the files.
+			changes = SelectChanges( args )
 		print()
 
 	tidyCode = RunTidy( args, changes, vsPath, buildDir, tidyDbDir )
@@ -430,9 +492,12 @@ def main():
 
 def RunTidy( args, changes, vsPath, buildDir, tidyDbDir ):
 	headers = [ p for p in changes if Path( p ).suffix.lower() in HEADER_EXTS ]
-	sources = { p for p in changes if Path( p ).suffix.lower() in SOURCE_EXTS }
-	if headers:
-		sources |= IncludersOf( headers )
+
+	def SourcesToCheck( forcedIncluders ):
+		sources = { p for p in changes if Path( p ).suffix.lower() in SOURCE_EXTS and ( REPO_ROOT / p ).exists() }
+		if headers:
+			sources |= IncludersOf( headers, forcedIncluders )
+		return sources
 
 	# Toolchain + compile database
 	env = LoadVcvarsEnvironment( vsPath ) if IS_WINDOWS else dict( os.environ )
@@ -441,13 +506,15 @@ def RunTidy( args, changes, vsPath, buildDir, tidyDbDir ):
 	if args.reconfigure or not ( buildDir / "build.ninja" ).exists():
 		Configure( args, buildDir, env )
 	BuildGeneratedHeaders( buildDir, env )
-	inDatabase = WriteCleanCompileDatabase( buildDir, tidyDbDir )
+	inDatabase, forcedIncluders = WriteCleanCompileDatabase( buildDir, tidyDbDir )
+	sources = SourcesToCheck( forcedIncluders )
 
 	missing = [ s for s in sources if NormPath( REPO_ROOT / s ) not in inDatabase ]
 	if missing and not args.reconfigure:
 		Log( "Some files are not in the compile database (new files?); re-running CMake ..." )
 		Run( [ "cmake", str( buildDir ) ], env=env )
-		inDatabase = WriteCleanCompileDatabase( buildDir, tidyDbDir )
+		inDatabase, forcedIncluders = WriteCleanCompileDatabase( buildDir, tidyDbDir )
+		sources = SourcesToCheck( forcedIncluders )
 		missing = [ s for s in sources if NormPath( REPO_ROOT / s ) not in inDatabase ]
 	for path in sorted( missing ):
 		Log( f"warning: {path} is not part of any build target; skipping" )
