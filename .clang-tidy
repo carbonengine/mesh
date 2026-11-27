@@ -2,8 +2,10 @@
 Checks: |
   cppcoreguidelines-*,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   clang-analyzer-*,
   bugprone-*,
+  -bugprone-easily-swappable-parameters,
   google-default-arguments,
   google-runtime-int,
   misc-*,
@@ -31,19 +33,42 @@ ImplementationFileExtensions:
   - cxx
   - mm
 HeaderFilterRegex: ''
+# Never report diagnostics from third-party headers, whatever header filter the runner uses.
+ExcludeHeaderFilterRegex: '.*[\\/]vendor[\\/].*'
 FormatStyle:     file
 CheckOptions:
-  - { key: readability-identifier-naming.DefaultCase,       value: camelBack }
+  # No DefaultCase: it is the fallback for every unclassified identifier (templates, macros, non-private
+  # members), which made it flag correctly named code. Every kind we care about is configured explicitly.
   - { key: readability-identifier-naming.NamespaceCase,       value: camelBack }
   - { key: readability-identifier-naming.ClassCase,           value: CamelCase  }
-  - { key: readability-identifier-naming.PrivateMemberPrefix, value: m_         }
   - { key: readability-identifier-naming.StructCase,          value: CamelCase  }
   - { key: readability-identifier-naming.FunctionCase,        value: CamelCase }
+  # Names required by the standard library (range-for, containers) and nlohmann::json (ADL hooks).
+  - { key: readability-identifier-naming.FunctionIgnoredRegexp, value: '^(begin|end|cbegin|cend|rbegin|rend|size|empty|data|clear|insert|erase|push_back|emplace_back|from_json|to_json)$' }
+  - { key: readability-identifier-naming.TemplateParameterCase, value: CamelCase }
+  - { key: readability-identifier-naming.TypeAliasCase,       value: CamelCase }
+  - { key: readability-identifier-naming.TypeAliasIgnoredRegexp, value: '^(iterator|const_iterator|value_type|size_type|difference_type|reference|const_reference|pointer|const_pointer|json)$' }
+  - { key: readability-identifier-naming.EnumCase,            value: CamelCase }
+  # Unscoped enum constants share the enclosing scope, so they are UPPER_CASE; enum class constants are CamelCase.
+  - { key: readability-identifier-naming.EnumConstantCase,    value: UPPER_CASE }
+  - { key: readability-identifier-naming.ScopedEnumConstantCase, value: CamelCase }
+  - { key: readability-identifier-naming.MemberCase,          value: camelBack }
+  - { key: readability-identifier-naming.PrivateMemberCase,   value: camelBack }
+  - { key: readability-identifier-naming.PrivateMemberPrefix, value: m_         }
+  - { key: readability-identifier-naming.ProtectedMemberCase, value: camelBack }
+  - { key: readability-identifier-naming.ProtectedMemberPrefix, value: m_       }
+  - { key: readability-identifier-naming.ParameterCase,       value: camelBack }
   - { key: readability-identifier-naming.VariableCase,        value: camelBack }
   - { key: readability-identifier-naming.GlobalConstantCase,  value: UPPER_CASE }
+  # Static constexpr class members are UPPER_CASE, except the TypeName tag on the cmf::v1 data structures.
+  - { key: readability-identifier-naming.ClassConstantCase,   value: UPPER_CASE }
+  - { key: readability-identifier-naming.ClassConstantIgnoredRegexp, value: '^TypeName$' }
+  - { key: readability-identifier-naming.MacroDefinitionCase, value: UPPER_CASE }
 
   - { key: bugprone-assert-side-effect.AssertMacros,          value: 'assert,CCP_ASSERT' }
   - { key: google-runtime-int.TypeSuffix,                     value: '_t' }
+  - { key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic, value: true }
+  - { key: cppcoreguidelines-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic, value: true }
 
 SystemHeaders:   false
 ...
